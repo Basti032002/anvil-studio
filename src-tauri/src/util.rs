@@ -208,76 +208,214 @@ pub fn http_client() -> Result<reqwest::Client, String> {
         .map_err(|e| net_err(&e))
 }
 
-pub type Headers<'a> = &'a [(&'a str, String)];
-
-async fn download_reqwest(url: &str, headers: Headers<'_>, target: &Path, progress: &(dyn Fn(u64, Option<u64>) + Send + Sync)) -> Result<(), String> {
-    use std::io::Write;
-    let mut req = http_client()?.get(url);
-    for (k, v) in headers {
-        req = req.header(*k, v);
+fn download_client(ipv4: bool, follow: bool) -> Result<reqwest::Client, String> {
+    let mut b = reqwest::Client::builder()
+        .user_agent(concat!("AnvilStudio/", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(std::time::Duration::from_secs(20))
+        .read_timeout(std::time::Duration::from_secs(60));
+    if ipv4 {
+        b = b.local_address(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED));
     }
-    // reqwest entfernt Authorization bei Weiterleitung auf einen anderen Host
-    let mut resp = req.send().await.map_err(|e| net_err(&e))?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
+    if !follow {
+        b = b.redirect(reqwest::redirect::Policy::none());
     }
-    let total = resp.content_length();
-    let mut file = std::fs::File::create(target).map_err(err)?;
-    let mut done = 0u64;
-    let mut last = 0u64;
-    while let Some(chunk) = resp.chunk().await.map_err(|e| net_err(&e))? {
-        file.write_all(&chunk).map_err(err)?;
-        done += chunk.len() as u64;
-        if done - last > 512 * 1024 {
-            last = done;
-            progress(done, total);
-        }
-    }
-    progress(done, total);
-    Ok(())
+    b.build().map_err(|e| net_err(&e))
 }
 
-/// Lädt eine Datei herunter. Klappt das mit dem eingebauten Client nicht
-/// (z. B. wegen Virenscanner/Proxy), wird unter Windows curl.exe benutzt,
-/// das die Netzwerk- und Zertifikatseinstellungen von Windows verwendet.
-pub async fn download(url: &str, target: &Path, progress: &(dyn Fn(u64, Option<u64>) + Send + Sync)) -> Result<(), String> {
+pub type Headers<'a> = &'a [(&'a str, String)];
+type ProgressFn<'a> = &'a (dyn Fn(u64, Option<u64>) + Send + Sync);
+
+/// Folgt Weiterleitungen selbst und gibt die endgültige Adresse zurück.
+/// Header (z. B. Authorization) gehen nur an den ersten Host – die
+/// signierten Download-Adressen von GitHub brauchen keine.
+async fn resolve_final_url(url: &str, headers: Headers<'_>) -> Result<String, String> {
+    let client = download_client(false, false)?;
+    let mut current = url.to_string();
+    for hop in 0..6 {
+        let mut req = client.get(&current);
+        if hop == 0 {
+            for (k, v) in headers {
+                req = req.header(*k, v);
+            }
+        }
+        let resp = req.send().await.map_err(|e| net_err(&e))?;
+        let status = resp.status();
+        if status.is_redirection() {
+            let loc = resp.headers().get("location").and_then(|l| l.to_str().ok()).ok_or("Weiterleitung ohne Ziel")?;
+            current = reqwest::Url::parse(&current).and_then(|base| base.join(loc)).map_err(err)?.to_string();
+            continue;
+        }
+        if !status.is_success() {
+            return Err(format!("HTTP {status}"));
+        }
+        return Ok(current);
+    }
+    Err("Zu viele Weiterleitungen".into())
+}
+
+/// Download mit Fortsetzen: bricht die Verbindung ab, geht es ab der
+/// bereits geladenen Stelle weiter (Range-Anfrage).
+async fn download_resumable(url: &str, headers: Headers<'_>, target: &Path, ipv4: bool, tries: u32, progress: ProgressFn<'_>) -> Result<(), String> {
+    use std::io::Write;
+    let client = download_client(ipv4, true)?;
+    let mut last_err = String::new();
+    for attempt in 0..tries {
+        if attempt > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(800 * attempt as u64)).await;
+        }
+        let have = std::fs::metadata(target).map(|m| m.len()).unwrap_or(0);
+        let mut req = client.get(url);
+        for (k, v) in headers {
+            req = req.header(*k, v);
+        }
+        if have > 0 {
+            req = req.header("Range", format!("bytes={have}-"));
+        }
+        let mut resp = match req.send().await {
+            Ok(r) => r,
+            Err(e) => {
+                last_err = net_err(&e);
+                continue;
+            }
+        };
+        let status = resp.status().as_u16();
+        if status == 416 {
+            return Ok(()); // schon vollständig
+        }
+        if !resp.status().is_success() {
+            last_err = format!("HTTP {}", resp.status());
+            if (400..500).contains(&status) && status != 408 && status != 429 {
+                break; // Fehler, der sich durch Wiederholen nicht löst
+            }
+            continue;
+        }
+        let resumed = status == 206;
+        let total = resp.content_length().map(|l| if resumed { l + have } else { l });
+        let mut file = if resumed {
+            std::fs::OpenOptions::new().append(true).open(target).map_err(err)?
+        } else {
+            std::fs::File::create(target).map_err(err)?
+        };
+        let mut done = if resumed { have } else { 0 };
+        let mut last = 0u64;
+        let mut failed = false;
+        loop {
+            match resp.chunk().await {
+                Ok(Some(chunk)) => {
+                    file.write_all(&chunk).map_err(err)?;
+                    done += chunk.len() as u64;
+                    if done - last > 512 * 1024 {
+                        last = done;
+                        progress(done, total);
+                    }
+                }
+                Ok(None) => break,
+                Err(e) => {
+                    last_err = net_err(&e);
+                    failed = true;
+                    break;
+                }
+            }
+        }
+        if !failed && total.map(|t| done >= t).unwrap_or(true) {
+            progress(done, total);
+            return Ok(());
+        }
+        if !failed {
+            last_err = "Verbindung vorzeitig beendet".into();
+        }
+    }
+    Err(last_err)
+}
+
+fn run_hidden(mut cmd: Command) -> Result<(), String> {
+    match hide_window_std(&mut cmd).output() {
+        Ok(o) if o.status.success() => Ok(()),
+        Ok(o) => Err(String::from_utf8_lossy(if o.stderr.is_empty() { &o.stdout } else { &o.stderr }).trim().chars().take(300).collect()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Lädt eine Datei herunter. Reihenfolge, bis es klappt:
+/// 1. eingebauter Client mit Fortsetzen
+/// 2. derselbe nur über IPv4
+/// 3. curl.exe (Windows-Netzwerk/Zertifikate, Fortsetzen, IPv4)
+/// 4. Windows-Hintergrunddienst BITS
+pub async fn download(url: &str, target: &Path, progress: ProgressFn<'_>) -> Result<(), String> {
     download_with(url, &[], target, progress).await
 }
 
-pub async fn download_with(url: &str, headers: Headers<'_>, target: &Path, progress: &(dyn Fn(u64, Option<u64>) + Send + Sync)) -> Result<(), String> {
-    let first = download_reqwest(url, headers, target, progress).await;
-    let Err(first_err) = first else { return Ok(()) };
-    if !cfg!(windows) {
-        return Err(first_err);
-    }
+pub async fn download_with(url: &str, headers: Headers<'_>, target: &Path, progress: ProgressFn<'_>) -> Result<(), String> {
     let _ = std::fs::remove_file(target);
-    let url = url.to_string();
+    // Endgültige Adresse ermitteln; danach sind keine Header mehr nötig
+    let (final_url, hdrs): (String, Vec<(&str, String)>) = match resolve_final_url(url, headers).await {
+        Ok(u) => (u, vec![]),
+        Err(_) => (url.to_string(), headers.to_vec()),
+    };
+    let mut errors = vec![];
+
+    match download_resumable(&final_url, &hdrs, target, false, 4, progress).await {
+        Ok(()) => return Ok(()),
+        Err(e) => errors.push(format!("Direkt: {e}")),
+    }
+    match download_resumable(&final_url, &hdrs, target, true, 3, progress).await {
+        Ok(()) => return Ok(()),
+        Err(e) => errors.push(format!("IPv4: {e}")),
+    }
+    if !cfg!(windows) {
+        return Err(errors.join("\n"));
+    }
+
+    let url_c = final_url.clone();
     let target_c = target.to_path_buf();
-    let header_args: Vec<String> = headers.iter().map(|(k, v)| format!("{k}: {v}")).collect();
-    let out = tauri::async_runtime::spawn_blocking(move || {
+    let header_args: Vec<String> = hdrs.iter().map(|(k, v)| format!("{k}: {v}")).collect();
+    let curl = tauri::async_runtime::spawn_blocking(move || {
         let mut cmd = Command::new("curl.exe");
-        // curl schickt -H-Header bei Weiterleitung auf andere Hosts nicht mit
-        cmd.args(["-L", "--fail", "--silent", "--show-error", "--retry", "2"]);
+        cmd.args(["-L", "-4", "--fail", "--silent", "--show-error", "--retry", "5", "--retry-all-errors", "--retry-delay", "2", "-C", "-"]);
         for h in &header_args {
             cmd.arg("-H").arg(h);
         }
-        cmd.arg("-o").arg(&target_c).arg(&url);
-        hide_window_std(&mut cmd).output()
+        cmd.arg("-o").arg(&target_c).arg(&url_c);
+        run_hidden(cmd)
     })
     .await
     .map_err(err)?;
-    match out {
-        Ok(o) if o.status.success() && target.exists() => {
+    match curl {
+        Ok(()) => {
             let size = std::fs::metadata(target).map(|m| m.len()).unwrap_or(0);
             progress(size, Some(size));
-            Ok(())
+            return Ok(());
         }
-        Ok(o) => Err(format!(
-            "{first_err}\nAuch curl.exe ist gescheitert: {}",
-            String::from_utf8_lossy(&o.stderr).trim()
-        )),
-        Err(e) => Err(format!("{first_err}\ncurl.exe konnte nicht gestartet werden: {e}")),
+        Err(e) => errors.push(format!("curl.exe: {e}")),
     }
+
+    if hdrs.is_empty() {
+        let _ = std::fs::remove_file(target);
+        let url_c = final_url.replace('\'', "''");
+        let target_s = target.to_string_lossy().replace('\'', "''");
+        let bits = tauri::async_runtime::spawn_blocking(move || {
+            let mut cmd = Command::new("powershell");
+            cmd.args(["-NoProfile", "-NonInteractive", "-Command"]).arg(format!(
+                "$ProgressPreference='SilentlyContinue'; Start-BitsTransfer -Source '{url_c}' -Destination '{target_s}' -ErrorAction Stop"
+            ));
+            run_hidden(cmd)
+        })
+        .await
+        .map_err(err)?;
+        match bits {
+            Ok(()) if target.exists() => {
+                let size = std::fs::metadata(target).map(|m| m.len()).unwrap_or(0);
+                progress(size, Some(size));
+                return Ok(());
+            }
+            Ok(()) => errors.push("BITS: keine Datei".into()),
+            Err(e) => errors.push(format!("BITS: {e}")),
+        }
+    }
+    Err(format!(
+        "Alle Download-Wege sind gescheitert. Wahrscheinlich blockiert ein Virenscanner, eine Firewall oder ein DNS-Filter die Verbindung zu GitHub.\n{}",
+        errors.join("\n")
+    ))
 }
 
 /// SHA-256 einer Datei als Hex-String.

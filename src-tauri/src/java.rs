@@ -10,6 +10,8 @@ pub const JAVA_MAJOR: u32 = 21;
 #[serde(rename_all = "camelCase")]
 pub struct JavaStatus {
     pub installed: bool,
+    /// Ordner vorhanden, aber unvollständig/kaputt → „Reparieren“ anbieten
+    pub broken: bool,
     pub version: u32,
     pub path: Option<String>,
 }
@@ -30,23 +32,42 @@ fn java_bin(home: &Path) -> PathBuf {
     home.join("bin").join(if cfg!(windows) { "java.exe" } else { "java" })
 }
 
-/// JAVA_HOME des von Anvil Studio verwalteten JDKs, falls installiert.
+/// Vollständigkeit eines JDK-Ordners (die wichtigsten Dateien).
+fn looks_complete(home: &Path) -> bool {
+    java_bin(home).exists()
+        && home.join("lib").join("jvm.cfg").exists()
+        && home.join("lib").join("modules").exists()
+        && home.join("release").exists()
+}
+
+/// Probelauf: java -version muss funktionieren.
+fn runs(home: &Path) -> bool {
+    let mut cmd = std::process::Command::new(java_bin(home));
+    cmd.arg("-version");
+    crate::util::hide_window_std(&mut cmd).output().map(|o| o.status.success()).unwrap_or(false)
+}
+
+/// JAVA_HOME des von Anvil Studio verwalteten JDKs, falls vollständig installiert.
 pub fn java_home(app: &AppHandle) -> Option<PathBuf> {
     let dir = jdk_dir(app).ok()?;
-    java_bin(&dir).exists().then_some(dir)
+    looks_complete(&dir).then_some(dir)
 }
 
 #[tauri::command]
 pub fn java_status(app: AppHandle) -> JavaStatus {
+    let dir = jdk_dir(&app).ok();
     let home = java_home(&app);
+    let broken = home.is_none() && dir.as_ref().map(|d| d.exists()).unwrap_or(false);
     JavaStatus {
         installed: home.is_some(),
+        broken,
         version: JAVA_MAJOR,
         path: home.map(|h| h.to_string_lossy().to_string()),
     }
 }
 
-fn adoptium_url() -> Result<(String, bool), String> {
+/// Download-Adresse, Prüfsumme und Format von der Adoptium-API.
+async fn adoptium_package() -> Result<(String, Option<String>, bool), String> {
     let os = match std::env::consts::OS {
         "windows" => "windows",
         "linux" => "linux",
@@ -59,15 +80,26 @@ fn adoptium_url() -> Result<(String, bool), String> {
         a => return Err(format!("Architektur {a} wird nicht unterstützt")),
     };
     let url = format!(
-        "https://api.adoptium.net/v3/binary/latest/{JAVA_MAJOR}/ga/{os}/{arch}/jdk/hotspot/normal/eclipse"
+        "https://api.adoptium.net/v3/assets/latest/{JAVA_MAJOR}/hotspot?architecture={arch}&image_type=jdk&os={os}&vendor=eclipse"
     );
-    Ok((url, os == "windows"))
+    let fallback = format!("https://api.adoptium.net/v3/binary/latest/{JAVA_MAJOR}/ga/{os}/{arch}/jdk/hotspot/normal/eclipse");
+    let is_zip = os == "windows";
+    let resp = match crate::util::http_client()?.get(&url).send().await {
+        Ok(r) if r.status().is_success() => r,
+        _ => return Ok((fallback, None, is_zip)),
+    };
+    let v: serde_json::Value = serde_json::from_str(&resp.text().await.map_err(err)?).map_err(err)?;
+    let pkg = &v[0]["binary"]["package"];
+    match pkg["link"].as_str() {
+        Some(link) => Ok((link.to_string(), pkg["checksum"].as_str().map(|s| s.to_string()), link.ends_with(".zip"))),
+        None => Ok((fallback, None, is_zip)),
+    }
 }
 
 /// Lädt Eclipse Temurin herunter und entpackt es in den App-Datenordner.
 #[tauri::command]
 pub async fn install_java(app: AppHandle) -> Result<JavaStatus, String> {
-    let (url, is_zip) = adoptium_url()?;
+    let (url, checksum, is_zip) = adoptium_package().await?;
     let downloads = data_dir(&app)?.join("downloads");
     std::fs::create_dir_all(&downloads).map_err(err)?;
     let archive = downloads.join(if is_zip { "jdk.zip" } else { "jdk.tar.gz" });
@@ -87,6 +119,13 @@ pub async fn install_java(app: AppHandle) -> Result<JavaStatus, String> {
     crate::util::download(&url, &archive, &progress)
         .await
         .map_err(|e| format!("Java-Download fehlgeschlagen: {e}"))?;
+    if let Some(expected) = checksum {
+        let actual = crate::util::sha256_file(&archive)?;
+        if !actual.eq_ignore_ascii_case(&expected) {
+            let _ = std::fs::remove_file(&archive);
+            return Err("Der Java-Download ist unvollständig oder beschädigt (Prüfsumme stimmt nicht). Bitte erneut versuchen.".into());
+        }
+    }
     let downloaded = std::fs::metadata(&archive).map(|m| m.len()).unwrap_or(0);
     let total = Some(downloaded);
 
@@ -126,8 +165,9 @@ pub async fn install_java(app: AppHandle) -> Result<JavaStatus, String> {
     .await
     .map_err(err)??;
 
-    if !java_bin(&target).exists() {
-        return Err("Java wurde entpackt, aber java ist nicht auffindbar".into());
+    if !looks_complete(&target) || !runs(&target) {
+        let _ = std::fs::remove_dir_all(&target);
+        return Err("Java wurde entpackt, ist aber nicht lauffähig. Bitte erneut versuchen.".into());
     }
     emit("done", downloaded, total);
     Ok(java_status(app))

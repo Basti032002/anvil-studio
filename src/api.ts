@@ -14,7 +14,7 @@ export type Project = {
   lastRun: LastRun | null;
 };
 
-export type JavaStatus = { installed: boolean; version: number; path: string | null };
+export type JavaStatus = { installed: boolean; broken: boolean; version: number; path: string | null };
 export type RunInfo = { projectId: string; task: string; startedAt: number };
 export type CrashReport = { path: string; content: string; modified: number };
 

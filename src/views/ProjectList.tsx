@@ -82,11 +82,15 @@ export default function ProjectList({ projects, java, javaProgress, onInstallJav
         <div className="callout warn">
           <AlertIcon size={18} />
           <div className="grow">
-            <div className="callout-title">Java 21 fehlt noch</div>
-            <div className="muted small">Wird zum Bauen und Testen gebraucht. Anvil Studio lädt Eclipse Temurin herunter (ca. 190 MB).</div>
+            <div className="callout-title">{java.broken ? "Java 21 ist beschädigt" : "Java 21 fehlt noch"}</div>
+            <div className="muted small">
+              {java.broken
+                ? "Die Installation ist unvollständig (z. B. durch einen abgebrochenen Download). Anvil Studio lädt Java neu und prüft die Datei."
+                : "Wird zum Bauen und Testen gebraucht. Anvil Studio lädt Eclipse Temurin herunter (ca. 190 MB)."}
+            </div>
           </div>
           <button className="btn primary" onClick={onInstallJava} disabled={!!javaProgress}>
-            {javaProgress ?? "Jetzt installieren"}
+            {javaProgress ?? (java.broken ? "Java reparieren" : "Jetzt installieren")}
           </button>
         </div>
       )}

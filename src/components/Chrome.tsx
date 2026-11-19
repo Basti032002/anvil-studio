@@ -156,7 +156,7 @@ export function StatusBar({
           </span>
         ) : (
           <button className="status-item warn" onClick={onInstallJava} disabled={!!javaProgress}>
-            <AlertIcon size={13} /> {javaProgress ?? "Java fehlt – jetzt installieren"}
+            <AlertIcon size={13} /> {javaProgress ?? (java?.broken ? "Java beschädigt – reparieren" : "Java fehlt – jetzt installieren")}
           </button>
         )}
         {running.length > 0 && (
