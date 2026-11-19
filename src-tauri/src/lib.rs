@@ -2,6 +2,7 @@ mod admin;
 mod content;
 mod fsx;
 mod java;
+mod mcassets;
 mod migrate;
 mod mods;
 mod projects;
@@ -31,6 +32,7 @@ pub fn run() {
             content::texture_get,
             content::texture_save,
             content::project_open,
+            mcassets::mc_catalog,
             mods::mods_search,
             mods::mods_list,
             mods::mods_add,

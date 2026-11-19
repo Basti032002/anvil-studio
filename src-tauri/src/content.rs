@@ -24,14 +24,25 @@ const PLACEHOLDER_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAL
 
 // ---- Datenmodell -------------------------------------------------------------
 
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Recipe {
     pub enabled: bool,
+    /// "crafting" | "smelting"
+    pub kind: String,
     pub shaped: bool,
     /// 9 Felder (3×3), leer = nichts. Einträge wie "minecraft:diamond" oder "#minecraft:planks"
     pub grid: Vec<String>,
     pub count: u32,
+    /// Nur Ofen: Erfahrung und Dauer in Ticks
+    pub experience: f32,
+    pub cooking_time: u32,
+}
+
+impl Default for Recipe {
+    fn default() -> Self {
+        Self { enabled: false, kind: "crafting".into(), shaped: true, grid: vec![], count: 1, experience: 0.1, cooking_time: 200 }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -428,6 +439,17 @@ fn recipe_json(p: &Project, id: &str, r: &Recipe) -> Value {
     };
     let result = json!({ "id": format!("{}:{id}", p.mod_id), "count": r.count.clamp(1, 64) });
     let grid: Vec<String> = (0..9).map(|i| r.grid.get(i).map(|s| s.trim().to_string()).unwrap_or_default()).collect();
+    if r.kind == "smelting" {
+        let input = grid.iter().find(|g| !g.is_empty()).cloned().unwrap_or_default();
+        return json!({
+            "type": "minecraft:smelting",
+            "category": "misc",
+            "ingredient": ingredient(&input),
+            "result": { "id": format!("{}:{id}", p.mod_id) },
+            "experience": (r.experience.max(0.0) * 100.0).round() / 100.0,
+            "cookingtime": r.cooking_time.clamp(1, 32000)
+        });
+    }
     if !r.shaped {
         let ingredients: Vec<Value> = grid.iter().filter(|g| !g.is_empty()).map(|g| ingredient(g)).collect();
         return json!({ "type": "minecraft:crafting_shapeless", "category": "misc", "ingredients": ingredients, "result": result });
@@ -729,7 +751,7 @@ mod tests {
     #[test]
     fn recipes_follow_version() {
         let dir = std::env::temp_dir();
-        let mut r = Recipe { enabled: true, shaped: true, grid: vec![String::new(); 9], count: 2 };
+        let mut r = Recipe { enabled: true, shaped: true, grid: vec![String::new(); 9], count: 2, ..Default::default() };
         r.grid[4] = "minecraft:diamond".into();
         r.grid[7] = "#minecraft:planks".into();
         let old = recipe_json(&project(&dir, "1.21.1"), "ruby", &r);
@@ -739,6 +761,13 @@ mod tests {
         let new = recipe_json(&project(&dir, "1.21.4"), "ruby", &r);
         assert_eq!(new["key"]["A"], json!("minecraft:diamond"));
         assert_eq!(new["result"], json!({ "id": "testmod:ruby", "count": 2 }));
+        let mut s = Recipe { enabled: true, kind: "smelting".into(), grid: vec![String::new(); 9], ..Default::default() };
+        s.grid[4] = "minecraft:raw_iron".into();
+        let old = recipe_json(&project(&dir, "1.21.1"), "ruby", &s);
+        assert_eq!(old["ingredient"], json!({ "item": "minecraft:raw_iron" }));
+        assert_eq!(old["cookingtime"], json!(200));
+        let new = recipe_json(&project(&dir, "1.21.4"), "ruby", &s);
+        assert_eq!(new["ingredient"], json!("minecraft:raw_iron"));
     }
 
     /// Erzeugt Inhalte in ein entpacktes MDK (ANVIL_TEST_PROJECT=Ordner, vorher kopiert).
@@ -753,13 +782,15 @@ mod tests {
         let mut c = Content::default();
         c.blocks.push(BlockDef { id: "ruby_block".into(), name_de: "Rubinblock".into(), light: 7, tier: "iron".into(), ..Default::default() });
         c.blocks.push(BlockDef { id: "dream_glass".into(), name_de: "Traumglas".into(), material: "glass".into(), tool: "none".into(), ..Default::default() });
-        let mut recipe = Recipe { enabled: true, shaped: true, grid: vec![String::new(); 9], count: 1 };
+        let mut recipe = Recipe { enabled: true, shaped: true, grid: vec![String::new(); 9], count: 1, ..Default::default() };
         for i in 0..9 {
             recipe.grid[i] = format!("{}:ruby", p.mod_id);
         }
         c.blocks[0].recipe = recipe;
         c.items.push(ItemDef { id: "ruby".into(), name_de: "Rubin".into(), rarity: "rare".into(), ..Default::default() });
-        c.items.push(ItemDef { id: "dream_berry".into(), name_de: "Traumbeere".into(), food: true, ..Default::default() });
+        let mut smelt = Recipe { enabled: true, kind: "smelting".into(), grid: vec![String::new(); 9], ..Default::default() };
+        smelt.grid[0] = "minecraft:sweet_berries".into();
+        c.items.push(ItemDef { id: "dream_berry".into(), name_de: "Traumbeere".into(), food: true, recipe: smelt, ..Default::default() });
         let reg = generate(&p, &mut c).unwrap();
         assert!(reg == "added" || reg == "ok", "{reg}");
         // Zweiter Lauf ohne Glas: Aufräumen prüfen
