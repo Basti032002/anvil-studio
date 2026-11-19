@@ -55,6 +55,25 @@ jobs:
           chmod +x gradlew
           ./gradlew compileJava processResources --no-daemon --console=plain
 
+      - name: Server starten und Daten prüfen (Loot, Rezepte, Tags, Weltgenerierung)
+        working-directory: /tmp/anvil-test-project
+        run: |
+          mkdir -p run && echo "eula=true" > run/eula.txt
+          ./gradlew runServer --no-daemon --console=plain > server.log 2>&1 &
+          PID=$!
+          for i in $(seq 1 180); do
+            if grep -q 'Done (' server.log; then break; fi
+            if ! kill -0 $PID 2>/dev/null; then break; fi
+            sleep 5
+          done
+          kill $PID 2>/dev/null || true
+          pkill -f 'net.neoforged' 2>/dev/null || true
+          grep -E 'Done \(' server.log || { tail -150 server.log; exit 1; }
+          # Fehler, die unsere erzeugten Daten betreffen
+          if grep -iE "(error|exception|failed|couldn't).*(kristallhoehlen|anvil)" server.log; then
+            echo "---- Fehler in erzeugten Daten ----"; exit 1
+          fi
+
   catalog:
     # Lädt den echten Minecraft-Client und prüft den Block-/Item-Katalog
     runs-on: ubuntu-latest

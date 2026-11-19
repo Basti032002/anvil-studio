@@ -16,9 +16,9 @@ use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
-pub const CONTENT_SCHEMA: u32 = 1;
+pub const CONTENT_SCHEMA: u32 = 2;
 /// Bei Änderungen an den Vorlagen hochzählen → Projekte werden neu erzeugt.
-pub const GENERATOR_VERSION: u32 = 1;
+pub const GENERATOR_VERSION: u32 = 2;
 
 const PLACEHOLDER_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAALklEQVR42mP8wfDjPwMewMHAgU+agYmBQjBqwGAwgJGBgQFvOvjB8GM0EIe/AQAVpgYNJPiOmAAAAABJRU5ErkJggg==";
 
@@ -61,6 +61,51 @@ pub struct BlockDef {
     /// wood | stone | iron | diamond
     pub tier: String,
     pub recipe: Recipe,
+    /// Zusätzliche Formen aus demselben Material: stairs | slab | wall | fence
+    pub shapes: Vec<String>,
+    /// Erz mit Weltgenerierung
+    pub ore: OreDef,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase", default)]
+pub struct OreDef {
+    pub enabled: bool,
+    /// Was das Erz fallen lässt (leer = sich selbst), z. B. "testmod:ruby"
+    pub drop: String,
+    pub drop_min: u32,
+    pub drop_max: u32,
+    pub xp_min: u32,
+    pub xp_max: u32,
+    /// Zusätzlich eine Tiefenschiefer-Variante (deepslate_<id>)
+    pub deepslate: bool,
+    /// overworld | nether | end
+    pub dimension: String,
+    /// Blöcke pro Ader
+    pub vein_size: u32,
+    /// Adern pro Chunk
+    pub veins_per_chunk: u32,
+    pub min_y: i32,
+    pub max_y: i32,
+}
+
+impl Default for OreDef {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            drop: String::new(),
+            drop_min: 1,
+            drop_max: 1,
+            xp_min: 0,
+            xp_max: 0,
+            deepslate: true,
+            dimension: "overworld".into(),
+            vein_size: 8,
+            veins_per_chunk: 6,
+            min_y: -64,
+            max_y: 32,
+        }
+    }
 }
 
 impl Default for BlockDef {
@@ -76,6 +121,8 @@ impl Default for BlockDef {
             tool: "pickaxe".into(),
             tier: "wood".into(),
             recipe: Recipe::default(),
+            shapes: vec![],
+            ore: OreDef::default(),
         }
     }
 }
@@ -93,6 +140,29 @@ pub struct ItemDef {
     pub nutrition: u32,
     pub saturation: f32,
     pub recipe: Recipe,
+    /// basic | tool | armor
+    pub kind: String,
+    /// sword | pickaxe | axe | shovel | hoe
+    pub tool_type: String,
+    /// Abbaustufe: wood | stone | iron | diamond | netherite
+    pub tool_tier: String,
+    /// Werkzeug: Haltbarkeit in Benutzungen; Rüstung: Haltbarkeits-Faktor (Eisen 15, Diamant 33)
+    pub durability: u32,
+    /// Angezeigter Angriffsschaden (wie im Tooltip)
+    pub attack_damage: f32,
+    /// Angezeigte Angriffsgeschwindigkeit (wie im Tooltip)
+    pub attack_speed: f32,
+    pub mining_speed: f32,
+    pub enchantability: u32,
+    /// Reparatur-Item am Amboss (Item-ID oder #Tag), optional
+    pub repair_item: String,
+    /// helmet | chestplate | leggings | boots
+    pub armor_slot: String,
+    /// Rüstungsmaterial – Teile mit gleichem Material bilden ein Set
+    pub armor_material: String,
+    pub defense: u32,
+    pub toughness: f32,
+    pub knockback_resistance: f32,
 }
 
 impl Default for ItemDef {
@@ -107,6 +177,20 @@ impl Default for ItemDef {
             nutrition: 4,
             saturation: 0.3,
             recipe: Recipe::default(),
+            kind: "basic".into(),
+            tool_type: "sword".into(),
+            tool_tier: "iron".into(),
+            durability: 250,
+            attack_damage: 6.0,
+            attack_speed: 1.6,
+            mining_speed: 6.0,
+            enchantability: 14,
+            repair_item: String::new(),
+            armor_slot: "helmet".into(),
+            armor_material: String::new(),
+            defense: 2,
+            toughness: 0.0,
+            knockback_resistance: 0.0,
         }
     }
 }
@@ -121,6 +205,10 @@ pub struct Content {
     /// Zuletzt erzeugte IDs – zum Aufräumen gelöschter Einträge
     pub generated_blocks: Vec<String>,
     pub generated_items: Vec<String>,
+    /// Symbol des Kreativ-Tabs (eigene ID, leer = erstes Element)
+    pub tab_icon: String,
+    /// Name des Kreativ-Tabs (leer = Projektname)
+    pub tab_name: String,
 }
 
 impl Default for Content {
@@ -132,6 +220,8 @@ impl Default for Content {
             items: vec![],
             generated_blocks: vec![],
             generated_items: vec![],
+            tab_icon: String::new(),
+            tab_name: String::new(),
         }
     }
 }
@@ -195,7 +285,11 @@ fn migrate_value(mut v: Value) -> Value {
         // Vor Version 1 gab es keine Versionsnummer – Felder bleiben, Standardwerte ergänzt serde.
         v["schemaVersion"] = json!(1);
     }
-    // Künftige Migrationen hier anhängen: if version < 2 { … }
+    if version < 2 {
+        // Version 2: Formen, Erze, Werkzeuge & Rüstung – neue Felder bekommen Standardwerte
+        v["schemaVersion"] = json!(2);
+    }
+    // Künftige Migrationen hier anhängen: if version < 3 { … }
     v
 }
 
@@ -270,59 +364,307 @@ fn sound_and_color(material: &str) -> (&'static str, &'static str) {
     }
 }
 
+/// Eine registrierte Block-Variante (Grundblock, Tiefenschiefer-Erz oder Form).
+#[derive(Clone)]
+pub struct Variant<'a> {
+    pub id: String,
+    /// block | deepslate | stairs | slab | wall | fence
+    pub shape: &'static str,
+    pub base: &'a BlockDef,
+}
+
+pub const SHAPES: [&str; 4] = ["stairs", "slab", "wall", "fence"];
+
+pub fn variants(b: &BlockDef) -> Vec<Variant<'_>> {
+    let mut v = vec![Variant { id: b.id.clone(), shape: "block", base: b }];
+    if b.ore.enabled && b.ore.deepslate && b.ore.dimension == "overworld" {
+        v.push(Variant { id: format!("deepslate_{}", b.id), shape: "deepslate", base: b });
+    }
+    for s in SHAPES {
+        if b.shapes.iter().any(|x| x == s) {
+            v.push(Variant { id: format!("{}_{s}", b.id), shape: s, base: b });
+        }
+    }
+    v
+}
+
+fn all_variants(c: &Content) -> Vec<Variant<'_>> {
+    c.blocks.iter().flat_map(variants).collect()
+}
+
+/// Versionen der Minecraft-API, die der Generator unterscheidet.
+struct Api {
+    /// ab 1.21.2: ToolMaterial, ArmorMaterial als Record mit Equipment-Asset
+    materials_v2: bool,
+    /// ab 1.21.5: Werkzeuge/Rüstung über Item.Properties#sword/#pickaxe/#humanoidArmor
+    props_tools: bool,
+}
+
+fn api(p: &Project) -> Api {
+    Api { materials_v2: mc_at_least(&p.mc_version, (1, 21, 2)), props_tools: mc_at_least(&p.mc_version, (1, 21, 5)) }
+}
+
+fn incorrect_tag(tier: &str) -> &'static str {
+    match tier {
+        "wood" => "INCORRECT_FOR_WOODEN_TOOL",
+        "stone" => "INCORRECT_FOR_STONE_TOOL",
+        "gold" => "INCORRECT_FOR_GOLD_TOOL",
+        "diamond" => "INCORRECT_FOR_DIAMOND_TOOL",
+        "netherite" => "INCORRECT_FOR_NETHERITE_TOOL",
+        _ => "INCORRECT_FOR_IRON_TOOL",
+    }
+}
+
+fn armor_type(slot: &str, api: &Api) -> String {
+    let t = match slot {
+        "chestplate" => "CHESTPLATE",
+        "leggings" => "LEGGINGS",
+        "boots" => "BOOTS",
+        _ => "HELMET",
+    };
+    if api.materials_v2 { format!("ArmorType.{t}") } else { format!("ArmorItem.Type.{t}") }
+}
+
+fn block_props(b: &BlockDef, deepslate: bool) -> String {
+    let (sound, color) = sound_and_color(&b.material);
+    let (sound, color, hardness) = if deepslate { ("DEEPSLATE", "DEEPSLATE", b.hardness + 1.5) } else { (sound, color, b.hardness) };
+    let mut props = format!(
+        "BlockBehaviour.Properties.of().mapColor(MapColor.{color}).strength({}, {}).sound(SoundType.{sound})",
+        java_float(hardness.max(0.0)),
+        java_float(b.resistance.max(0.0))
+    );
+    if b.light > 0 {
+        props.push_str(&format!(".lightLevel(state -> {})", b.light.min(15)));
+    }
+    if b.tool != "none" {
+        props.push_str(".requiresCorrectToolForDrops()");
+    }
+    if b.material == "glass" {
+        props.push_str(".noOcclusion()");
+    }
+    props
+}
+
+/// Rüstungsmaterialien: Material-ID → Teile
+fn armor_sets(c: &Content) -> std::collections::BTreeMap<String, Vec<&ItemDef>> {
+    let mut m: std::collections::BTreeMap<String, Vec<&ItemDef>> = Default::default();
+    for i in c.items.iter().filter(|i| i.kind == "armor") {
+        m.entry(i.armor_material.clone()).or_default().push(i);
+    }
+    m
+}
+
 fn generate_java(p: &Project, c: &Content) -> String {
     let modid = &p.mod_id;
+    let api = api(p);
     let mut fields = String::new();
     let mut tab = String::new();
-    for b in &c.blocks {
-        let (sound, color) = sound_and_color(&b.material);
-        let mut props = format!(
-            "BlockBehaviour.Properties.of().mapColor(MapColor.{color}).strength({}, {}).sound(SoundType.{sound})",
-            java_float(b.hardness.max(0.0)),
-            java_float(b.resistance.max(0.0))
-        );
-        if b.light > 0 {
-            props.push_str(&format!(".lightLevel(state -> {})", b.light.min(15)));
-        }
-        if b.tool != "none" {
-            props.push_str(".requiresCorrectToolForDrops()");
-        }
-        if b.material == "glass" {
-            props.push_str(".noOcclusion()");
-        }
-        let k = b.id.to_uppercase();
+    let up = |s: &str| s.to_uppercase();
+
+    for v in all_variants(c) {
+        let b = v.base;
+        let k = up(&v.id);
+        let base_k = up(&b.id);
+        let props = block_props(b, v.shape == "deepslate");
+        let (ty, reg) = match v.shape {
+            "block" if b.ore.enabled => (
+                "DropExperienceBlock".to_string(),
+                format!("BLOCKS.registerBlock(\"{}\", p -> new DropExperienceBlock(UniformInt.of({}, {}), p), {props})", v.id, b.ore.xp_min, b.ore.xp_max.max(b.ore.xp_min)),
+            ),
+            "deepslate" => (
+                "DropExperienceBlock".to_string(),
+                format!("BLOCKS.registerBlock(\"{}\", p -> new DropExperienceBlock(UniformInt.of({}, {}), p), {props})", v.id, b.ore.xp_min, b.ore.xp_max.max(b.ore.xp_min)),
+            ),
+            "stairs" => ("StairBlock".into(), format!("BLOCKS.registerBlock(\"{}\", p -> new StairBlock({base_k}.get().defaultBlockState(), p), {props})", v.id)),
+            "slab" => ("SlabBlock".into(), format!("BLOCKS.registerBlock(\"{}\", SlabBlock::new, {props})", v.id)),
+            "wall" => ("WallBlock".into(), format!("BLOCKS.registerBlock(\"{}\", WallBlock::new, {props})", v.id)),
+            "fence" => ("FenceBlock".into(), format!("BLOCKS.registerBlock(\"{}\", FenceBlock::new, {props})", v.id)),
+            _ => ("Block".into(), format!("BLOCKS.registerSimpleBlock(\"{}\", {props})", v.id)),
+        };
         fields.push_str(&format!(
-            "    public static final DeferredBlock<Block> {k} = BLOCKS.registerSimpleBlock(\"{id}\", {props});\n    public static final DeferredItem<BlockItem> {k}_ITEM = ITEMS.registerSimpleBlockItem(\"{id}\", {k});\n\n",
-            id = b.id
+            "    public static final DeferredBlock<{ty}> {k} = {reg};\n    public static final DeferredItem<BlockItem> {k}_ITEM = ITEMS.registerSimpleBlockItem(\"{id}\", {k});\n\n",
+            id = v.id
         ));
         tab.push_str(&format!("                output.accept({k}_ITEM.get());\n"));
     }
+
+    // Reparatur-Tags (data/<modid>/tags/item/repairs_<x>.json)
+    let repair_tag = |key: &str| format!("TagKey.create(Registries.ITEM, ResourceLocation.fromNamespaceAndPath(MODID, \"repairs_{key}\"))");
+
+    // Rüstungsmaterialien
+    for (mat, pieces) in armor_sets(c) {
+        let first = pieces[0];
+        let mk = format!("ARMOR_{}", up(&mat));
+        let defense = |slot: &str| pieces.iter().find(|i| i.armor_slot == slot).map(|i| i.defense.min(30)).unwrap_or(0);
+        let ench = first.enchantability.clamp(1, 50);
+        let tough = java_float(first.toughness.clamp(0.0, 20.0));
+        let kb = java_float(first.knockback_resistance.clamp(0.0, 1.0));
+        if api.materials_v2 {
+            fields.push_str(&format!(
+                "    public static final ArmorMaterial {mk} = new ArmorMaterial({dur}, Map.of(ArmorType.BOOTS, {b}, ArmorType.LEGGINGS, {l}, ArmorType.CHESTPLATE, {c}, ArmorType.HELMET, {h}, ArmorType.BODY, {c}), {ench}, SoundEvents.ARMOR_EQUIP_IRON, {tough}, {kb}, {tag}, ResourceKey.create(EquipmentAssets.ROOT_ID, ResourceLocation.fromNamespaceAndPath(MODID, \"{mat}\")));\n\n",
+                dur = first.durability.clamp(1, 200),
+                b = defense("boots"),
+                l = defense("leggings"),
+                c = defense("chestplate"),
+                h = defense("helmet"),
+                tag = repair_tag(&mat)
+            ));
+        } else {
+            fields.push_str(&format!(
+                "    public static final DeferredHolder<ArmorMaterial, ArmorMaterial> {mk} = ARMOR_MATERIALS.register(\"{mat}\", () -> new ArmorMaterial(Util.make(new EnumMap<>(ArmorItem.Type.class), m -> {{\n        m.put(ArmorItem.Type.BOOTS, {b});\n        m.put(ArmorItem.Type.LEGGINGS, {l});\n        m.put(ArmorItem.Type.CHESTPLATE, {c});\n        m.put(ArmorItem.Type.HELMET, {h});\n        m.put(ArmorItem.Type.BODY, {c});\n    }}), {ench}, SoundEvents.ARMOR_EQUIP_IRON, () -> Ingredient.of({tag}), List.of(new ArmorMaterial.Layer(ResourceLocation.fromNamespaceAndPath(MODID, \"{mat}\"))), {tough}, {kb}));\n\n",
+                b = defense("boots"),
+                l = defense("leggings"),
+                c = defense("chestplate"),
+                h = defense("helmet"),
+                tag = repair_tag(&mat)
+            ));
+        }
+    }
+
     for i in &c.items {
-        let mut props = format!("new Item.Properties().stacksTo({})", i.stack_size.clamp(1, 99));
+        let k = up(&i.id);
+        let mut props = String::from("new Item.Properties()");
+        if i.kind == "basic" {
+            props.push_str(&format!(".stacksTo({})", i.stack_size.clamp(1, 99)));
+        }
         if i.rarity != "common" {
             props.push_str(&format!(".rarity(Rarity.{})", i.rarity.to_uppercase()));
         }
-        if i.food {
+        if i.food && i.kind == "basic" {
             props.push_str(&format!(
                 ".food(new FoodProperties.Builder().nutrition({}).saturationModifier({}).build())",
                 i.nutrition.min(20),
                 java_float(i.saturation.max(0.0))
             ));
         }
-        let k = i.id.to_uppercase();
-        fields.push_str(&format!("    public static final DeferredItem<Item> {k} = ITEMS.registerSimpleItem(\"{id}\", {props});\n\n", id = i.id));
+        match i.kind.as_str() {
+            "tool" => {
+                let mk = format!("TOOL_{k}");
+                let tag = incorrect_tag(&i.tool_tier);
+                let uses = i.durability.clamp(1, 100_000);
+                let speed = java_float(i.mining_speed.clamp(0.1, 100.0));
+                let ench = i.enchantability.clamp(1, 50);
+                let dmg = (i.attack_damage - 1.0).clamp(0.0, 1000.0);
+                let spd = java_float((i.attack_speed - 4.0).clamp(-3.95, 20.0));
+                if api.materials_v2 {
+                    fields.push_str(&format!(
+                        "    private static final ToolMaterial {mk} = new ToolMaterial(BlockTags.{tag}, {uses}, {speed}, 0.0f, {ench}, {});\n",
+                        repair_tag(&i.id)
+                    ));
+                } else {
+                    fields.push_str(&format!(
+                        "    private static final Tier {mk} = new SimpleTier(BlockTags.{tag}, {uses}, {speed}, 0.0f, {ench}, () -> Ingredient.of({}));\n",
+                        repair_tag(&i.id)
+                    ));
+                }
+                let class = match i.tool_type.as_str() {
+                    "pickaxe" => "PickaxeItem",
+                    "axe" => "AxeItem",
+                    "shovel" => "ShovelItem",
+                    "hoe" => "HoeItem",
+                    _ => "SwordItem",
+                };
+                let d = java_float(dmg);
+                let reg = if api.props_tools {
+                    match i.tool_type.as_str() {
+                        "sword" | "pickaxe" => {
+                            format!("ITEMS.registerItem(\"{id}\", Item::new, {props}.{t}({mk}, {d}, {spd}))", id = i.id, t = i.tool_type)
+                        }
+                        _ => format!("ITEMS.registerItem(\"{id}\", p -> new {class}({mk}, {d}, {spd}, p), {props})", id = i.id),
+                    }
+                } else if api.materials_v2 {
+                    format!("ITEMS.registerItem(\"{id}\", p -> new {class}({mk}, {d}, {spd}, p), {props})", id = i.id)
+                } else {
+                    let attrs = if i.tool_type == "sword" {
+                        format!("SwordItem.createAttributes({mk}, {}, {spd})", dmg.round() as i64)
+                    } else {
+                        format!("DiggerItem.createAttributes({mk}, {d}, {spd})")
+                    };
+                    format!("ITEMS.registerItem(\"{id}\", p -> new {class}({mk}, p), {props}.attributes({attrs}))", id = i.id)
+                };
+                let ty = if api.props_tools && matches!(i.tool_type.as_str(), "sword" | "pickaxe") { "Item" } else { class };
+                fields.push_str(&format!("    public static final DeferredItem<{ty}> {k} = {reg};\n\n"));
+            }
+            "armor" => {
+                let mk = format!("ARMOR_{}", up(&i.armor_material));
+                let at = armor_type(&i.armor_slot, &api);
+                let (ty, reg) = if api.props_tools {
+                    ("Item", format!("ITEMS.registerItem(\"{id}\", Item::new, {props}.humanoidArmor({mk}, {at}))", id = i.id))
+                } else if api.materials_v2 {
+                    ("ArmorItem", format!("ITEMS.registerItem(\"{id}\", p -> new ArmorItem({mk}, {at}, p), {props})", id = i.id))
+                } else {
+                    let dur = c.items.iter().find(|x| x.kind == "armor" && x.armor_material == i.armor_material).map(|x| x.durability).unwrap_or(15).clamp(1, 200);
+                    ("ArmorItem", format!("ITEMS.registerItem(\"{id}\", p -> new ArmorItem({mk}, {at}, p), {props}.durability({at}.getDurability({dur})))", id = i.id))
+                };
+                fields.push_str(&format!("    public static final DeferredItem<{ty}> {k} = {reg};\n\n"));
+            }
+            _ => {
+                fields.push_str(&format!("    public static final DeferredItem<Item> {k} = ITEMS.registerSimpleItem(\"{id}\", {props});\n\n", id = i.id));
+            }
+        }
         tab.push_str(&format!("                output.accept({k}.get());\n"));
     }
+
     let icon = c
         .items
         .first()
         .map(|i| i.id.to_uppercase())
         .or_else(|| c.blocks.first().map(|b| format!("{}_ITEM", b.id.to_uppercase())));
+    let icon = match c.tab_icon.as_str() {
+        "" => icon,
+        id => {
+            if c.items.iter().any(|i| i.id == id) {
+                Some(id.to_uppercase())
+            } else if all_variants(c).iter().any(|v| v.id == id) {
+                Some(format!("{}_ITEM", id.to_uppercase()))
+            } else {
+                icon
+            }
+        }
+    };
     let tab_def = match icon {
         Some(icon) => format!(
             "    public static final DeferredHolder<CreativeModeTab, CreativeModeTab> TAB = TABS.register(\"anvil_tab\", () -> CreativeModeTab.builder()\n            .title(Component.translatable(\"itemGroup.{modid}.anvil\"))\n            .icon(() -> {icon}.get().getDefaultInstance())\n            .displayItems((parameters, output) -> {{\n{tab}            }})\n            .build());\n\n"
         ),
         None => String::new(),
+    };
+
+    let mut imports = vec![
+        "java.util.*",
+        "net.minecraft.core.registries.Registries",
+        "net.minecraft.network.chat.Component",
+        "net.minecraft.resources.ResourceKey",
+        "net.minecraft.resources.ResourceLocation",
+        "net.minecraft.sounds.SoundEvents",
+        "net.minecraft.tags.BlockTags",
+        "net.minecraft.tags.TagKey",
+        "net.minecraft.util.valueproviders.UniformInt",
+        "net.minecraft.world.food.FoodProperties",
+        "net.minecraft.world.item.*",
+        "net.minecraft.world.item.crafting.Ingredient",
+        "net.minecraft.world.level.block.*",
+        "net.minecraft.world.level.block.state.BlockBehaviour",
+        "net.minecraft.world.level.material.MapColor",
+        "net.neoforged.bus.api.IEventBus",
+        "net.neoforged.neoforge.registries.DeferredBlock",
+        "net.neoforged.neoforge.registries.DeferredHolder",
+        "net.neoforged.neoforge.registries.DeferredItem",
+        "net.neoforged.neoforge.registries.DeferredRegister",
+    ];
+    if api.materials_v2 {
+        imports.push("net.minecraft.world.item.equipment.*");
+    } else {
+        imports.push("net.minecraft.Util");
+        imports.push("net.neoforged.neoforge.common.SimpleTier");
+    }
+    let imports: String = imports.iter().map(|i| format!("import {i};\n")).collect();
+    let (armor_reg_field, armor_reg_call) = if api.materials_v2 {
+        (String::new(), String::new())
+    } else {
+        (
+            "    public static final DeferredRegister<ArmorMaterial> ARMOR_MATERIALS = DeferredRegister.create(Registries.ARMOR_MATERIAL, MODID);\n".to_string(),
+            "        ARMOR_MATERIALS.register(modEventBus);\n".to_string(),
+        )
     };
 
     format!(
@@ -333,23 +675,7 @@ fn generate_java(p: &Project, c: &Content) -> String {
 // =============================================================================
 package {pkg}.anvil;
 
-import net.minecraft.core.registries.Registries;
-import net.minecraft.network.chat.Component;
-import net.minecraft.world.food.FoodProperties;
-import net.minecraft.world.item.BlockItem;
-import net.minecraft.world.item.CreativeModeTab;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.Rarity;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.SoundType;
-import net.minecraft.world.level.block.state.BlockBehaviour;
-import net.minecraft.world.level.material.MapColor;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.neoforge.registries.DeferredBlock;
-import net.neoforged.neoforge.registries.DeferredHolder;
-import net.neoforged.neoforge.registries.DeferredItem;
-import net.neoforged.neoforge.registries.DeferredRegister;
-
+{imports}
 @SuppressWarnings("unused")
 public final class AnvilContent {{
     public static final String MODID = "{modid}";
@@ -357,12 +683,12 @@ public final class AnvilContent {{
     public static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(MODID);
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(MODID);
     public static final DeferredRegister<CreativeModeTab> TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
-
+{armor_reg_field}
 {fields}{tab_def}    private AnvilContent() {{}}
 
     /** Wird aus der Hauptklasse der Mod aufgerufen. */
     public static void register(IEventBus modEventBus) {{
-        BLOCKS.register(modEventBus);
+{armor_reg_call}        BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);
         TABS.register(modEventBus);
     }}
@@ -521,10 +847,234 @@ fn remove_if_exists(path: PathBuf) {
     let _ = std::fs::remove_file(path);
 }
 
+const MODEL_SUFFIXES: [&str; 8] = ["", "_inner", "_outer", "_top", "_post", "_side", "_side_tall", "_inventory"];
+
+fn ingredient_json(p: &Project, s: &str) -> Value {
+    if mc_at_least(&p.mc_version, (1, 21, 2)) {
+        json!(s)
+    } else if let Some(tag) = s.strip_prefix('#') {
+        json!({ "tag": tag })
+    } else {
+        json!({ "item": s })
+    }
+}
+
+fn shaped_json(p: &Project, result: &str, pattern: &[&str], keys: &[(&str, &str)], count: u32) -> Value {
+    let mut key = Map::new();
+    for (k, v) in keys {
+        key.insert(k.to_string(), ingredient_json(p, v));
+    }
+    json!({ "type": "minecraft:crafting_shaped", "category": "building", "pattern": pattern, "key": key, "result": { "id": result, "count": count } })
+}
+
+fn loot_self(name: &str) -> Value {
+    json!({
+        "type": "minecraft:block",
+        "pools": [{
+            "rolls": 1,
+            "entries": [{ "type": "minecraft:item", "name": name }],
+            "conditions": [{ "condition": "minecraft:survives_explosion" }]
+        }]
+    })
+}
+
+fn loot_slab(name: &str) -> Value {
+    json!({
+        "type": "minecraft:block",
+        "pools": [{
+            "rolls": 1,
+            "entries": [{
+                "type": "minecraft:item",
+                "name": name,
+                "functions": [
+                    { "function": "minecraft:set_count", "count": 2, "add": false,
+                      "conditions": [{ "condition": "minecraft:block_state_property", "block": name, "properties": { "type": "double" } }] },
+                    { "function": "minecraft:explosion_decay" }
+                ]
+            }]
+        }]
+    })
+}
+
+fn loot_ore(name: &str, ore: &OreDef) -> Value {
+    if ore.drop.trim().is_empty() {
+        return loot_self(name);
+    }
+    let (min, max) = (ore.drop_min.clamp(1, 64), ore.drop_max.clamp(1, 64).max(ore.drop_min.clamp(1, 64)));
+    let mut functions = vec![];
+    if min != 1 || max != 1 {
+        functions.push(json!({ "function": "minecraft:set_count", "count": { "type": "minecraft:uniform", "min": min, "max": max }, "add": false }));
+    }
+    functions.push(json!({ "function": "minecraft:apply_bonus", "enchantment": "minecraft:fortune", "formula": "minecraft:ore_drops" }));
+    functions.push(json!({ "function": "minecraft:explosion_decay" }));
+    json!({
+        "type": "minecraft:block",
+        "pools": [{
+            "rolls": 1,
+            "bonus_rolls": 0,
+            "entries": [{
+                "type": "minecraft:alternatives",
+                "children": [
+                    {
+                        "type": "minecraft:item",
+                        "name": name,
+                        "conditions": [{
+                            "condition": "minecraft:match_tool",
+                            "predicate": { "predicates": { "minecraft:enchantments": [{ "enchantments": "minecraft:silk_touch", "levels": { "min": 1 } }] } }
+                        }]
+                    },
+                    { "type": "minecraft:item", "name": ore.drop.trim(), "functions": functions }
+                ]
+            }]
+        }]
+    })
+}
+
+fn rotated(model: &str, x: u32, y: u32) -> Value {
+    let mut v = json!({ "model": model });
+    if x != 0 {
+        v["x"] = json!(x);
+    }
+    if y != 0 {
+        v["y"] = json!(y);
+    }
+    if x != 0 || y != 0 {
+        v["uvlock"] = json!(true);
+    }
+    v
+}
+
+fn stairs_blockstate(m: &str) -> Value {
+    let mut variants = Map::new();
+    for (facing, base) in [("east", 0), ("south", 90), ("west", 180), ("north", 270)] {
+        for half in ["bottom", "top"] {
+            for shape in ["straight", "inner_left", "inner_right", "outer_left", "outer_right"] {
+                let model = match shape {
+                    "straight" => m.to_string(),
+                    s if s.starts_with("inner") => format!("{m}_inner"),
+                    _ => format!("{m}_outer"),
+                };
+                let left = shape.ends_with("left");
+                let right = shape.ends_with("right");
+                let mut y = base;
+                if half == "bottom" && left {
+                    y += 270;
+                }
+                if half == "top" && right {
+                    y += 90;
+                }
+                let x = if half == "top" { 180 } else { 0 };
+                variants.insert(format!("facing={facing},half={half},shape={shape}"), rotated(&model, x, y % 360));
+            }
+        }
+    }
+    json!({ "variants": variants })
+}
+
+fn sides_multipart(post: Value, side: &str, values: &[(&str, &str)]) -> Value {
+    let mut parts = vec![post];
+    for (value, model) in values {
+        for (dir, y) in [("north", 0), ("east", 90), ("south", 180), ("west", 270)] {
+            let model = if model.is_empty() { side.to_string() } else { model.to_string() };
+            parts.push(json!({ "when": { dir: value }, "apply": rotated(&model, 0, y) }));
+        }
+    }
+    json!({ "multipart": parts })
+}
+
+/// Minimale PNG-Datei (RGBA) – für Platzhalter-Texturen.
+fn png_rgba(w: u32, h: u32, pixel: impl Fn(u32, u32) -> [u8; 4]) -> Vec<u8> {
+    use std::io::Write;
+    fn crc32(data: &[u8]) -> u32 {
+        let mut c = 0xffff_ffffu32;
+        for &b in data {
+            c ^= b as u32;
+            for _ in 0..8 {
+                c = if c & 1 != 0 { 0xedb8_8320 ^ (c >> 1) } else { c >> 1 };
+            }
+        }
+        !c
+    }
+    fn chunk(out: &mut Vec<u8>, kind: &[u8], data: &[u8]) {
+        out.extend((data.len() as u32).to_be_bytes());
+        let mut c = kind.to_vec();
+        c.extend(data);
+        out.extend(&c);
+        out.extend(crc32(&c).to_be_bytes());
+    }
+    let mut raw = vec![];
+    for y in 0..h {
+        raw.push(0u8);
+        for x in 0..w {
+            raw.extend(pixel(x, y));
+        }
+    }
+    let mut z = flate2::write::ZlibEncoder::new(vec![], flate2::Compression::default());
+    let _ = z.write_all(&raw);
+    let idat = z.finish().unwrap_or_default();
+    let mut out = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+    let mut ihdr = vec![];
+    ihdr.extend(w.to_be_bytes());
+    ihdr.extend(h.to_be_bytes());
+    ihdr.extend([8, 6, 0, 0, 0]);
+    chunk(&mut out, b"IHDR", &ihdr);
+    chunk(&mut out, b"IDAT", &idat);
+    chunk(&mut out, b"IEND", &[]);
+    out
+}
+
+/// Platzhalter für die getragene Rüstung (einfarbig, Farbe aus dem Materialnamen).
+fn armor_placeholder(mat: &str) -> Vec<u8> {
+    let h = mat.bytes().fold(7u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
+    let base = [80 + (h % 140) as u8, 80 + ((h >> 8) % 140) as u8, 80 + ((h >> 16) % 140) as u8];
+    png_rgba(64, 32, |x, y| {
+        let shade = if (x + y) % 2 == 0 { 0 } else { 18 };
+        [base[0].saturating_sub(shade), base[1].saturating_sub(shade), base[2].saturating_sub(shade), 255]
+    })
+}
+
+fn write_if_missing(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    if path.exists() {
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(err)?;
+    }
+    std::fs::write(path, bytes).map_err(err)
+}
+
+fn validate_extra(c: &Content) -> Result<(), String> {
+    let mut seen = std::collections::HashSet::new();
+    for v in all_variants(c) {
+        if !seen.insert(v.id.clone()) {
+            return Err(format!("Die ID „{}“ entsteht doppelt (z. B. durch eine Form oder Tiefenschiefer-Variante).", v.id));
+        }
+    }
+    for i in &c.items {
+        if seen.contains(&i.id) {
+            return Err(format!("Die ID „{}“ ist doppelt vergeben.", i.id));
+        }
+        if matches!(i.kind.as_str(), "tool" | "armor") && !i.repair_item.trim().is_empty() && !valid_ref(i.repair_item.trim()) {
+            return Err(format!("Reparatur-Item von „{}“ ist keine gültige ID.", i.id));
+        }
+        if i.kind == "armor" && !valid_id(&i.armor_material) {
+            return Err(format!("„{}“: Bitte ein Rüstungsmaterial angeben (z. B. ruby).", i.id));
+        }
+    }
+    for b in &c.blocks {
+        if b.ore.enabled && !b.ore.drop.trim().is_empty() && !valid_ref(b.ore.drop.trim()) {
+            return Err(format!("Erz „{}“: „{}“ ist keine gültige Item-ID.", b.id, b.ore.drop));
+        }
+    }
+    Ok(())
+}
+
 /// Erzeugt alle Dateien aus dem Inhalte-Modell.
 pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
     validate(c)?;
+    validate_extra(c)?;
     let modid = &p.mod_id;
+    let api = api(p);
     let res = root(p).join("src/main/resources");
     let assets = res.join("assets").join(modid);
     let data = res.join("data").join(modid);
@@ -538,13 +1088,17 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
     std::fs::write(&java, generate_java(p, c)).map_err(err)?;
     let registration = ensure_registration(p)?;
 
-    // Gelöschte Einträge aufräumen (Texturen bleiben als Sicherung liegen)
-    let block_ids: Vec<String> = c.blocks.iter().map(|b| b.id.clone()).collect();
+    let variants = all_variants(c);
+    let block_ids: Vec<String> = variants.iter().map(|v| v.id.clone()).collect();
     let item_ids: Vec<String> = c.items.iter().map(|i| i.id.clone()).collect();
+
+    // Gelöschte Einträge aufräumen (Texturen bleiben als Sicherung liegen)
     let mut removed_keys = vec![];
     for id in c.generated_blocks.iter().filter(|id| !block_ids.contains(id)) {
         remove_if_exists(assets.join(format!("blockstates/{id}.json")));
-        remove_if_exists(assets.join(format!("models/block/{id}.json")));
+        for suf in MODEL_SUFFIXES {
+            remove_if_exists(assets.join(format!("models/block/{id}{suf}.json")));
+        }
         remove_if_exists(assets.join(format!("models/item/{id}.json")));
         remove_if_exists(assets.join(format!("items/{id}.json")));
         remove_if_exists(data.join(format!("loot_table/blocks/{id}.json")));
@@ -557,50 +1111,181 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
         remove_if_exists(data.join(format!("recipe/{id}.json")));
         removed_keys.push(format!("item.{modid}.{id}"));
     }
+    // Weltgenerierung von Blöcken, die kein Erz (mehr) sind
+    for id in c.generated_blocks.iter().chain(block_ids.iter()) {
+        if !c.blocks.iter().any(|b| &b.id == id && b.ore.enabled) {
+            remove_if_exists(data.join(format!("worldgen/configured_feature/{id}.json")));
+            remove_if_exists(data.join(format!("worldgen/placed_feature/{id}.json")));
+            remove_if_exists(data.join(format!("neoforge/biome_modifier/{id}.json")));
+        }
+    }
 
-    let mut lang_de = vec![(format!("itemGroup.{modid}.anvil"), p.name.clone())];
-    let mut lang_en = vec![(format!("itemGroup.{modid}.anvil"), p.name.clone())];
+    let name_of = |de: &str, en: &str, german: bool| -> String {
+        let (a, b) = if german { (de, en) } else { (en, de) };
+        if a.trim().is_empty() { b.trim().to_string() } else { a.trim().to_string() }
+    };
+    let tab_name = if c.tab_name.trim().is_empty() { p.name.clone() } else { c.tab_name.trim().to_string() };
+    let mut lang_de = vec![(format!("itemGroup.{modid}.anvil"), tab_name.clone())];
+    let mut lang_en = vec![(format!("itemGroup.{modid}.anvil"), tab_name)];
+
+    for v in &variants {
+        let b = v.base;
+        let id = &v.id;
+        let full = format!("{modid}:{id}");
+        let m = format!("{modid}:block/{id}");
+        let tex = format!("{modid}:block/{}", b.id);
+        let base_model = format!("{modid}:block/{}", b.id);
+        let model = |parent: &str, keys: &[&str]| -> Value {
+            let mut t = Map::new();
+            for k in keys {
+                t.insert(k.to_string(), json!(tex));
+            }
+            let mut v = json!({ "parent": parent, "textures": t });
+            if b.material == "glass" {
+                v["render_type"] = json!("minecraft:cutout");
+            }
+            v
+        };
+        let mb = |suf: &str| assets.join(format!("models/block/{id}{suf}.json"));
+        let item_model: String;
+        match v.shape {
+            "stairs" => {
+                write_json(&assets.join(format!("blockstates/{id}.json")), &stairs_blockstate(&m))?;
+                write_json(&mb(""), &model("minecraft:block/stairs", &["bottom", "top", "side"]))?;
+                write_json(&mb("_inner"), &model("minecraft:block/inner_stairs", &["bottom", "top", "side"]))?;
+                write_json(&mb("_outer"), &model("minecraft:block/outer_stairs", &["bottom", "top", "side"]))?;
+                item_model = m.clone();
+            }
+            "slab" => {
+                write_json(
+                    &assets.join(format!("blockstates/{id}.json")),
+                    &json!({ "variants": {
+                        "type=bottom": { "model": m },
+                        "type=top": { "model": format!("{m}_top") },
+                        "type=double": { "model": base_model }
+                    } }),
+                )?;
+                write_json(&mb(""), &model("minecraft:block/slab", &["bottom", "top", "side"]))?;
+                write_json(&mb("_top"), &model("minecraft:block/slab_top", &["bottom", "top", "side"]))?;
+                item_model = m.clone();
+            }
+            "wall" => {
+                write_json(
+                    &assets.join(format!("blockstates/{id}.json")),
+                    &sides_multipart(json!({ "when": { "up": "true" }, "apply": { "model": format!("{m}_post") } }), &format!("{m}_side"), &[("low", ""), ("tall", &format!("{m}_side_tall"))]),
+                )?;
+                write_json(&mb("_post"), &model("minecraft:block/template_wall_post", &["wall"]))?;
+                write_json(&mb("_side"), &model("minecraft:block/template_wall_side", &["wall"]))?;
+                write_json(&mb("_side_tall"), &model("minecraft:block/template_wall_side_tall", &["wall"]))?;
+                write_json(&mb("_inventory"), &model("minecraft:block/wall_inventory", &["wall"]))?;
+                item_model = format!("{m}_inventory");
+            }
+            "fence" => {
+                write_json(
+                    &assets.join(format!("blockstates/{id}.json")),
+                    &sides_multipart(json!({ "apply": { "model": format!("{m}_post") } }), &format!("{m}_side"), &[("true", "")]),
+                )?;
+                write_json(&mb("_post"), &model("minecraft:block/fence_post", &["texture"]))?;
+                write_json(&mb("_side"), &model("minecraft:block/fence_side", &["texture"]))?;
+                write_json(&mb("_inventory"), &model("minecraft:block/fence_inventory", &["texture"]))?;
+                item_model = format!("{m}_inventory");
+            }
+            _ => {
+                write_json(&assets.join(format!("blockstates/{id}.json")), &json!({ "variants": { "": { "model": m } } }))?;
+                write_json(&mb(""), &model("minecraft:block/cube_all", &["all"]))?;
+                item_model = m.clone();
+            }
+        }
+        write_json(&assets.join(format!("models/item/{id}.json")), &json!({ "parent": item_model }))?;
+        if client_items {
+            write_json(&assets.join(format!("items/{id}.json")), &json!({ "model": { "type": "minecraft:model", "model": item_model } }))?;
+        }
+
+        // Loot
+        let loot = match v.shape {
+            "slab" => loot_slab(&full),
+            "block" | "deepslate" if b.ore.enabled => loot_ore(&full, &b.ore),
+            _ => loot_self(&full),
+        };
+        write_json(&data.join(format!("loot_table/blocks/{id}.json")), &loot)?;
+
+        // Rezepte
+        let recipe = data.join(format!("recipe/{id}.json"));
+        let src = format!("{modid}:{}", b.id);
+        match v.shape {
+            "block" if b.recipe.enabled => write_json(&recipe, &recipe_json(p, id, &b.recipe))?,
+            "stairs" => write_json(&recipe, &shaped_json(p, &full, &["A  ", "AA ", "AAA"], &[("A", &src)], 4))?,
+            "slab" => write_json(&recipe, &shaped_json(p, &full, &["AAA"], &[("A", &src)], 6))?,
+            "wall" => write_json(&recipe, &shaped_json(p, &full, &["AAA", "AAA"], &[("A", &src)], 6))?,
+            "fence" => write_json(&recipe, &shaped_json(p, &full, &["ABA", "ABA"], &[("A", &src), ("B", "minecraft:stick")], 3))?,
+            _ => remove_if_exists(recipe),
+        }
+
+        // Namen
+        let (de, en) = (name_of(&b.name_de, &b.name_en, true), name_of(&b.name_de, &b.name_en, false));
+        let (de, en) = match v.shape {
+            "deepslate" => (format!("Tiefenschiefer-{de}"), format!("Deepslate {en}")),
+            "stairs" => (format!("{de}-Treppe"), format!("{en} Stairs")),
+            "slab" => (format!("{de}-Stufe"), format!("{en} Slab")),
+            "wall" => (format!("{de}-Mauer"), format!("{en} Wall")),
+            "fence" => (format!("{de}-Zaun"), format!("{en} Fence")),
+            _ => (de, en),
+        };
+        lang_de.push((format!("block.{modid}.{id}"), de));
+        lang_en.push((format!("block.{modid}.{id}"), en));
+    }
 
     for b in &c.blocks {
-        let id = &b.id;
-        write_json(&assets.join(format!("blockstates/{id}.json")), &json!({ "variants": { "": { "model": format!("{modid}:block/{id}") } } }))?;
-        let mut model = json!({ "parent": "minecraft:block/cube_all", "textures": { "all": format!("{modid}:block/{id}") } });
-        if b.material == "glass" {
-            model["render_type"] = json!("minecraft:cutout");
+        ensure_texture(p, "block", &b.id)?;
+        if !b.ore.enabled {
+            continue;
         }
-        write_json(&assets.join(format!("models/block/{id}.json")), &model)?;
-        write_json(&assets.join(format!("models/item/{id}.json")), &json!({ "parent": format!("{modid}:block/{id}") }))?;
-        if client_items {
-            write_json(&assets.join(format!("items/{id}.json")), &json!({ "model": { "type": "minecraft:model", "model": format!("{modid}:block/{id}") } }))?;
-        }
-        ensure_texture(p, "block", id)?;
+        // Weltgenerierung
+        let o = &b.ore;
+        let ore = format!("{modid}:{}", b.id);
+        let targets = match o.dimension.as_str() {
+            "nether" => vec![json!({ "target": { "predicate_type": "minecraft:block_match", "block": "minecraft:netherrack" }, "state": { "Name": ore } })],
+            "end" => vec![json!({ "target": { "predicate_type": "minecraft:block_match", "block": "minecraft:end_stone" }, "state": { "Name": ore } })],
+            _ => {
+                let deep = if o.deepslate { format!("{modid}:deepslate_{}", b.id) } else { ore.clone() };
+                vec![
+                    json!({ "target": { "predicate_type": "minecraft:tag_match", "tag": "minecraft:stone_ore_replaceables" }, "state": { "Name": ore } }),
+                    json!({ "target": { "predicate_type": "minecraft:tag_match", "tag": "minecraft:deepslate_ore_replaceables" }, "state": { "Name": deep } }),
+                ]
+            }
+        };
         write_json(
-            &data.join(format!("loot_table/blocks/{id}.json")),
+            &data.join(format!("worldgen/configured_feature/{}.json", b.id)),
+            &json!({ "type": "minecraft:ore", "config": { "size": o.vein_size.clamp(1, 64), "discard_chance_on_air_exposure": 0.0, "targets": targets } }),
+        )?;
+        let (lo, hi) = (o.min_y.min(o.max_y).clamp(-64, 320), o.max_y.max(o.min_y).clamp(-64, 320));
+        write_json(
+            &data.join(format!("worldgen/placed_feature/{}.json", b.id)),
             &json!({
-                "type": "minecraft:block",
-                "pools": [{
-                    "rolls": 1,
-                    "entries": [{ "type": "minecraft:item", "name": format!("{modid}:{id}") }],
-                    "conditions": [{ "condition": "minecraft:survives_explosion" }]
-                }]
+                "feature": ore,
+                "placement": [
+                    { "type": "minecraft:count", "count": o.veins_per_chunk.clamp(1, 128) },
+                    { "type": "minecraft:in_square" },
+                    { "type": "minecraft:height_range", "height": { "type": "minecraft:uniform", "min_inclusive": { "absolute": lo }, "max_inclusive": { "absolute": hi } } },
+                    { "type": "minecraft:biome" }
+                ]
             }),
         )?;
-        let recipe = data.join(format!("recipe/{id}.json"));
-        if b.recipe.enabled {
-            write_json(&recipe, &recipe_json(p, id, &b.recipe))?;
-        } else {
-            remove_if_exists(recipe);
-        }
-        lang_de.push((format!("block.{modid}.{id}"), if b.name_de.is_empty() { b.name_en.clone() } else { b.name_de.clone() }));
-        lang_en.push((format!("block.{modid}.{id}"), if b.name_en.is_empty() { b.name_de.clone() } else { b.name_en.clone() }));
+        let biomes = match o.dimension.as_str() {
+            "nether" => "#minecraft:is_nether",
+            "end" => "#minecraft:is_end",
+            _ => "#minecraft:is_overworld",
+        };
+        write_json(
+            &data.join(format!("neoforge/biome_modifier/{}.json", b.id)),
+            &json!({ "type": "neoforge:add_features", "biomes": biomes, "features": ore, "step": "underground_ores" }),
+        )?;
     }
 
     for i in &c.items {
         let id = &i.id;
-        write_json(
-            &assets.join(format!("models/item/{id}.json")),
-            &json!({ "parent": "minecraft:item/generated", "textures": { "layer0": format!("{modid}:item/{id}") } }),
-        )?;
+        let parent = if i.kind == "tool" { "minecraft:item/handheld" } else { "minecraft:item/generated" };
+        write_json(&assets.join(format!("models/item/{id}.json")), &json!({ "parent": parent, "textures": { "layer0": format!("{modid}:item/{id}") } }))?;
         if client_items {
             write_json(&assets.join(format!("items/{id}.json")), &json!({ "model": { "type": "minecraft:model", "model": format!("{modid}:item/{id}") } }))?;
         }
@@ -611,23 +1296,84 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
         } else {
             remove_if_exists(recipe);
         }
-        lang_de.push((format!("item.{modid}.{id}"), if i.name_de.is_empty() { i.name_en.clone() } else { i.name_de.clone() }));
-        lang_en.push((format!("item.{modid}.{id}"), if i.name_en.is_empty() { i.name_de.clone() } else { i.name_en.clone() }));
+        lang_de.push((format!("item.{modid}.{id}"), name_of(&i.name_de, &i.name_en, true)));
+        lang_en.push((format!("item.{modid}.{id}"), name_of(&i.name_de, &i.name_en, false)));
+    }
+
+    // Reparatur-Tags (Werkzeuge je Item, Rüstung je Material); alte entfernen
+    let repair_dir = data.join("tags/item");
+    let mut repair_keys: Vec<(String, String)> = c.items.iter().filter(|i| i.kind == "tool").map(|i| (i.id.clone(), i.repair_item.trim().to_string())).collect();
+    for (mat, pieces) in armor_sets(c) {
+        repair_keys.push((mat, pieces[0].repair_item.trim().to_string()));
+    }
+    if let Ok(entries) = std::fs::read_dir(&repair_dir) {
+        for e in entries.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if let Some(key) = name.strip_prefix("repairs_").and_then(|n| n.strip_suffix(".json")) {
+                if !repair_keys.iter().any(|(k, _)| k == key) {
+                    let _ = std::fs::remove_file(e.path());
+                }
+            }
+        }
+    }
+    for (key, item) in &repair_keys {
+        let values: Vec<Value> = if item.is_empty() { vec![] } else { vec![json!(item)] };
+        write_json(&repair_dir.join(format!("repairs_{key}.json")), &json!({ "replace": false, "values": values }))?;
+    }
+
+    // Getragene Rüstung: Platzhalter-Texturen und (ab 1.21.4) Equipment-Definition
+    for mat in armor_sets(c).keys() {
+        let png = armor_placeholder(mat);
+        if api.materials_v2 {
+            write_if_missing(&assets.join(format!("textures/entity/equipment/humanoid/{mat}.png")), &png)?;
+            write_if_missing(&assets.join(format!("textures/entity/equipment/humanoid_leggings/{mat}.png")), &png)?;
+            write_json(
+                &assets.join(format!("equipment/{mat}.json")),
+                &json!({ "layers": {
+                    "humanoid": [{ "texture": format!("{modid}:{mat}") }],
+                    "humanoid_leggings": [{ "texture": format!("{modid}:{mat}") }]
+                } }),
+            )?;
+        } else {
+            write_if_missing(&assets.join(format!("textures/models/armor/{mat}_layer_1.png")), &png)?;
+            write_if_missing(&assets.join(format!("textures/models/armor/{mat}_layer_2.png")), &png)?;
+        }
     }
 
     merge_lang(&assets.join("lang/de_de.json"), &lang_de, &removed_keys)?;
     merge_lang(&assets.join("lang/en_us.json"), &lang_en, &removed_keys)?;
 
-    // Werkzeug-Tags (gehören zum Namensraum minecraft, Minecraft führt sie zusammen)
-    let all_ours: Vec<String> = block_ids.iter().chain(c.generated_blocks.iter()).map(|id| format!("{modid}:{id}")).collect();
-    let tags = res.join("data/minecraft/tags/block");
+    // Tags (Namensraum minecraft, Minecraft führt sie zusammen)
+    let all_ours: Vec<String> = block_ids.iter().chain(c.generated_blocks.iter()).chain(item_ids.iter()).chain(c.generated_items.iter()).map(|id| format!("{modid}:{id}")).collect();
+    let btags = res.join("data/minecraft/tags/block");
+    let itags = res.join("data/minecraft/tags/item");
+    let ids_where = |f: &dyn Fn(&Variant) -> bool| -> Vec<String> { variants.iter().filter(|v| f(v)).map(|v| format!("{modid}:{}", v.id)).collect() };
     for tool in ["pickaxe", "axe", "shovel", "hoe"] {
-        let ours: Vec<String> = c.blocks.iter().filter(|b| b.tool == tool).map(|b| format!("{modid}:{}", b.id)).collect();
-        merge_tag(&tags.join(format!("mineable/{tool}.json")), &ours, &all_ours)?;
+        merge_tag(&btags.join(format!("mineable/{tool}.json")), &ids_where(&|v| v.base.tool == tool), &all_ours)?;
     }
     for tier in ["stone", "iron", "diamond"] {
-        let ours: Vec<String> = c.blocks.iter().filter(|b| b.tool != "none" && b.tier == tier).map(|b| format!("{modid}:{}", b.id)).collect();
-        merge_tag(&tags.join(format!("needs_{tier}_tool.json")), &ours, &all_ours)?;
+        merge_tag(&btags.join(format!("needs_{tier}_tool.json")), &ids_where(&|v| v.base.tool != "none" && v.base.tier == tier), &all_ours)?;
+    }
+    for (shape, tag) in [("stairs", "stairs"), ("slab", "slabs"), ("wall", "walls")] {
+        let ours = ids_where(&|v| v.shape == shape);
+        merge_tag(&btags.join(format!("{tag}.json")), &ours, &all_ours)?;
+        merge_tag(&itags.join(format!("{tag}.json")), &ours, &all_ours)?;
+    }
+    let wooden = ids_where(&|v| v.shape == "fence" && v.base.material == "wood");
+    let other_fences = ids_where(&|v| v.shape == "fence" && v.base.material != "wood");
+    merge_tag(&btags.join("wooden_fences.json"), &wooden, &all_ours)?;
+    merge_tag(&itags.join("wooden_fences.json"), &wooden, &all_ours)?;
+    merge_tag(&btags.join("fences.json"), &other_fences, &all_ours)?;
+    merge_tag(&itags.join("fences.json"), &other_fences, &all_ours)?;
+    let ores = ids_where(&|v| v.base.ore.enabled && matches!(v.shape, "block" | "deepslate"));
+    merge_tag(&res.join("data/c/tags/block/ores.json"), &ores, &all_ours)?;
+    merge_tag(&res.join("data/c/tags/item/ores.json"), &ores, &all_ours)?;
+    let item_ids_where = |f: &dyn Fn(&ItemDef) -> bool| -> Vec<String> { c.items.iter().filter(|i| f(i)).map(|i| format!("{modid}:{}", i.id)).collect() };
+    for (t, tag) in [("sword", "swords"), ("pickaxe", "pickaxes"), ("axe", "axes"), ("shovel", "shovels"), ("hoe", "hoes")] {
+        merge_tag(&itags.join(format!("{tag}.json")), &item_ids_where(&|i| i.kind == "tool" && i.tool_type == t), &all_ours)?;
+    }
+    for (slot, tag) in [("helmet", "head_armor"), ("chestplate", "chest_armor"), ("leggings", "leg_armor"), ("boots", "foot_armor")] {
+        merge_tag(&itags.join(format!("{tag}.json")), &item_ids_where(&|i| i.kind == "armor" && i.armor_slot == slot), &all_ours)?;
     }
 
     c.generated_blocks = block_ids;
@@ -791,12 +1537,65 @@ mod tests {
         let mut smelt = Recipe { enabled: true, kind: "smelting".into(), grid: vec![String::new(); 9], ..Default::default() };
         smelt.grid[0] = "minecraft:sweet_berries".into();
         c.items.push(ItemDef { id: "dream_berry".into(), name_de: "Traumbeere".into(), food: true, recipe: smelt, ..Default::default() });
+        // Formen, Erz mit Weltgenerierung, Werkzeuge und Rüstung
+        c.blocks[0].shapes = vec!["stairs".into(), "slab".into(), "wall".into(), "fence".into()];
+        c.blocks.push(BlockDef {
+            id: "ruby_ore".into(),
+            name_de: "Rubinerz".into(),
+            hardness: 3.0,
+            tier: "iron".into(),
+            ore: OreDef { enabled: true, drop: format!("{}:ruby", p.mod_id), xp_min: 3, xp_max: 7, ..Default::default() },
+            ..Default::default()
+        });
+        c.blocks.push(BlockDef { id: "nether_ruby_ore".into(), ore: OreDef { enabled: true, dimension: "nether".into(), ..Default::default() }, ..Default::default() });
+        for (t, dmg, spd) in [("sword", 7.0, 1.6), ("pickaxe", 5.0, 1.2), ("axe", 9.0, 1.0), ("shovel", 5.5, 1.0), ("hoe", 1.0, 4.0)] {
+            c.items.push(ItemDef {
+                id: format!("ruby_{t}"),
+                kind: "tool".into(),
+                tool_type: t.into(),
+                attack_damage: dmg,
+                attack_speed: spd,
+                repair_item: format!("{}:ruby", p.mod_id),
+                ..Default::default()
+            });
+        }
+        for (slot, def) in [("helmet", 3), ("chestplate", 8), ("leggings", 6), ("boots", 3)] {
+            c.items.push(ItemDef {
+                id: format!("ruby_{slot}"),
+                kind: "armor".into(),
+                armor_slot: slot.into(),
+                armor_material: "ruby".into(),
+                defense: def,
+                durability: 25,
+                toughness: 1.0,
+                repair_item: format!("{}:ruby", p.mod_id),
+                ..Default::default()
+            });
+        }
+        c.tab_icon = "ruby_sword".into();
         let reg = generate(&p, &mut c).unwrap();
+        println!("{}", std::fs::read_to_string(dir.join("src/main/java").join(p.package.replace('.', "/")).join("anvil/AnvilContent.java")).unwrap());
         assert!(reg == "added" || reg == "ok", "{reg}");
         // Zweiter Lauf ohne Glas: Aufräumen prüfen
-        c.blocks.pop();
+        c.blocks.retain(|b| b.id != "dream_glass");
         generate(&p, &mut c).unwrap();
         assert!(!dir.join(format!("src/main/resources/assets/{}/blockstates/dream_glass.json", p.mod_id)).exists());
         assert_eq!(generate(&p, &mut c).unwrap(), "ok");
+    }
+
+    #[test]
+    fn stairs_states_complete() {
+        let v = stairs_blockstate("m:block/s");
+        assert_eq!(v["variants"].as_object().unwrap().len(), 40);
+        assert_eq!(v["variants"]["facing=east,half=bottom,shape=inner_left"]["y"], json!(270));
+        assert_eq!(v["variants"]["facing=east,half=top,shape=outer_right"]["y"], json!(90));
+        assert_eq!(v["variants"]["facing=north,half=bottom,shape=straight"]["y"], json!(270));
+    }
+
+    #[test]
+    fn png_is_valid() {
+        let png = armor_placeholder("ruby");
+        assert!(png.starts_with(&[0x89, b'P', b'N', b'G']));
+        assert!(png.len() > 50);
     }
 }
