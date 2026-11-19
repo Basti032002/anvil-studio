@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { UpdateCheck } from "../api";
+import { pickFolder, UpdateCheck } from "../api";
 import { Segmented, Toggle } from "../components/Chrome";
 import { AnvilLogo, CheckIcon, DownloadIcon, RefreshIcon } from "../icons";
 import { logout, useAccount } from "../admin";
@@ -302,14 +302,28 @@ function Row({ title, desc, children }: { title: string; desc: string; children:
 function ProjectsDirInput({ value, onSave }: { value: string; onSave: (v: string) => void }) {
   const [v, setV] = useState(value);
   return (
-    <input
-      className="input mono"
-      style={{ width: 300 }}
-      aria-label="Speicherort für neue Projekte"
-      placeholder="Dokumente\Anvil Studio"
-      value={v}
-      onChange={(e) => setV(e.target.value)}
-      onBlur={() => v !== value && onSave(v)}
-    />
+    <div className="input-row">
+      <input
+        className="input mono"
+        style={{ width: 260 }}
+        aria-label="Speicherort für neue Projekte"
+        placeholder="Dokumente\Anvil Studio"
+        value={v}
+        onChange={(e) => setV(e.target.value)}
+        onBlur={() => v !== value && onSave(v)}
+      />
+      <button
+        className="btn"
+        onClick={async () => {
+          const d = await pickFolder("Standard-Ordner für neue Projekte", v);
+          if (d) {
+            setV(d);
+            onSave(d);
+          }
+        }}
+      >
+        Durchsuchen …
+      </button>
+    </div>
   );
 }

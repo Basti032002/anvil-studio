@@ -2,7 +2,7 @@
 
 Ein Windows-Launcher zum **Erstellen, Bauen und Testen von Minecraft-Mods**. Projekt anlegen, auf **▶ Testen** klicken und Minecraft startet mit deiner Mod.
 
-> Version 0.2 · NeoForge · Minecraft 1.21.1 / 1.21.4 / 1.21.8 / 1.21.10
+> Version 0.5 · NeoForge · Minecraft 1.21.1 / 1.21.4 / 1.21.8 / 1.21.10
 
 ## Funktionen
 
@@ -51,14 +51,26 @@ Einrichtung (einmalig): GitHub App unter Settings → Developer settings → **G
 
 Tastenkürzel: `Strg K` Befehlspalette · `F5` Starten · `Umschalt F5` Stoppen · `Strg B` Bauen · `Strg N` Neues Projekt · `Strg ,` Einstellungen
 
-## Geplant (Phase 2)
+## Arbeitsbereich
 
-- Blöcke und Items per Formular anlegen (erzeugt Java + JSON)
-- Pixel-Editor für 16×16-Texturen
-- Andere Mods (z. B. JEI) zum Testen automatisch mitladen
-- Eingebauter Code-Editor (Monaco)
+- **Inhalte:** Blöcke und Items per Formular (Material, Härte, Leuchtkraft, Werkzeug, Seltenheit, Essbarkeit, Rezept). Beim Speichern entstehen `anvil/AnvilContent.java`, Blockstates, Modelle, Loot-Tabellen, Rezepte, Werkzeug-Tags und Übersetzungen (de/en), jeweils im Format der Minecraft-Version. Die Hauptklasse wird einmalig um `AnvilContent.register(modEventBus)` ergänzt. Grundlage ist `.anvil/content.json`.
+- **Pixel-Editor:** 16×16 mit Stift, Radierer, Füllen, Pipette, Spiegeln, Rückgängig und PNG-Import. Vorschau als drehender 3D-Block bzw. als Item. Speichert automatisch.
+- **Code:** eingebauter Monaco-Editor (offline) mit Dateibaum und Tabs, `Strg S` speichert.
+- **Mods:** Modrinth-Suche für NeoForge und die Projektversion. Abhängigkeiten kommen automatisch mit, Downloads werden per SHA-512 geprüft. Vor jedem Start wird nach `run/mods` kopiert (nur, was Anvil Studio selbst dort abgelegt hat, wird wieder entfernt).
+- **Konsole:** Gradle- und Spielausgabe, Probleme, Absturz-Report.
+- **Import:** bestehende NeoForge-Projekte (ModDevGradle) per Ordnerauswahl übernehmen.
+
+## Kompatibilität & Migration
+
+- Programmdaten (`projects.json`, `settings.json`) haben eine Datenversion (`state.json`). Bei einem Update wird vor jeder Migration nach `backups/` gesichert.
+- Projektdaten (`.anvil/content.json`, `.anvil/mods.json`) haben eine Schema-Version. Beim Öffnen werden ältere Formate migriert (Sicherung in `.anvil/backups/`). Haben sich die Vorlagen geändert, werden Blöcke und Items automatisch neu erzeugt.
+- Der Workflow **Generator-Test** kompiliert erzeugten Code bei jeder Änderung am Generator gegen NeoForge 1.21.1, 1.21.4 und 1.21.10.
+
+## Geplant
+
 - Fabric und Forge als weitere Loader
 - Hot-Swap (Code-Änderungen ohne Neustart)
+- Minecraft-Version eines Projekts wechseln
 
 ## Entwickeln
 

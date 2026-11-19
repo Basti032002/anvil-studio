@@ -1,5 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { api, CrashReport, Project, Task, TASK_LABELS } from "../api";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { api, contentApi, CrashReport, Project, Task, TASK_LABELS } from "../api";
+import ContentTab from "./workspace/ContentTab";
+import ModsTab from "./workspace/ModsTab";
+
+const CodeTab = lazy(() => import("./workspace/CodeTab"));
+type MainTab = "content" | "code" | "mods" | "console";
 import {
   AlertIcon,
   ChevronIcon,
@@ -50,6 +55,16 @@ export default function Workspace({ project, javaReady, autoRun, onBack }: Props
   const running = useRunning(project.id);
   const lastExit = useLastExit(project.id);
   const [tab, setTab] = useState<Tab>("output");
+  const [mainTab, setMainTab] = useState<MainTab>(() => (autoRun ? "console" : (load(`anvil.tab.${project.id}`, "content") as MainTab)));
+  useEffect(() => save(`anvil.tab.${project.id}`, mainTab), [mainTab, project.id]);
+
+  // Beim Öffnen: Projektdaten migrieren, ggf. neu erzeugen
+  useEffect(() => {
+    contentApi
+      .open(project.id)
+      .then((notes) => notes.forEach((n) => toast(n, "info", 7000)))
+      .catch((e) => toast(String(e), "error"));
+  }, [project.id]);
   const [config, setConfig] = useState<RunConfig>(() => load(`anvil.config.${project.id}`, "client") as RunConfig);
   const [world, setWorld] = useState(() => load(`anvil.world.${project.id}`, "Dev-Welt"));
   const [filter, setFilter] = useState("");
@@ -109,6 +124,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack }: Props
       return;
     }
     setTab("output");
+    setMainTab("console");
     try {
       markStarted(project.id, task);
       await api.runTask(project.id, task, opts.world);
@@ -233,7 +249,42 @@ export default function Workspace({ project, javaReady, autoRun, onBack }: Props
         <div className={busy ? "run-progress active" : "run-progress"} />
       </div>
 
-      <div className="ws-body">
+      <nav className="view-tabs" aria-label="Bereiche">
+        {(
+          [
+            ["content", "Inhalte"],
+            ["code", "Code"],
+            ["mods", "Mods"],
+            ["console", "Konsole"],
+          ] as [MainTab, string][]
+        ).map(([k, label]) => (
+          <button key={k} className={mainTab === k ? "view-tab active" : "view-tab"} onClick={() => setMainTab(k)}>
+            {label}
+            {k === "console" && busy && <span className="pulse-dot" />}
+            {k === "console" && !busy && problems.length > 0 && <span className="count">{problems.length}</span>}
+          </button>
+        ))}
+      </nav>
+
+      {mainTab === "content" && (
+        <div className="ws-view">
+          <ContentTab project={project} />
+        </div>
+      )}
+      {mainTab === "mods" && (
+        <div className="ws-view">
+          <ModsTab project={project} />
+        </div>
+      )}
+      {mainTab === "code" && (
+        <div className="ws-view">
+          <Suspense fallback={<div className="content-loading muted">Editor wird geladen …</div>}>
+            <CodeTab project={project} />
+          </Suspense>
+        </div>
+      )}
+
+      <div className="ws-body" style={{ display: mainTab === "console" ? undefined : "none" }}>
         {/* Explorer */}
         <aside className="explorer">
           <Section title="Projekt" open={open.project} onToggle={() => setOpen((o) => ({ ...o, project: !o.project }))}>

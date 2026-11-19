@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
-import { api, Project } from "../api";
+import { api, pickFolder, Project } from "../api";
 import { CheckIcon, FolderIcon } from "../icons";
 
 type Props = { onCancel: () => void; onCreated: (p: Project) => void };
@@ -137,8 +137,23 @@ export default function NewProject({ onCancel, onCreated }: Props) {
           </div>
           <div className="span-2">
             <Field label="Speicherort" id="dir">
-              <input id="dir" className="input mono" value={parentDir} onChange={(e) => setParentDir(e.target.value)} />
+              <div className="input-row">
+                <input id="dir" className="input mono" value={parentDir} onChange={(e) => setParentDir(e.target.value)} />
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={async () => {
+                    const d = await pickFolder("Ordner für das neue Projekt wählen", parentDir);
+                    if (d) setParentDir(d);
+                  }}
+                >
+                  <FolderIcon size={15} /> Durchsuchen …
+                </button>
+              </div>
             </Field>
+            <p className="muted small">
+              Das Projekt landet in <span className="mono">{(parentDir || "…").replace(/[\\/]+$/, "")}{parentDir.includes("\\") ? "\\" : "/"}{id || "mod_id"}</span>
+            </p>
           </div>
         </section>
 

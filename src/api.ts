@@ -103,3 +103,86 @@ export const settingsApi = {
   checkUpdate: (channel: UpdateChannel) => invoke<UpdateInfo | null>("check_update", { channel }),
   installUpdate: (info: UpdateInfo) => invoke<void>("install_update", { info }),
 };
+
+// ---- Inhalte, Mods, Dateien, Import (0.5) --------------------------------
+
+export type Recipe = { enabled: boolean; shaped: boolean; grid: string[]; count: number };
+export type BlockDef = {
+  id: string;
+  nameDe: string;
+  nameEn: string;
+  material: "stone" | "wood" | "metal" | "glass" | "grass" | "sand" | "wool" | "gravel";
+  hardness: number;
+  resistance: number;
+  light: number;
+  tool: "none" | "pickaxe" | "axe" | "shovel" | "hoe";
+  tier: "wood" | "stone" | "iron" | "diamond";
+  recipe: Recipe;
+};
+export type ItemDef = {
+  id: string;
+  nameDe: string;
+  nameEn: string;
+  stackSize: number;
+  rarity: "common" | "uncommon" | "rare" | "epic";
+  food: boolean;
+  nutrition: number;
+  saturation: number;
+  recipe: Recipe;
+};
+export type Content = {
+  schemaVersion: number;
+  generatorVersion: number;
+  blocks: BlockDef[];
+  items: ItemDef[];
+  generatedBlocks: string[];
+  generatedItems: string[];
+};
+export type ModEntry = {
+  projectId: string;
+  slug: string;
+  title: string;
+  iconUrl: string;
+  versionId: string;
+  versionNumber: string;
+  fileName: string;
+  clientSide: string;
+  serverSide: string;
+  enabled: boolean;
+  dependencyOf: string | null;
+};
+export type ModHit = { projectId: string; slug: string; title: string; description: string; iconUrl: string; downloads: number; author: string };
+export type FileEntry = { name: string; rel: string; isDir: boolean; size: number };
+
+export const contentApi = {
+  load: (projectId: string) => invoke<Content>("content_load", { projectId }),
+  save: (projectId: string, content: Content) => invoke<{ content: Content; registration: string }>("content_save", { projectId, content }),
+  textureGet: (projectId: string, kind: "block" | "item", id: string) => invoke<string | null>("texture_get", { projectId, kind, id }),
+  textureSave: (projectId: string, kind: "block" | "item", id: string, pngBase64: string) => invoke<void>("texture_save", { projectId, kind, id, pngBase64 }),
+  open: (projectId: string) => invoke<string[]>("project_open", { projectId }),
+};
+
+export const modsApi = {
+  search: (projectId: string, query: string) => invoke<ModHit[]>("mods_search", { projectId, query }),
+  list: (projectId: string) => invoke<ModEntry[]>("mods_list", { projectId }),
+  add: (projectId: string, modId: string) => invoke<ModEntry[]>("mods_add", { projectId, modId }),
+  remove: (projectId: string, modId: string) => invoke<ModEntry[]>("mods_remove", { projectId, modId }),
+  toggle: (projectId: string, modId: string, enabled: boolean) => invoke<ModEntry[]>("mods_toggle", { projectId, modId, enabled }),
+  update: (projectId: string) => invoke<number>("mods_update", { projectId }),
+};
+
+export const filesApi = {
+  list: (projectId: string, rel: string) => invoke<FileEntry[]>("files_list", { projectId, rel }),
+  read: (projectId: string, rel: string) => invoke<string>("files_read", { projectId, rel }),
+  write: (projectId: string, rel: string, content: string) => invoke<void>("files_write", { projectId, rel, content }),
+  create: (projectId: string, rel: string, isDir: boolean) => invoke<void>("files_create", { projectId, rel, isDir }),
+};
+
+export const importProject = (path: string, setupWorld: boolean) => invoke<Project>("import_project", { path, setupWorld });
+
+/** Windows-Ordnerauswahl. Gibt null zurück, wenn abgebrochen. */
+export async function pickFolder(title: string, defaultPath?: string): Promise<string | null> {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const r = await open({ directory: true, multiple: false, title, defaultPath: defaultPath || undefined });
+  return typeof r === "string" ? r : null;
+}

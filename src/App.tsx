@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { restoreSession, useAccount } from "./admin";
-import { api, JavaStatus, Project } from "./api";
+import { api, importProject, JavaStatus, pickFolder, Project } from "./api";
 import { ActivityBar, NavKey, StatusBar, TitleBar, Toasts } from "./components/Chrome";
 import CommandPalette, { Command } from "./components/CommandPalette";
 import { CubeIcon, GearIcon, GridIcon, HammerIcon, PlayIcon, PlusIcon, RefreshIcon, RocketIcon, ShieldIcon, StopIcon } from "./icons";
@@ -94,6 +94,19 @@ export default function App() {
     }
   }
 
+  async function importExisting() {
+    const dir = await pickFolder("Ordner eines bestehenden NeoForge-Projekts wählen");
+    if (!dir) return;
+    try {
+      const p = await importProject(dir, true);
+      await reload();
+      toast(`„${p.name}“ wurde importiert.`, "success");
+      openWorkspace(p.id);
+    } catch (e) {
+      toast(String(e), "error");
+    }
+  }
+
   function openWorkspace(id: string, run = false) {
     setWorkspaceId(id);
     setAutoRun(run);
@@ -108,6 +121,7 @@ export default function App() {
     const inWs = nav === "workspace" && !!current;
     return [
       { id: "nav-projects", label: "Projekte anzeigen", group: "Navigation", icon: <GridIcon size={15} />, shortcut: "Strg 1", run: () => setNav("projects") },
+      { id: "import", label: "Bestehendes Projekt importieren", group: "Navigation", icon: <PlusIcon size={15} />, run: () => importExisting() },
       { id: "nav-new", label: "Neues Projekt erstellen", group: "Navigation", icon: <PlusIcon size={15} />, shortcut: "Strg N", run: () => setNav("new") },
       { id: "nav-settings", label: "Einstellungen öffnen", group: "Navigation", icon: <GearIcon size={15} />, shortcut: "Strg ,", run: () => setNav("settings") },
       { id: "nav-admin", label: admin ? "Entwicklerbereich öffnen" : "Als Entwickler anmelden", group: "Navigation", icon: <ShieldIcon size={15} />, run: () => setNav("admin") },
@@ -162,6 +176,7 @@ export default function App() {
                   if (id === workspaceId) setWorkspaceId(null);
                   reload();
                 }}
+                onImport={importExisting}
               />
             )}
             {nav === "new" && (

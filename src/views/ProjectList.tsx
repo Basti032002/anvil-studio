@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { JavaStatus, Project, TASK_LABELS, Task, timeAgo } from "../api";
-import { AlertIcon, CubeIcon, PlayIcon, PlusIcon, SearchIcon, TrashIcon } from "../icons";
+import { AlertIcon, CubeIcon, FolderIcon, PlayIcon, PlusIcon, SearchIcon, TrashIcon } from "../icons";
 import { useAllRunning } from "../store";
 
 // Farbton pro Projekt aus der Mod-ID – für den Pixel-Kopf der Karte
@@ -20,9 +20,10 @@ type Props = {
   onTest: (id: string) => void;
   onNew: () => void;
   onRemove: (id: string) => void;
+  onImport: () => void;
 };
 
-export default function ProjectList({ projects, java, javaProgress, onInstallJava, onOpen, onTest, onNew, onRemove }: Props) {
+export default function ProjectList({ projects, java, javaProgress, onInstallJava, onOpen, onTest, onNew, onRemove, onImport }: Props) {
   const [query, setQuery] = useState("");
   const running = useAllRunning();
   const shown = projects.filter((p) => `${p.name} ${p.modId}`.toLowerCase().includes(query.toLowerCase()));
@@ -42,6 +43,9 @@ export default function ProjectList({ projects, java, javaProgress, onInstallJav
             </label>
             <input id="search" type="search" placeholder="Suchen …" value={query} onChange={(e) => setQuery(e.target.value)} />
           </div>
+          <button className="btn" onClick={onImport}>
+            <FolderIcon size={15} /> Importieren
+          </button>
           <button className="btn primary" onClick={onNew}>
             <PlusIcon size={15} /> Neues Projekt
           </button>
@@ -68,9 +72,14 @@ export default function ProjectList({ projects, java, javaProgress, onInstallJav
           </div>
           <h2>Deine Werkbank ist noch leer</h2>
           <p className="muted">Lege deine erste Mod an. Anvil Studio lädt die NeoForge-Vorlage und richtet alles ein.</p>
-          <button className="btn primary" onClick={onNew}>
-            <PlusIcon size={15} /> Erste Mod erstellen
-          </button>
+          <div className="row center">
+            <button className="btn primary" onClick={onNew}>
+              <PlusIcon size={15} /> Erste Mod erstellen
+            </button>
+            <button className="btn" onClick={onImport}>
+              <FolderIcon size={15} /> Bestehendes Projekt importieren
+            </button>
+          </div>
         </div>
       ) : (
         <div className="grid">
