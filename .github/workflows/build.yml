@@ -42,6 +42,17 @@ jobs:
             exit 1
           fi
 
+      - name: Client-ID für den Admin-Login prüfen
+        shell: bash
+        env:
+          ANVIL_GITHUB_CLIENT_ID: ${{ vars.ANVIL_GITHUB_CLIENT_ID }}
+        run: |
+          if [ -z "$ANVIL_GITHUB_CLIENT_ID" ]; then
+            echo "::error::Repo-Variable ANVIL_GITHUB_CLIENT_ID fehlt (Settings → Secrets and variables → Actions → Variables)."
+            exit 1
+          fi
+          echo "Client-ID vorhanden (${ANVIL_GITHUB_CLIENT_ID:0:6}…)"
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
