@@ -125,6 +125,38 @@ export default function Workspace({ project, javaReady, autoRun, onBack }: Props
     start(cfg.task, { world: cfg.id === "client-world" ? world : undefined });
   }
 
+  // Tastenkürzel (F5 / Umschalt+F5 / Strg+B) und Befehle aus der Palette
+  const runningRef = useRef(running);
+  runningRef.current = running;
+  const actions = useRef({ run: runSelected, build: () => start("build") });
+  actions.current = { run: runSelected, build: () => start("build") };
+  useEffect(() => {
+    const exec = (cmd: string) => {
+      if (cmd === "stop") {
+        if (runningRef.current) api.stopTask(project.id).catch((e) => toast(String(e), "error"));
+      } else if (!runningRef.current) {
+        if (cmd === "run") actions.current.run();
+        if (cmd === "build") actions.current.build();
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "F5") {
+        e.preventDefault();
+        exec(e.shiftKey ? "stop" : "run");
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        exec("build");
+      }
+    };
+    const onCmd = (e: Event) => exec((e as CustomEvent<string>).detail);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("anvil:workspace", onCmd);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("anvil:workspace", onCmd);
+    };
+  }, [project.id]);
+
   useEffect(() => {
     if (autoRun && !autoRunDone.current && !running) {
       autoRunDone.current = true;
@@ -174,15 +206,15 @@ export default function Workspace({ project, javaReady, autoRun, onBack }: Props
             </select>
           </div>
           {busy ? (
-            <button className="run-btn stop" onClick={() => api.stopTask(project.id).catch((e) => toast(String(e), "error"))} aria-label="Stoppen" data-tip="Stoppen">
+            <button className="run-btn stop" onClick={() => api.stopTask(project.id).catch((e) => toast(String(e), "error"))} aria-label="Stoppen" data-tip="Stoppen · Umschalt F5">
               <StopIcon size={13} />
             </button>
           ) : (
-            <button className="run-btn" onClick={runSelected} aria-label="Starten" data-tip="Starten">
+            <button className="run-btn" onClick={runSelected} aria-label="Starten" data-tip="Starten · F5">
               <PlayIcon size={13} />
             </button>
           )}
-          <button className="icon-btn" disabled={busy} onClick={() => start("build")} aria-label="Bauen" data-tip="Bauen">
+          <button className="icon-btn" disabled={busy} onClick={() => start("build")} aria-label="Bauen" data-tip="Bauen · Strg B">
             <HammerIcon size={16} />
           </button>
         </div>

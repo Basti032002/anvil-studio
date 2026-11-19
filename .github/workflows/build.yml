@@ -56,6 +56,9 @@ jobs:
       - run: npm ci
 
       - run: npm run tauri build
+        env:
+          # Client-ID der GitHub-OAuth-App für den Admin-Login (Repo-Variable)
+          ANVIL_GITHUB_CLIENT_ID: ${{ vars.ANVIL_GITHUB_CLIENT_ID }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -86,7 +89,9 @@ jobs:
           # Änderungen seit dem letzten Release (dessen Commit steht in der Beschreibung)
           PREV=$(gh release view --repo "$RELEASE_REPO" --json body --jq .body 2>/dev/null | grep -oE 'Commit: [0-9a-f]{40}' | head -1 | cut -d' ' -f2 || true)
           if [ -n "$PREV" ] && git cat-file -e "$PREV" 2>/dev/null; then RANGE="$PREV..HEAD"; else RANGE="-n 15 HEAD"; fi
+          BODY=$(git log -1 --pretty=%b)
           {
+            if [ -n "$BODY" ]; then echo "$BODY"; echo; fi
             echo "## Änderungen"
             git log $RANGE --no-merges --pretty='- %s' | grep -vE '^- Version [0-9.]+(-[0-9A-Za-z.]+)?$' || true
             echo

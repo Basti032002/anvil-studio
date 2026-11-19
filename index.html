@@ -4,8 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Anvil Studio</title>
+    <style>
+      html, body { background: #0b0c0f; margin: 0; }
+      #splash { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: #0b0c0f; font: 600 14px system-ui, sans-serif; color: #b0b6bf; transition: opacity .4s ease; }
+      #splash.hide { opacity: 0; pointer-events: none; }
+      .splash-logo { width: 64px; height: 64px; border-radius: 16px; background: #7bd05a; display: grid; place-items: center; animation: splash-pop .6s cubic-bezier(.22,1,.36,1) both, splash-glow 1.6s ease-in-out infinite .6s; }
+      .splash-name { letter-spacing: .04em; animation: splash-fade .6s ease .15s both; }
+      @keyframes splash-pop { from { transform: scale(.6) rotate(-8deg); opacity: 0; } to { transform: none; opacity: 1; } }
+      @keyframes splash-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+      @keyframes splash-glow { 50% { box-shadow: 0 0 0 10px rgba(123,208,90,.08), 0 0 40px rgba(123,208,90,.25); } }
+    </style>
   </head>
   <body>
+    <div id="splash">
+      <div class="splash-logo">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="#0b0c0f"><path d="M3 8h4V7h14v4l-3 1H8v-1L3 10zM10 12h5v4h-5zM7 16h10l2 3H5z" /></svg>
+      </div>
+      <div class="splash-name">Anvil Studio</div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

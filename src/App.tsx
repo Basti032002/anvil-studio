@@ -1,12 +1,21 @@
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { restoreSession, useAdminSession } from "./admin";
 import { api, JavaStatus, Project } from "./api";
 import { ActivityBar, NavKey, StatusBar, TitleBar, Toasts } from "./components/Chrome";
-import { toast, useUpdate } from "./state";
+import CommandPalette, { Command } from "./components/CommandPalette";
+import { CubeIcon, GearIcon, GridIcon, HammerIcon, PlayIcon, PlusIcon, RefreshIcon, RocketIcon, ShieldIcon, StopIcon } from "./icons";
+import { checkForUpdate, toast, useUpdate } from "./state";
+import Admin from "./views/Admin";
 import NewProject from "./views/NewProject";
 import ProjectList from "./views/ProjectList";
 import Settings from "./views/Settings";
 import Workspace from "./views/Workspace";
+
+/** Befehle an den geöffneten Arbeitsbereich (Palette & Tastenkürzel). */
+export function workspaceCommand(cmd: "run" | "stop" | "build") {
+  window.dispatchEvent(new CustomEvent("anvil:workspace", { detail: cmd }));
+}
 
 export default function App() {
   const [nav, setNav] = useState<NavKey>("projects");
@@ -15,7 +24,9 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [java, setJava] = useState<JavaStatus | null>(null);
   const [javaProgress, setJavaProgress] = useState<string | null>(null);
+  const [palette, setPalette] = useState(false);
   const update = useUpdate();
+  const admin = useAdminSession();
 
   const reload = useCallback(async () => {
     try {
@@ -28,6 +39,13 @@ export default function App() {
 
   useEffect(() => {
     reload();
+    restoreSession();
+    // Startbildschirm ausblenden
+    const splash = document.getElementById("splash");
+    if (splash) {
+      splash.classList.add("hide");
+      setTimeout(() => splash.remove(), 500);
+    }
     const a = listen("run-exit", () => reload());
     const b = listen<{ phase: string; downloaded: number; total: number | null }>("java-progress", (e) => {
       const { phase, downloaded, total } = e.payload;
@@ -40,6 +58,28 @@ export default function App() {
       b.then((f) => f());
     };
   }, [reload]);
+
+  // Globale Tastenkürzel
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPalette((p) => !p);
+      } else if (mod && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        setNav("new");
+      } else if (mod && e.key === ",") {
+        e.preventDefault();
+        setNav("settings");
+      } else if (mod && e.key === "1") {
+        e.preventDefault();
+        setNav("projects");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   async function installJava() {
     setJavaProgress("Starte Download …");
@@ -60,20 +100,52 @@ export default function App() {
   }
 
   const current = workspaceId ? projects.find((p) => p.id === workspaceId) : undefined;
-  const subtitle = nav === "workspace" && current ? current.name : nav === "settings" ? "Einstellungen" : undefined;
+  const subtitle =
+    nav === "workspace" && current ? current.name : nav === "settings" ? "Einstellungen" : nav === "admin" ? "Entwicklerbereich" : undefined;
+
+  const commands: Command[] = useMemo(() => {
+    const inWs = nav === "workspace" && !!current;
+    return [
+      { id: "nav-projects", label: "Projekte anzeigen", group: "Navigation", icon: <GridIcon size={15} />, shortcut: "Strg 1", run: () => setNav("projects") },
+      { id: "nav-new", label: "Neues Projekt erstellen", group: "Navigation", icon: <PlusIcon size={15} />, shortcut: "Strg N", run: () => setNav("new") },
+      { id: "nav-settings", label: "Einstellungen öffnen", group: "Navigation", icon: <GearIcon size={15} />, shortcut: "Strg ,", run: () => setNav("settings") },
+      { id: "nav-admin", label: admin ? "Entwicklerbereich öffnen" : "Als Entwickler anmelden", group: "Navigation", icon: <ShieldIcon size={15} />, run: () => setNav("admin") },
+      { id: "ws-run", label: "Starten", group: "Arbeitsbereich", icon: <PlayIcon size={13} />, shortcut: "F5", disabled: !inWs, run: () => workspaceCommand("run") },
+      { id: "ws-stop", label: "Stoppen", group: "Arbeitsbereich", icon: <StopIcon size={13} />, shortcut: "Umschalt F5", disabled: !inWs, run: () => workspaceCommand("stop") },
+      { id: "ws-build", label: "Bauen", group: "Arbeitsbereich", icon: <HammerIcon size={15} />, shortcut: "Strg B", disabled: !inWs, run: () => workspaceCommand("build") },
+      { id: "upd", label: "Nach Updates suchen", group: "Anvil Studio", icon: <RefreshIcon size={15} />, run: () => checkForUpdate(true) },
+      ...(admin
+        ? [{ id: "publish", label: "Neue Version veröffentlichen", group: "Entwickler", icon: <RocketIcon size={15} />, run: () => setNav("admin") }]
+        : []),
+      ...projects.map((p) => ({
+        id: `p-${p.id}`,
+        label: p.name,
+        group: "Projekt öffnen",
+        icon: <CubeIcon size={15} />,
+        run: () => openWorkspace(p.id),
+      })),
+      ...projects.map((p) => ({
+        id: `t-${p.id}`,
+        label: `${p.name} testen`,
+        group: "Projekt testen",
+        icon: <PlayIcon size={13} />,
+        run: () => openWorkspace(p.id, true),
+      })),
+    ];
+  }, [nav, current, projects, admin]);
 
   return (
     <div className="shell">
-      <TitleBar subtitle={subtitle} />
+      <TitleBar subtitle={subtitle} onSearch={() => setPalette(true)} />
       <div className="shell-body">
         <ActivityBar
           active={nav}
           hasWorkspace={!!current}
           onNavigate={setNav}
           settingsBadge={update.phase === "available"}
+          showAdmin={!!admin}
         />
         <main className="main">
-          {/* key sorgt für die Einblend-Animation bei jedem Ansichtswechsel */}
           <div className="view" key={nav === "workspace" ? `ws-${current?.id}` : nav}>
             {nav === "projects" && (
               <ProjectList
@@ -109,11 +181,13 @@ export default function App() {
                 <p className="muted">Kein Projekt geöffnet.</p>
               </div>
             )}
-            {nav === "settings" && <Settings />}
+            {nav === "settings" && <Settings onOpenAdmin={() => setNav("admin")} />}
+            {nav === "admin" && <Admin />}
           </div>
         </main>
       </div>
       <StatusBar java={java} javaProgress={javaProgress} onInstallJava={installJava} onOpenSettings={() => setNav("settings")} />
+      <CommandPalette open={palette} onClose={() => setPalette(false)} commands={commands} />
       <Toasts />
     </div>
   );

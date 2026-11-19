@@ -15,12 +15,14 @@ import {
   MaximizeIcon,
   MinimizeIcon,
   PlusIcon,
+  SearchIcon,
+  ShieldIcon,
   SparkIcon,
 } from "../icons";
 import { dismissToast, useAppVersion, useToasts, useUpdate } from "../state";
 import { useAllRunning } from "../store";
 
-export function TitleBar({ subtitle }: { subtitle?: string }) {
+export function TitleBar({ subtitle, onSearch }: { subtitle?: string; onSearch: () => void }) {
   const win = getCurrentWindow();
   const [maximized, setMaximized] = useState(false);
 
@@ -45,6 +47,11 @@ export function TitleBar({ subtitle }: { subtitle?: string }) {
           </span>
         )}
       </div>
+      <button className="command-center" onClick={onSearch} aria-label="Befehlspalette öffnen">
+        <SearchIcon size={13} />
+        <span>Befehl oder Projekt suchen</span>
+        <kbd>Strg K</kbd>
+      </button>
       <div className="window-controls">
         <button aria-label="Minimieren" onClick={() => win.minimize()}>
           <MinimizeIcon />
@@ -60,25 +67,31 @@ export function TitleBar({ subtitle }: { subtitle?: string }) {
   );
 }
 
-export type NavKey = "projects" | "workspace" | "new" | "settings";
+export type NavKey = "projects" | "workspace" | "new" | "settings" | "admin";
 
 export function ActivityBar({
   active,
   hasWorkspace,
   onNavigate,
   settingsBadge,
+  showAdmin,
 }: {
   active: NavKey;
   hasWorkspace: boolean;
   onNavigate: (k: NavKey) => void;
   settingsBadge: boolean;
+  showAdmin: boolean;
 }) {
   const top: { key: NavKey; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
-    { key: "projects", label: "Projekte", icon: <GridIcon size={19} /> },
+    { key: "projects", label: "Projekte  ·  Strg 1", icon: <GridIcon size={19} /> },
     { key: "workspace", label: "Arbeitsbereich", icon: <CubeIcon size={19} />, disabled: !hasWorkspace },
-    { key: "new", label: "Neues Projekt", icon: <PlusIcon size={19} /> },
+    { key: "new", label: "Neues Projekt  ·  Strg N", icon: <PlusIcon size={19} /> },
   ];
   const topIndex = top.findIndex((t) => t.key === active);
+  const bottom: { key: NavKey; label: string; icon: React.ReactNode }[] = [
+    ...(showAdmin ? [{ key: "admin" as NavKey, label: "Entwicklerbereich", icon: <ShieldIcon size={19} /> }] : []),
+    { key: "settings", label: "Einstellungen  ·  Strg ,", icon: <GearIcon size={19} /> },
+  ];
 
   return (
     <nav className="activitybar" aria-label="Hauptnavigation">
@@ -98,16 +111,21 @@ export function ActivityBar({
         ))}
       </div>
       <div className="activity-group bottom">
-        {active === "settings" && <span className="activity-indicator" />}
-        <button
-          className={active === "settings" ? "activity-item active" : "activity-item"}
-          aria-label="Einstellungen"
-          data-tip="Einstellungen"
-          onClick={() => onNavigate("settings")}
-        >
-          <GearIcon size={19} />
-          {settingsBadge && <span className="activity-badge" />}
-        </button>
+        {bottom.findIndex((b) => b.key === active) >= 0 && (
+          <span className="activity-indicator" style={{ transform: `translateY(${bottom.findIndex((b) => b.key === active) * 48}px)` }} />
+        )}
+        {bottom.map((b) => (
+          <button
+            key={b.key}
+            className={active === b.key ? "activity-item active" : "activity-item"}
+            aria-label={b.label}
+            data-tip={b.label}
+            onClick={() => onNavigate(b.key)}
+          >
+            {b.icon}
+            {b.key === "settings" && settingsBadge && <span className="activity-badge" />}
+          </button>
+        ))}
       </div>
     </nav>
   );

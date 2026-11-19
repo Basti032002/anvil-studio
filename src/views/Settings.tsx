@@ -2,6 +2,7 @@ import { useState } from "react";
 import { UpdateCheck } from "../api";
 import { Segmented, Toggle } from "../components/Chrome";
 import { AnvilLogo, CheckIcon, DownloadIcon, RefreshIcon } from "../icons";
+import { useAdminSession } from "../admin";
 import { checkForUpdate, installUpdate, updateSettings, useAppVersion, useSettings, useUpdate } from "../state";
 
 type Section = "updates" | "general" | "appearance" | "about";
@@ -19,7 +20,7 @@ const CHECK_OPTIONS: { value: UpdateCheck; label: string }[] = [
   { value: "manual", label: "Nur manuell" },
 ];
 
-export default function Settings() {
+export default function Settings({ onOpenAdmin }: { onOpenAdmin: () => void }) {
   const s = useSettings();
   const [section, setSection] = useState<Section>("updates");
   if (!s) return <div className="page muted">Lade Einstellungen …</div>;
@@ -83,7 +84,7 @@ export default function Settings() {
             </div>
           </>
         )}
-        {section === "about" && <About />}
+        {section === "about" && <About onOpenAdmin={onOpenAdmin} />}
       </div>
     </div>
   );
@@ -179,8 +180,9 @@ function UpdatesSection() {
   );
 }
 
-function About() {
+function About({ onOpenAdmin }: { onOpenAdmin: () => void }) {
   const version = useAppVersion();
+  const admin = useAdminSession();
   return (
     <>
       <h2>Über</h2>
@@ -191,8 +193,14 @@ function About() {
         <div>
           <div className="update-title">Anvil Studio {version}</div>
           <div className="muted small">Launcher zum Erstellen, Bauen und Testen von Minecraft-Mods.</div>
-          <div className="muted small">Quellcode: github.com/Basti032002/anvil-studio</div>
         </div>
+      </div>
+      <div className="setting-list" style={{ marginTop: 16 }}>
+        <Row title="Entwicklerbereich" desc={admin ? `Angemeldet als ${admin.login}.` : "Versionen veröffentlichen und Releases verwalten. Nur für den Entwickler."}>
+          <button className="btn" onClick={onOpenAdmin}>
+            {admin ? "Öffnen" : "Mit GitHub anmelden"}
+          </button>
+        </Row>
       </div>
     </>
   );

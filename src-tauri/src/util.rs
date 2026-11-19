@@ -273,3 +273,26 @@ pub fn sha256_file(path: &Path) -> Result<String, String> {
     std::io::copy(&mut f, &mut h).map_err(err)?;
     Ok(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
 }
+
+/// Öffnet eine GitHub-Seite im Standardbrowser (nur github.com-Adressen).
+#[tauri::command]
+pub fn open_url(url: String) -> Result<(), String> {
+    if !url.starts_with("https://github.com/") {
+        return Err("Nur GitHub-Links werden geöffnet.".into());
+    }
+    let mut cmd = if cfg!(windows) {
+        let mut c = Command::new("rundll32");
+        c.args(["url.dll,FileProtocolHandler", &url]);
+        c
+    } else if cfg!(target_os = "macos") {
+        let mut c = Command::new("open");
+        c.arg(&url);
+        c
+    } else {
+        let mut c = Command::new("xdg-open");
+        c.arg(&url);
+        c
+    };
+    hide_window_std(&mut cmd).spawn().map_err(err)?;
+    Ok(())
+}

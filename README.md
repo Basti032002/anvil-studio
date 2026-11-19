@@ -18,6 +18,19 @@ Ein Windows-Launcher zum **Erstellen, Bauen und Testen von Minecraft-Mods**. Pro
 - **Einstellungen:** Update-Verhalten, Standard-Editor, Speicherort, Darstellung
 - **Automatische Updates:** Anvil Studio sucht im öffentlichen Repo [anvil-studio-releases](https://github.com/Basti032002/anvil-studio-releases) nach neuen Versionen (bei jedem Start, täglich, wöchentlich oder nur manuell). Es lädt den Installer, prüft die SHA-256-Prüfsumme, installiert und startet neu. Läuft gerade ein Spiel oder Build, wartet es damit.
 
+## Entwicklerbereich
+
+Nur für das Konto `Basti032002`. Anmeldung mit GitHub (Device Flow), das Token liegt in der Windows-Anmeldeinformationsverwaltung.
+
+- **Übersicht:** Version im Code, neuestes Release, Downloads, letzter Build und noch nicht veröffentlichte Commits
+- **Veröffentlichen:** Fehlerbehebung, neue Funktionen, großes Update oder Beta wählen und Notizen schreiben. Anvil Studio erstellt den Versions-Commit auf `main`, danach erscheint das Release automatisch. Der Fortschritt wird live angezeigt.
+- **Releases:** Downloads je Version, als Beta oder stabil markieren, Notizen bearbeiten, löschen
+- **Builds:** Status der GitHub-Actions-Läufe, fehlgeschlagene Läufe neu starten
+
+Einrichtung (einmalig): Lege unter GitHub → Settings → Developer settings → **OAuth Apps** eine App an und aktiviere „Enable Device Flow“. Als Callback-URL kannst du z. B. `https://github.com` eintragen. Die **Client ID** hinterlegst du im Repo unter Settings → Secrets and variables → Actions → **Variables** als `ANVIL_GITHUB_CLIENT_ID`.
+
+Tastenkürzel: `Strg K` Befehlspalette · `F5` Starten · `Umschalt F5` Stoppen · `Strg B` Bauen · `Strg N` Neues Projekt · `Strg ,` Einstellungen
+
 ## Geplant (Phase 2)
 
 - Blöcke und Items per Formular anlegen (erzeugt Java + JSON)
