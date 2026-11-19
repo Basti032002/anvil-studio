@@ -99,7 +99,7 @@ export async function checkForUpdate(manual = false) {
   updateStore.set({ phase: "checking" });
   try {
     const info = await settingsApi.checkUpdate(s.includePrerelease);
-    settingsStore.set({ ...s, lastUpdateCheck: Date.now() / 1000 });
+    settingsStore.set({ ...(settingsStore.get() ?? s), lastUpdateCheck: Math.floor(Date.now() / 1000) });
     if (!info) {
       updateStore.set({ phase: "none" });
       if (manual) toast("Du hast die neueste Version.", "success");

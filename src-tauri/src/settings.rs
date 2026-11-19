@@ -20,7 +20,8 @@ pub struct Settings {
     pub projects_dir: String,
     pub reduce_motion: bool,
     pub console_font_size: u32,
-    /// Unix-Zeit der letzten Update-Prüfung
+    /// Unix-Zeit der letzten Update-Prüfung (nimmt auch Kommazahlen an)
+    #[serde(deserialize_with = "lenient_u64")]
     pub last_update_check: u64,
 }
 
@@ -69,4 +70,26 @@ pub fn save_settings(app: AppHandle, settings: Settings) -> Result<Settings, Str
     std::fs::write(&tmp, serde_json::to_string_pretty(&s).map_err(err)?).map_err(err)?;
     std::fs::rename(&tmp, &file).map_err(err)?;
     Ok(s)
+}
+
+/// Akzeptiert ganze Zahlen und Kommazahlen (z. B. 1795118342.13).
+fn lenient_u64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(match v {
+        serde_json::Value::Number(n) => n.as_u64().or_else(|| n.as_f64().map(|f| f.max(0.0) as u64)).unwrap_or(0),
+        _ => 0,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_float_timestamp() {
+        let s: Settings = serde_json::from_str(r#"{"lastUpdateCheck": 1795118342.13}"#).unwrap();
+        assert_eq!(s.last_update_check, 1795118342);
+        let s: Settings = serde_json::from_str(r#"{"lastUpdateCheck": 5}"#).unwrap();
+        assert_eq!(s.last_update_check, 5);
+    }
 }
