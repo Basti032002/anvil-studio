@@ -1,14 +1,27 @@
-import { useState } from "react";
-import { JavaStatus, Project, TASK_LABELS, Task, timeAgo } from "../api";
+import { useEffect, useState } from "react";
+import { contentApi, JavaStatus, Project, TASK_LABELS, Task, timeAgo } from "../api";
 import { AlertIcon, CubeIcon, FolderIcon, PlayIcon, PlusIcon, SearchIcon, TrashIcon } from "../icons";
 import { useAllRunning } from "../store";
 
-// Farbton pro Projekt aus der Mod-ID – für den Pixel-Kopf der Karte
-const HUES = [265, 32, 150, 210, 340, 90, 190];
-function hue(id: string) {
-  let h = 0;
-  for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return HUES[h % HUES.length];
+/** Erste Textur eines Projekts als Symbol (Block bevorzugt). */
+function useProjectIcon(projectId: string) {
+  const [icon, setIcon] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    contentApi
+      .load(projectId)
+      .then(async (c) => {
+        const pick = c.generatedBlocks[0] ? (["block", c.generatedBlocks[0]] as const) : c.generatedItems[0] ? (["item", c.generatedItems[0]] as const) : null;
+        if (!pick) return;
+        const b64 = await contentApi.textureGet(projectId, pick[0], pick[1]);
+        if (alive && b64) setIcon(`data:image/png;base64,${b64}`);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [projectId]);
+  return icon;
 }
 
 type Props = {
@@ -34,6 +47,19 @@ export default function ProjectList({ projects, java, javaProgress, onInstallJav
         <div>
           <div className="eyebrow">Werkstatt</div>
           <h1>Projekte</h1>
+          {projects.length > 0 && (
+            <div className="project-stats" style={{ marginTop: 8 }}>
+              <span>
+                <b>{projects.length}</b>Projekte
+              </span>
+              <span>
+                <b>{Object.keys(running).length}</b>laufen gerade
+              </span>
+              <span>
+                <b>{projects.filter((p) => p.lastRun && !p.lastRun.success).length}</b>mit Fehlern
+              </span>
+            </div>
+          )}
         </div>
         <div className="row">
           <div className="search">
@@ -82,49 +108,68 @@ export default function ProjectList({ projects, java, javaProgress, onInstallJav
           </div>
         </div>
       ) : (
-        <div className="grid">
-          {shown.map((p, i) => {
-            const run = running[p.id];
-            return (
-              <article className="card" key={p.id} style={{ "--hue": hue(p.modId), "--i": i } as React.CSSProperties}>
-                <button className="card-head" onClick={() => onOpen(p.id)} aria-label={`${p.name} öffnen`}>
-                  <span className="card-pixels" aria-hidden="true" />
-                  <span className="card-title">{p.name}</span>
-                  {run && <span className="card-live">läuft</span>}
-                </button>
-                <div className="card-body">
-                  <div className="row wrap gap-6">
-                    <span className="tag">NeoForge</span>
-                    <span className="tag">{p.mcVersion}</span>
-                    <span className="tag mono">{p.modId}</span>
-                  </div>
-                  <Status project={p} runningTask={run?.task as Task | undefined} />
-                  <div className="row">
-                    <button className="btn grow" onClick={() => onOpen(p.id)}>
-                      Öffnen
-                    </button>
-                    <button className="btn primary grow" onClick={() => onTest(p.id)} disabled={!!run}>
-                      <PlayIcon size={12} /> Testen
-                    </button>
-                    <button
-                      className="icon-btn"
-                      aria-label="Aus Liste entfernen"
-                      data-tip="Aus Liste entfernen"
-                      onClick={() => {
-                        if (confirm(`„${p.name}“ aus der Liste entfernen? Die Dateien bleiben erhalten.`)) onRemove(p.id);
-                      }}
-                    >
-                      <TrashIcon size={15} />
-                    </button>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
+        <div className="project-grid">
+          {shown.map((p, i) => (
+            <ProjectCard key={p.id} project={p} index={i} running={running[p.id]?.task as Task | undefined} onOpen={onOpen} onTest={onTest} onRemove={onRemove} />
+          ))}
           {shown.length === 0 && <p className="muted">Keine Treffer für „{query}“.</p>}
         </div>
       )}
     </div>
+  );
+}
+
+function ProjectCard({
+  project: p,
+  index,
+  running,
+  onOpen,
+  onTest,
+  onRemove,
+}: {
+  project: Project;
+  index: number;
+  running?: Task;
+  onOpen: (id: string) => void;
+  onTest: (id: string) => void;
+  onRemove: (id: string) => void;
+}) {
+  const icon = useProjectIcon(p.id);
+  return (
+    <article className="card" style={{ "--i": index } as React.CSSProperties}>
+      {running && <span className="card-live">läuft</span>}
+      <button className="card-top" onClick={() => onOpen(p.id)} aria-label={`${p.name} öffnen`}>
+        <span className="card-icon">{icon ? <img src={icon} alt="" /> : p.name.slice(0, 1).toUpperCase()}</span>
+        <span className="min0">
+          <div className="card-title ellipsis">{p.name}</div>
+          <div className="card-sub mono ellipsis">{p.modId}</div>
+        </span>
+      </button>
+      <div className="card-meta">
+        <span className="tag">NeoForge</span>
+        <span className="tag">Minecraft {p.mcVersion}</span>
+      </div>
+      <Status project={p} runningTask={running} />
+      <div className="card-actions">
+        <button className="btn" onClick={() => onOpen(p.id)}>
+          Öffnen
+        </button>
+        <button className="btn primary" onClick={() => onTest(p.id)} disabled={!!running}>
+          <PlayIcon size={12} /> Testen
+        </button>
+        <button
+          className="icon-btn"
+          style={{ flex: "none" }}
+          aria-label="Aus Liste entfernen"
+          data-tip="Aus Liste entfernen"
+          onClick={() => {
+            if (confirm(`„${p.name}“ aus der Liste entfernen? Die Dateien bleiben erhalten.`)) onRemove(p.id);
+          }}
+        >
+          <TrashIcon size={15} />
+        </button>
+      </div>
+    </article>
   );
 }
 

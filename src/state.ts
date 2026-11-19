@@ -34,10 +34,34 @@ function applyMotion(reduce: boolean) {
   document.documentElement.classList.toggle("reduce-motion", reduce);
 }
 
+// ---- Theme ------------------------------------------------------------------
+
+const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+const themeStore = createStore<"dark" | "light">("dark");
+/** Tatsächlich aktives Theme (System aufgelöst). */
+export const useResolvedTheme = themeStore.use;
+
+export function applyTheme(theme: Settings["theme"] = "dark", accent: Settings["accent"] = "green") {
+  const resolved = theme === "system" ? (darkQuery.matches ? "dark" : "light") : theme;
+  document.documentElement.dataset.theme = resolved;
+  document.documentElement.dataset.accent = accent;
+  themeStore.set(resolved);
+  try {
+    localStorage.setItem("anvil.theme", JSON.stringify({ resolved, accent }));
+  } catch {
+    /* egal */
+  }
+}
+darkQuery.addEventListener("change", () => {
+  const s = settingsStore.get();
+  if (s?.theme === "system") applyTheme("system", s.accent);
+});
+
 export async function loadSettings() {
   const s = await settingsApi.get();
   settingsStore.set(s);
   applyMotion(s.reduceMotion);
+  applyTheme(s.theme, s.accent);
   return s;
 }
 
@@ -47,6 +71,7 @@ export async function updateSettings(patch: Partial<Settings>) {
   const optimistic = { ...current, ...patch };
   settingsStore.set(optimistic);
   applyMotion(optimistic.reduceMotion);
+  applyTheme(optimistic.theme, optimistic.accent);
   try {
     settingsStore.set(await settingsApi.save(optimistic));
   } catch (e) {

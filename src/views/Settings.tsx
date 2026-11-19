@@ -65,6 +65,54 @@ export default function Settings({ onOpenAdmin }: { onOpenAdmin: () => void }) {
           <>
             <h2>Darstellung</h2>
             <div className="setting-list">
+              <Row title="Theme" desc="Hell, dunkel oder automatisch wie Windows.">
+                <div className="theme-cards" role="radiogroup" aria-label="Theme">
+                  {(
+                    [
+                      ["dark", "Dunkel"],
+                      ["light", "Hell"],
+                      ["system", "System"],
+                    ] as const
+                  ).map(([v, label]) => (
+                    <button
+                      key={v}
+                      role="radio"
+                      aria-checked={s.theme === v}
+                      className={s.theme === v ? "theme-card active" : "theme-card"}
+                      onClick={() => updateSettings({ theme: v })}
+                    >
+                      <span className={`theme-mini ${v}`}>
+                        <i />
+                        <b />
+                      </span>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </Row>
+              <Row title="Akzentfarbe" desc="Farbe für Knöpfe, Markierungen und Fortschritt.">
+                <div className="accent-dots" role="radiogroup" aria-label="Akzentfarbe">
+                  {(
+                    [
+                      ["green", "Grün", "#4fb33d"],
+                      ["blue", "Blau", "#3f82e6"],
+                      ["violet", "Violett", "#8a64ea"],
+                      ["orange", "Orange", "#e0802c"],
+                    ] as const
+                  ).map(([v, label, color]) => (
+                    <button
+                      key={v}
+                      role="radio"
+                      aria-checked={s.accent === v}
+                      aria-label={label}
+                      title={label}
+                      className={s.accent === v ? "accent-dot active" : "accent-dot"}
+                      style={{ background: color }}
+                      onClick={() => updateSettings({ accent: v })}
+                    />
+                  ))}
+                </div>
+              </Row>
               <Row title="Animationen reduzieren" desc="Schaltet Übergänge und Bewegungen ab.">
                 <Toggle label="Animationen reduzieren" checked={s.reduceMotion} onChange={(v) => updateSettings({ reduceMotion: v })} />
               </Row>

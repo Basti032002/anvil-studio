@@ -78,6 +78,8 @@ export type Settings = {
   defaultIde: "code" | "idea";
   projectsDir: string;
   reduceMotion: boolean;
+  theme: "dark" | "light" | "system";
+  accent: "green" | "blue" | "violet" | "orange";
   consoleFontSize: number;
   lastUpdateCheck: number;
 };
@@ -106,7 +108,15 @@ export const settingsApi = {
 
 // ---- Inhalte, Mods, Dateien, Import (0.5) --------------------------------
 
-export type Recipe = { enabled: boolean; shaped: boolean; grid: string[]; count: number };
+export type Recipe = {
+  enabled: boolean;
+  kind: "crafting" | "smelting";
+  shaped: boolean;
+  grid: string[];
+  count: number;
+  experience: number;
+  cookingTime: number;
+};
 export type BlockDef = {
   id: string;
   nameDe: string;
@@ -186,3 +196,10 @@ export async function pickFolder(title: string, defaultPath?: string): Promise<s
   const r = await open({ directory: true, multiple: false, title, defaultPath: defaultPath || undefined });
   return typeof r === "string" ? r : null;
 }
+
+// ---- Minecraft-Katalog (0.5.0-dev.2) -----------------------------------------
+
+export type McIconDef = { kind: "flat" | "cube" | "none"; tex?: string; top?: string; side?: string; front?: string };
+export type CatalogEntry = { id: string; name: string; nameEn: string; kind: "block" | "item"; icon: McIconDef };
+export type Catalog = { format: number; version: string; entries: CatalogEntry[]; textures: Record<string, string> };
+export const mcCatalog = (version: string) => invoke<Catalog>("mc_catalog", { version });

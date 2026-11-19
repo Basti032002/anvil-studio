@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { FileEntry, filesApi, Project } from "../../api";
 import { ChevronIcon, CloseIcon, FolderIcon, PlusIcon } from "../../icons";
-import { toast, useSettings } from "../../state";
+import { toast, useResolvedTheme, useSettings } from "../../state";
 import monaco, { languageFor } from "./monaco";
 
 type OpenFile = { rel: string; model: monaco.editor.ITextModel; saved: number; version: number };
 
 export default function CodeTab({ project }: { project: Project }) {
   const settings = useSettings();
+  const theme = useResolvedTheme();
+  useEffect(() => monaco.editor.setTheme(theme === "light" ? "anvil-light" : "anvil-dark"), [theme]);
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor>();
   const [files, setFiles] = useState<OpenFile[]>([]);
@@ -19,7 +21,7 @@ export default function CodeTab({ project }: { project: Project }) {
   useEffect(() => {
     if (!host.current) return;
     editor.current = monaco.editor.create(host.current, {
-      theme: "anvil-dark",
+      theme: document.documentElement.dataset.theme === "light" ? "anvil-light" : "anvil-dark",
       automaticLayout: true,
       fontFamily: "JetBrains Mono, Consolas, monospace",
       fontSize: (settings?.consoleFontSize ?? 12) + 1,

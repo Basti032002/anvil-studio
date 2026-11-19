@@ -75,3 +75,8 @@ jobs:
         run: |
           mkdir -p ../dist && echo '<!doctype html>' > ../dist/index.html
           ANVIL_TEST_CATALOG=${{ matrix.mc }} cargo test real_catalog -- --nocapture
+      - uses: actions/upload-artifact@v4
+        with:
+          name: catalog-${{ matrix.mc }}
+          path: /tmp/anvil-mc-${{ matrix.mc }}/catalog.json
+          retention-days: 3

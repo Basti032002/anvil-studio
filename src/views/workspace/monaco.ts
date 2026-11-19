@@ -42,6 +42,26 @@ monaco.editor.defineTheme("anvil-dark", {
   },
 });
 
+monaco.editor.defineTheme("anvil-light", {
+  base: "vs",
+  inherit: true,
+  rules: [
+    { token: "keyword", foreground: "7c3aed" },
+    { token: "string", foreground: "2f7d32" },
+    { token: "number", foreground: "b45309" },
+    { token: "comment", foreground: "8a909b", fontStyle: "italic" },
+    { token: "type", foreground: "2f6fd6" },
+    { token: "annotation", foreground: "2f9e44" },
+  ],
+  colors: {
+    "editor.background": "#ffffff",
+    "editor.lineHighlightBackground": "#f6f7f9",
+    "editorLineNumber.foreground": "#b6bac2",
+    "editorLineNumber.activeForeground": "#464b55",
+    "editorIndentGuide.background1": "#eceef2",
+  },
+});
+
 export function languageFor(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   if (ext === "java") return "java";

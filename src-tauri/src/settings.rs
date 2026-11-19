@@ -21,6 +21,10 @@ pub struct Settings {
     /// Leer = Dokumente\Anvil Studio
     pub projects_dir: String,
     pub reduce_motion: bool,
+    /// "dark" | "light" | "system"
+    pub theme: String,
+    /// "green" | "blue" | "violet" | "orange"
+    pub accent: String,
     pub console_font_size: u32,
     /// Unix-Zeit der letzten Update-Prüfung (nimmt auch Kommazahlen an)
     #[serde(deserialize_with = "lenient_u64")]
@@ -37,6 +41,8 @@ impl Default for Settings {
             default_ide: "code".into(),
             projects_dir: String::new(),
             reduce_motion: false,
+            theme: "dark".into(),
+            accent: "green".into(),
             console_font_size: 12,
             last_update_check: 0,
         }
@@ -78,6 +84,12 @@ pub fn save_settings(app: AppHandle, settings: Settings) -> Result<Settings, Str
         s.default_ide = "code".into();
     }
     s.console_font_size = s.console_font_size.clamp(10, 18);
+    if !matches!(s.theme.as_str(), "dark" | "light" | "system") {
+        s.theme = "dark".into();
+    }
+    if !matches!(s.accent.as_str(), "green" | "blue" | "violet" | "orange") {
+        s.accent = "green".into();
+    }
     let file = data_dir(&app)?.join("settings.json");
     let tmp = file.with_extension("json.tmp");
     std::fs::write(&tmp, serde_json::to_string_pretty(&s).map_err(err)?).map_err(err)?;

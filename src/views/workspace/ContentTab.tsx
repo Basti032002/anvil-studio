@@ -1,20 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BlockDef, Content, contentApi, ItemDef, Project, Recipe } from "../../api";
+import { useCatalog } from "../../catalog";
 import { Segmented, Toggle } from "../../components/Chrome";
-import { CubeIcon, PlusIcon, SparkIcon, TrashIcon } from "../../icons";
+import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
+import McIcon from "../../components/McIcon";
+import { CloseIcon, CopyIcon, CubeIcon, PlusIcon, SearchIcon, SparkIcon, TrashIcon } from "../../icons";
 import { toast } from "../../state";
 import PixelEditor from "./PixelEditor";
 
-const VANILLA = [
-  "minecraft:stick", "minecraft:oak_planks", "#minecraft:planks", "#minecraft:logs", "minecraft:cobblestone", "minecraft:stone",
-  "minecraft:iron_ingot", "minecraft:gold_ingot", "minecraft:copper_ingot", "minecraft:diamond", "minecraft:emerald", "minecraft:netherite_ingot",
-  "minecraft:redstone", "minecraft:lapis_lazuli", "minecraft:coal", "minecraft:quartz", "minecraft:amethyst_shard", "minecraft:glass",
-  "minecraft:string", "minecraft:leather", "minecraft:paper", "minecraft:feather", "minecraft:bone", "minecraft:slime_ball",
-  "minecraft:apple", "minecraft:wheat", "minecraft:sugar", "minecraft:egg", "minecraft:glowstone_dust", "minecraft:ender_pearl",
-  "#minecraft:wool", "minecraft:sand", "minecraft:clay_ball", "minecraft:obsidian",
-];
-
-const emptyRecipe = (): Recipe => ({ enabled: false, shaped: true, grid: Array(9).fill(""), count: 1 });
+const emptyRecipe = (): Recipe => ({ enabled: false, kind: "crafting", shaped: true, grid: Array(9).fill(""), count: 1, experience: 0.1, cookingTime: 200 });
 
 type Sel = { kind: "block" | "item"; index: number } | null;
 
@@ -24,6 +18,19 @@ export default function ContentTab({ project }: { project: Project }) {
   const [sel, setSel] = useState<Sel>(null);
   const [busy, setBusy] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
+  const [textures, setTextures] = useState<Record<string, string>>({});
+
+  const loadTextures = useCallback(
+    async (c: Content) => {
+      const entries = await Promise.all([
+        ...c.generatedBlocks.map(async (id) => [id, await contentApi.textureGet(project.id, "block", id).catch(() => null)] as const),
+        ...c.generatedItems.map(async (id) => [id, await contentApi.textureGet(project.id, "item", id).catch(() => null)] as const),
+      ]);
+      setTextures(Object.fromEntries(entries.filter(([, b]) => b).map(([id, b]) => [id, `data:image/png;base64,${b}`])));
+    },
+    [project.id],
+  );
 
   useEffect(() => {
     contentApi
@@ -31,13 +38,16 @@ export default function ContentTab({ project }: { project: Project }) {
       .then((c) => {
         setContent(c);
         setSaved(JSON.stringify(c));
+        loadTextures(c);
         if (c.blocks.length) setSel({ kind: "block", index: 0 });
         else if (c.items.length) setSel({ kind: "item", index: 0 });
       })
       .catch((e) => toast(String(e), "error"));
-  }, [project.id]);
+  }, [project.id, loadTextures]);
 
   const dirty = content ? JSON.stringify(content) !== saved : false;
+  const savedContent = useMemo(() => (saved ? (JSON.parse(saved) as Content) : null), [saved]);
+  const savedIds = useMemo(() => [...(savedContent?.generatedBlocks ?? []), ...(savedContent?.generatedItems ?? [])], [savedContent]);
 
   async function save() {
     if (!content) return;
@@ -46,6 +56,7 @@ export default function ContentTab({ project }: { project: Project }) {
       const r = await contentApi.save(project.id, content);
       setContent(r.content);
       setSaved(JSON.stringify(r.content));
+      loadTextures(r.content);
       if (r.registration === "ok" || r.registration === "added") {
         setHint(null);
         toast(r.registration === "added" ? "Gespeichert – die Hauptklasse wurde einmalig ergänzt." : "Gespeichert, Code und Dateien erzeugt.", "success");
@@ -60,7 +71,6 @@ export default function ContentTab({ project }: { project: Project }) {
     }
   }
 
-  // Strg+S speichert
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
@@ -73,6 +83,16 @@ export default function ContentTab({ project }: { project: Project }) {
   });
 
   const allIds = useMemo(() => (content ? [...content.blocks.map((b) => b.id), ...content.items.map((i) => i.id)] : []), [content]);
+  const own: OwnEntry[] = useMemo(
+    () =>
+      content
+        ? [
+            ...content.blocks.map((b) => ({ id: b.id, name: b.nameDe || b.nameEn || b.id, kind: "block" as const, texture: textures[b.id] })),
+            ...content.items.map((i) => ({ id: i.id, name: i.nameDe || i.nameEn || i.id, kind: "item" as const, texture: textures[i.id] })),
+          ]
+        : [],
+    [content, textures],
+  );
 
   function uniqueId(base: string) {
     let id = base;
@@ -81,24 +101,24 @@ export default function ContentTab({ project }: { project: Project }) {
     return id;
   }
 
-  function addBlock() {
+  function addBlock(from?: BlockDef) {
     if (!content) return;
-    const b: BlockDef = {
-      id: uniqueId("neuer_block"), nameDe: "Neuer Block", nameEn: "New Block", material: "stone", hardness: 1.5, resistance: 6,
-      light: 0, tool: "pickaxe", tier: "wood", recipe: emptyRecipe(),
-    };
+    const b: BlockDef = from
+      ? { ...structuredClone(from), id: uniqueId(`${from.id}_kopie`), nameDe: `${from.nameDe} (Kopie)`, nameEn: `${from.nameEn} (Copy)` }
+      : { id: uniqueId("neuer_block"), nameDe: "Neuer Block", nameEn: "New Block", material: "stone", hardness: 1.5, resistance: 6, light: 0, tool: "pickaxe", tier: "wood", recipe: emptyRecipe() };
     setContent({ ...content, blocks: [...content.blocks, b] });
     setSel({ kind: "block", index: content.blocks.length });
+    setFilter("");
   }
 
-  function addItem() {
+  function addItem(from?: ItemDef) {
     if (!content) return;
-    const i: ItemDef = {
-      id: uniqueId("neues_item"), nameDe: "Neues Item", nameEn: "New Item", stackSize: 64, rarity: "common", food: false,
-      nutrition: 4, saturation: 0.3, recipe: emptyRecipe(),
-    };
+    const i: ItemDef = from
+      ? { ...structuredClone(from), id: uniqueId(`${from.id}_kopie`), nameDe: `${from.nameDe} (Kopie)`, nameEn: `${from.nameEn} (Copy)` }
+      : { id: uniqueId("neues_item"), nameDe: "Neues Item", nameEn: "New Item", stackSize: 64, rarity: "common", food: false, nutrition: 4, saturation: 0.3, recipe: emptyRecipe() };
     setContent({ ...content, items: [...content.items, i] });
     setSel({ kind: "item", index: content.items.length });
+    setFilter("");
   }
 
   function remove() {
@@ -114,46 +134,75 @@ export default function ContentTab({ project }: { project: Project }) {
 
   const block = sel?.kind === "block" ? content.blocks[sel.index] : undefined;
   const item = sel?.kind === "item" ? content.items[sel.index] : undefined;
-  const savedIds = (JSON.parse(saved || "{}") as Content).generatedBlocks?.concat((JSON.parse(saved || "{}") as Content).generatedItems ?? []) ?? [];
+  const current = block ?? item;
+  const q = filter.trim().toLowerCase();
+  const matches = (d: { id: string; nameDe: string; nameEn: string }) => !q || `${d.id} ${d.nameDe} ${d.nameEn}`.toLowerCase().includes(q);
 
-  const updBlock = (patch: Partial<BlockDef>) =>
-    setContent({ ...content, blocks: content.blocks.map((b, i) => (i === sel!.index ? { ...b, ...patch } : b)) });
-  const updItem = (patch: Partial<ItemDef>) =>
-    setContent({ ...content, items: content.items.map((b, i) => (i === sel!.index ? { ...b, ...patch } : b)) });
+  const updBlock = (patch: Partial<BlockDef>) => setContent({ ...content, blocks: content.blocks.map((b, i) => (i === sel!.index ? { ...b, ...patch } : b)) });
+  const updItem = (patch: Partial<ItemDef>) => setContent({ ...content, items: content.items.map((b, i) => (i === sel!.index ? { ...b, ...patch } : b)) });
 
-  const suggestions = [...allIds.map((id) => `${project.modId}:${id}`), ...VANILLA];
+  const entryIcon = (kind: "block" | "item", id: string, name: string) => {
+    const key = `own:${id}`;
+    return (
+      <McIcon
+        icon={kind === "block" ? { kind: "cube", top: key, side: key } : { kind: "flat", tex: key }}
+        textures={textures[id] ? { [key]: textures[id] } : undefined}
+        size={24}
+        fallback={name}
+      />
+    );
+  };
 
   return (
     <div className="content">
       <aside className="content-list">
-        <div className="content-list-head">
-          <span>Blöcke</span>
-          <button className="icon-btn" onClick={addBlock} aria-label="Block hinzufügen" data-tip="Block hinzufügen">
-            <PlusIcon size={15} />
-          </button>
+        <div className="content-list-search">
+          <div className="search">
+            <SearchIcon size={13} />
+            <label htmlFor="cfilter" className="sr-only">
+              Inhalte durchsuchen
+            </label>
+            <input id="cfilter" placeholder="Inhalte durchsuchen …" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          </div>
         </div>
-        {content.blocks.map((b, i) => (
-          <button key={`b${i}`} className={sel?.kind === "block" && sel.index === i ? "entry active" : "entry"} onClick={() => setSel({ kind: "block", index: i })}>
-            <span className="entry-icon block" />
-            <span className="entry-name">{b.nameDe || b.id}</span>
-            <span className="entry-id mono">{b.id}</span>
-          </button>
-        ))}
-        {content.blocks.length === 0 && <p className="muted small pad">Noch keine Blöcke.</p>}
-        <div className="content-list-head">
-          <span>Items</span>
-          <button className="icon-btn" onClick={addItem} aria-label="Item hinzufügen" data-tip="Item hinzufügen">
-            <PlusIcon size={15} />
-          </button>
+        <div className="content-list-scroll">
+          <div className="content-list-head">
+            <span>Blöcke · {content.blocks.length}</span>
+            <button className="icon-btn" onClick={() => addBlock()} aria-label="Block hinzufügen" data-tip="Block hinzufügen">
+              <PlusIcon size={15} />
+            </button>
+          </div>
+          {content.blocks.map((b, i) =>
+            matches(b) ? (
+              <button key={`b${i}`} className={sel?.kind === "block" && sel.index === i ? "entry active" : "entry"} onClick={() => setSel({ kind: "block", index: i })}>
+                {entryIcon("block", b.id, b.nameDe || b.id)}
+                <span className="entry-text">
+                  <span className="entry-name">{b.nameDe || b.id}</span>
+                  <span className="entry-id">{b.id}</span>
+                </span>
+              </button>
+            ) : null,
+          )}
+          {content.blocks.length === 0 && <p className="muted small pad">Noch keine Blöcke.</p>}
+          <div className="content-list-head">
+            <span>Items · {content.items.length}</span>
+            <button className="icon-btn" onClick={() => addItem()} aria-label="Item hinzufügen" data-tip="Item hinzufügen">
+              <PlusIcon size={15} />
+            </button>
+          </div>
+          {content.items.map((it, i) =>
+            matches(it) ? (
+              <button key={`i${i}`} className={sel?.kind === "item" && sel.index === i ? "entry active" : "entry"} onClick={() => setSel({ kind: "item", index: i })}>
+                {entryIcon("item", it.id, it.nameDe || it.id)}
+                <span className="entry-text">
+                  <span className="entry-name">{it.nameDe || it.id}</span>
+                  <span className="entry-id">{it.id}</span>
+                </span>
+              </button>
+            ) : null,
+          )}
+          {content.items.length === 0 && <p className="muted small pad">Noch keine Items.</p>}
         </div>
-        {content.items.map((it, i) => (
-          <button key={`i${i}`} className={sel?.kind === "item" && sel.index === i ? "entry active" : "entry"} onClick={() => setSel({ kind: "item", index: i })}>
-            <span className="entry-icon item" />
-            <span className="entry-name">{it.nameDe || it.id}</span>
-            <span className="entry-id mono">{it.id}</span>
-          </button>
-        ))}
-        {content.items.length === 0 && <p className="muted small pad">Noch keine Items.</p>}
         <div className="content-save">
           <button className={busy ? "btn primary full loading" : "btn primary full"} disabled={busy || (!dirty && content.generatorVersion > 0)} onClick={save}>
             {dirty ? "Speichern & Code erzeugen" : "Alles gespeichert"}
@@ -167,14 +216,16 @@ export default function ContentTab({ project }: { project: Project }) {
           <div className="callout warn">
             <div>
               <div className="callout-title">Einmaliger Schritt nötig</div>
-              <div className="small mono" style={{ userSelect: "text" }}>{hint}</div>
+              <div className="small mono" style={{ userSelect: "text" }}>
+                {hint}
+              </div>
             </div>
           </div>
         )}
-        {!block && !item ? (
+        {!current ? (
           <div className="content-empty">
             <div className="empty-icon">
-              <CubeIcon size={28} />
+              <CubeIcon size={26} />
             </div>
             <h2>Blöcke &amp; Items ohne Code</h2>
             <p className="muted">
@@ -182,10 +233,10 @@ export default function ContentTab({ project }: { project: Project }) {
               Minecraft {project.mcVersion}.
             </p>
             <div className="row center">
-              <button className="btn primary" onClick={addBlock}>
+              <button className="btn primary" onClick={() => addBlock()}>
                 <PlusIcon size={15} /> Block
               </button>
-              <button className="btn" onClick={addItem}>
+              <button className="btn" onClick={() => addItem()}>
                 <PlusIcon size={15} /> Item
               </button>
             </div>
@@ -194,16 +245,24 @@ export default function ContentTab({ project }: { project: Project }) {
           <div className="editor-grid" key={`${sel!.kind}-${sel!.index}`}>
             <div className="panel form-panel">
               <div className="panel-head">
-                <div className="panel-title-lg">{sel!.kind === "block" ? "Block" : "Item"}</div>
-                <button className="icon-btn danger" onClick={remove} aria-label="Entfernen" data-tip="Entfernen">
-                  <TrashIcon size={15} />
-                </button>
+                <div className="row">
+                  {entryIcon(sel!.kind, current.id, current.nameDe)}
+                  <div className="panel-title-lg">{sel!.kind === "block" ? "Block" : "Item"}</div>
+                </div>
+                <div className="row gap-6">
+                  <button className="icon-btn" onClick={() => (block ? addBlock(block) : addItem(item))} aria-label="Duplizieren" data-tip="Duplizieren">
+                    <CopyIcon size={15} />
+                  </button>
+                  <button className="icon-btn danger" onClick={remove} aria-label="Entfernen" data-tip="Entfernen">
+                    <TrashIcon size={15} />
+                  </button>
+                </div>
               </div>
               <div className="form-grid">
-                <Field label="ID" hint={savedIds.includes((block ?? item)!.id) ? "ändern löscht die alten Dateien" : "Kleinbuchstaben, _"}>
+                <Field label="ID" hint={savedIds.includes(current.id) ? "ändern löscht die alten Dateien" : "Kleinbuchstaben, _"}>
                   <input
                     className="input mono"
-                    value={(block ?? item)!.id}
+                    value={current.id}
                     onChange={(e) => {
                       const v = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_");
                       block ? updBlock({ id: v }) : updItem({ id: v });
@@ -211,13 +270,13 @@ export default function ContentTab({ project }: { project: Project }) {
                   />
                 </Field>
                 <Field label="Vollständige ID">
-                  <input className="input mono" readOnly value={`${project.modId}:${(block ?? item)!.id}`} />
+                  <input className="input mono" readOnly value={`${project.modId}:${current.id}`} />
                 </Field>
                 <Field label="Name (Deutsch)">
-                  <input className="input" value={(block ?? item)!.nameDe} onChange={(e) => (block ? updBlock({ nameDe: e.target.value }) : updItem({ nameDe: e.target.value }))} />
+                  <input className="input" value={current.nameDe} onChange={(e) => (block ? updBlock({ nameDe: e.target.value }) : updItem({ nameDe: e.target.value }))} />
                 </Field>
                 <Field label="Name (Englisch)">
-                  <input className="input" value={(block ?? item)!.nameEn} onChange={(e) => (block ? updBlock({ nameEn: e.target.value }) : updItem({ nameEn: e.target.value }))} />
+                  <input className="input" value={current.nameEn} onChange={(e) => (block ? updBlock({ nameEn: e.target.value }) : updItem({ nameEn: e.target.value }))} />
                 </Field>
 
                 {block && (
@@ -280,7 +339,7 @@ export default function ContentTab({ project }: { project: Project }) {
                         <option value="epic">Episch (lila)</option>
                       </select>
                     </Field>
-                    <div className="span-2 toggle-row">
+                    <div className="span-2 toggle-row" style={{ flexDirection: "row" }}>
                       <Toggle label="Essbar" checked={item.food} onChange={(v) => updItem({ food: v })} />
                       <span>Essbar</span>
                     </div>
@@ -299,16 +358,23 @@ export default function ContentTab({ project }: { project: Project }) {
               </div>
 
               <RecipeEditor
-                recipe={(block ?? item)!.recipe}
-                suggestions={suggestions}
+                project={project}
+                recipe={current.recipe}
+                own={own}
+                resultId={`${project.modId}:${current.id}`}
                 onChange={(recipe) => (block ? updBlock({ recipe }) : updItem({ recipe }))}
               />
             </div>
 
             <div className="panel texture-panel">
               <div className="panel-title-lg">Textur</div>
-              {savedIds.includes((block ?? item)!.id) ? (
-                <PixelEditor projectId={project.id} kind={sel!.kind} id={(block ?? item)!.id} />
+              {savedIds.includes(current.id) ? (
+                <PixelEditor
+                  projectId={project.id}
+                  kind={sel!.kind}
+                  id={current.id}
+                  onSaved={(dataUrl) => setTextures((t) => ({ ...t, [current.id]: dataUrl }))}
+                />
               ) : (
                 <div className="texture-wait">
                   <SparkIcon size={20} />
@@ -337,56 +403,135 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-function RecipeEditor({ recipe, suggestions, onChange }: { recipe: Recipe; suggestions: string[]; onChange: (r: Recipe) => void }) {
-  const grid = recipe.grid.length === 9 ? recipe.grid : Array(9).fill("");
+function RecipeEditor({
+  project,
+  recipe,
+  own,
+  resultId,
+  onChange,
+}: {
+  project: Project;
+  recipe: Recipe;
+  own: OwnEntry[];
+  resultId: string;
+  onChange: (r: Recipe) => void;
+}) {
+  const grid = recipe.grid?.length === 9 ? recipe.grid : Array(9).fill("");
+  const kind = recipe.kind ?? "crafting";
+  const [picking, setPicking] = useState<number | null>(null);
+  const { catalog } = useCatalog(project.mcVersion, recipe.enabled);
+  const mode = kind === "smelting" ? "smelting" : recipe.shaped ? "shaped" : "shapeless";
+  const cells = kind === "smelting" ? [0] : [0, 1, 2, 3, 4, 5, 6, 7, 8];
+  const resultInfo = resolveItem(resultId, catalog, own, project.modId);
+
+  const setCell = (i: number, v: string) => {
+    const g = [...grid];
+    g[i] = v;
+    onChange({ ...recipe, grid: g });
+  };
+
   return (
     <div className="recipe">
       <div className="recipe-head">
-        <Toggle label="Rezept" checked={recipe.enabled} onChange={(v) => onChange({ ...recipe, enabled: v, grid })} />
+        <Toggle label="Rezept" checked={recipe.enabled} onChange={(v) => onChange({ ...recipe, enabled: v, grid, kind })} />
         <span className="panel-title-lg">Rezept</span>
         {recipe.enabled && (
           <Segmented
             label="Rezeptart"
-            value={recipe.shaped ? "shaped" : "shapeless"}
-            onChange={(v) => onChange({ ...recipe, shaped: v === "shaped" })}
+            value={mode}
+            onChange={(v) => onChange({ ...recipe, grid, kind: v === "smelting" ? "smelting" : "crafting", shaped: v !== "shapeless" })}
             options={[
-              { value: "shaped", label: "Mit Form" },
+              { value: "shaped", label: "Werkbank" },
               { value: "shapeless", label: "Ohne Form" },
+              { value: "smelting", label: "Ofen" },
             ]}
           />
         )}
       </div>
       {recipe.enabled && (
         <div className="recipe-body">
-          <datalist id="item-suggestions">
-            {suggestions.map((s) => (
-              <option key={s} value={s} />
-            ))}
-          </datalist>
-          <div className="craft-grid">
-            {grid.map((cell, i) => (
-              <input
-                key={i}
-                className={cell ? "craft-cell filled mono" : "craft-cell mono"}
-                list="item-suggestions"
-                value={cell}
-                placeholder="leer"
-                title={cell || undefined}
-                aria-label={`Feld ${i + 1}`}
-                onChange={(e) => {
-                  const g = [...grid];
-                  g[i] = e.target.value.trim().toLowerCase();
-                  onChange({ ...recipe, grid: g });
-                }}
-              />
-            ))}
+          <div className={kind === "smelting" ? "craft-grid one" : "craft-grid"}>
+            {cells.map((i) => {
+              const id = grid[i];
+              const info = resolveItem(id, catalog, own, project.modId);
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  className={id ? "slot-btn filled" : "slot-btn"}
+                  title={id ? `${info.name}\n${id}` : "Item wählen"}
+                  aria-label={id ? `Feld ${i + 1}: ${info.name}` : `Feld ${i + 1}: leer`}
+                  onClick={() => setPicking(i)}
+                >
+                  {id ? (
+                    <McIcon icon={info.icon} textures={info.textures} size={34} fallback={info.name} />
+                  ) : (
+                    <span className="slot-plus">
+                      <PlusIcon size={14} />
+                    </span>
+                  )}
+                  {id && (
+                    <span
+                      role="button"
+                      className="slot-clear"
+                      aria-label="Leeren"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCell(i, "");
+                      }}
+                    >
+                      <CloseIcon size={9} />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
-          <span className="craft-arrow">→</span>
           <div className="craft-result">
-            <div className="field-label">Anzahl</div>
-            <input className="input" type="number" min={1} max={64} value={recipe.count} onChange={(e) => onChange({ ...recipe, count: Number(e.target.value) })} />
+            <svg className="craft-arrow" width="28" height="20" viewBox="0 0 28 20" aria-hidden="true">
+              <path d="M2 10h22M17 3l7 7-7 7" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <div className="result-slot" title={resultInfo.name}>
+              <McIcon icon={resultInfo.icon} textures={resultInfo.textures} size={40} fallback={resultInfo.name} />
+              {kind !== "smelting" && recipe.count > 1 && <span className="result-count">{recipe.count}</span>}
+            </div>
+          </div>
+          <div className="recipe-options">
+            {kind === "smelting" ? (
+              <>
+                <Field label="Erfahrung">
+                  <input className="input" type="number" min={0} step={0.1} value={recipe.experience ?? 0.1} onChange={(e) => onChange({ ...recipe, experience: Number(e.target.value) })} />
+                </Field>
+                <Field label="Dauer (Sekunden)">
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={Math.round((recipe.cookingTime ?? 200) / 20)}
+                    onChange={(e) => onChange({ ...recipe, cookingTime: Math.max(1, Number(e.target.value)) * 20 })}
+                  />
+                </Field>
+              </>
+            ) : (
+              <Field label="Anzahl">
+                <input className="input" type="number" min={1} max={64} value={recipe.count} onChange={(e) => onChange({ ...recipe, count: Number(e.target.value) })} />
+              </Field>
+            )}
           </div>
         </div>
+      )}
+      {picking !== null && (
+        <ItemPicker
+          mcVersion={project.mcVersion}
+          modId={project.modId}
+          own={own}
+          onClose={() => setPicking(null)}
+          onPick={(id) => {
+            setCell(picking, id);
+            setPicking(null);
+          }}
+        />
       )}
     </div>
   );

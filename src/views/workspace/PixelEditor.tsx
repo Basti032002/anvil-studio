@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { contentApi } from "../../api";
+import { BucketIcon, EraserIcon, GridToggleIcon, MirrorIcon, PencilIcon, PipetteIcon, RedoIcon, UndoIcon } from "../../icons";
 import { toast } from "../../state";
 
 const SIZE = 16;
@@ -9,7 +10,7 @@ const PALETTE = [
 ];
 
 type Tool = "pencil" | "eraser" | "fill" | "picker";
-type Props = { projectId: string; kind: "block" | "item"; id: string };
+type Props = { projectId: string; kind: "block" | "item"; id: string; onSaved?: (dataUrl: string) => void };
 
 function hexToRgba(hex: string): [number, number, number, number] {
   const n = parseInt(hex.slice(1), 16);
@@ -19,7 +20,7 @@ function rgbaToHex(r: number, g: number, b: number) {
   return "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
 
-export default function PixelEditor({ projectId, kind, id }: Props) {
+export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const pixels = useRef<Uint8ClampedArray>(new Uint8ClampedArray(SIZE * SIZE * 4));
   const undo = useRef<Uint8ClampedArray[]>([]);
@@ -79,8 +80,10 @@ export default function PixelEditor({ projectId, kind, id }: Props) {
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(async () => {
       try {
-        await contentApi.textureSave(projectId, kind, id, canvas.current!.toDataURL("image/png"));
+        const url = canvas.current!.toDataURL("image/png");
+        await contentApi.textureSave(projectId, kind, id, url);
         setStatus("saved");
+        onSaved?.(url);
       } catch (e) {
         toast(`Textur nicht gespeichert: ${e}`, "error");
         setStatus("idle");
@@ -187,11 +190,11 @@ export default function PixelEditor({ projectId, kind, id }: Props) {
     img.src = URL.createObjectURL(file);
   }
 
-  const tools: { t: Tool; label: string; key: string; icon: string }[] = [
-    { t: "pencil", label: "Stift", key: "B", icon: "✎" },
-    { t: "eraser", label: "Radierer", key: "E", icon: "⌫" },
-    { t: "fill", label: "Füllen", key: "G", icon: "◧" },
-    { t: "picker", label: "Pipette", key: "I", icon: "◉" },
+  const tools: { t: Tool; label: string; key: string; icon: React.ReactNode }[] = [
+    { t: "pencil", label: "Stift", key: "B", icon: <PencilIcon size={16} /> },
+    { t: "eraser", label: "Radierer", key: "E", icon: <EraserIcon size={16} /> },
+    { t: "fill", label: "Füllen", key: "G", icon: <BucketIcon size={16} /> },
+    { t: "picker", label: "Pipette", key: "I", icon: <PipetteIcon size={16} /> },
   ];
 
   return (
@@ -200,25 +203,25 @@ export default function PixelEditor({ projectId, kind, id }: Props) {
         <div className="pixel-tools" role="toolbar" aria-label="Werkzeuge">
           {tools.map((x) => (
             <button key={x.t} className={tool === x.t ? "ptool active" : "ptool"} onClick={() => setTool(x.t)} aria-label={x.label} data-tip={`${x.label} · ${x.key}`}>
-              <span aria-hidden="true">{x.icon}</span>
+              {x.icon}
             </button>
           ))}
           <span className="ptool-sep" />
           <button className={mirror ? "ptool active" : "ptool"} onClick={() => setMirror(!mirror)} aria-label="Spiegeln" data-tip="Spiegeln">
-            <span aria-hidden="true">⇋</span>
+            <MirrorIcon size={16} />
           </button>
           <button className={grid ? "ptool active" : "ptool"} onClick={() => setGrid(!grid)} aria-label="Raster" data-tip="Raster">
-            <span aria-hidden="true">#</span>
+            <GridToggleIcon size={16} />
           </button>
           <span className="ptool-sep" />
           <button className="ptool" onClick={() => history(undo, redo)} aria-label="Rückgängig" data-tip="Rückgängig · Strg Z">
-            <span aria-hidden="true">↶</span>
+            <UndoIcon size={16} />
           </button>
           <button className="ptool" onClick={() => history(redo, undo)} aria-label="Wiederholen" data-tip="Wiederholen · Strg Y">
-            <span aria-hidden="true">↷</span>
+            <RedoIcon size={16} />
           </button>
         </div>
-        <div className={grid ? "pixel-canvas-wrap grid" : "pixel-canvas-wrap"}>
+        <div className={grid ? "pixel-canvas-wrap show-grid" : "pixel-canvas-wrap"}>
           <canvas
             ref={canvas}
             width={SIZE}

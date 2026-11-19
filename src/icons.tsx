@@ -167,3 +167,61 @@ export const CommandIcon = ({ size }: P) => (
     <path d="M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3z" />
   </Svg>
 );
+export const PencilIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z" />
+    <path d="M14.5 6.5l3 3" />
+  </Svg>
+);
+export const EraserIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M8 20h12M5.5 15.5l9-9a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L12 19H8.5z" />
+    <path d="M9.5 11.5l5 5" />
+  </Svg>
+);
+export const BucketIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M5 11l7-7 7 7-7 7z" />
+    <path d="M5 11h14M20 15s1.5 2 1.5 3a1.5 1.5 0 0 1-3 0c0-1 1.5-3 1.5-3z" />
+  </Svg>
+);
+export const PipetteIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M14 7l3 3M4 20l1.5-.5L16 9l-1-1L4.5 18.5zM15 5.5l1.8-1.8a2.1 2.1 0 0 1 3 3L18 8.5z" />
+  </Svg>
+);
+export const MirrorIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M12 3v18M9 7L4 17h5zM15 7l5 10h-5z" />
+  </Svg>
+);
+export const GridToggleIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <rect x="4" y="4" width="16" height="16" rx="2" />
+    <path d="M4 9.3h16M4 14.6h16M9.3 4v16M14.6 4v16" />
+  </Svg>
+);
+export const UndoIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M9 14L4 9l5-5" />
+    <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+  </Svg>
+);
+export const RedoIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M15 14l5-5-5-5" />
+    <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
+  </Svg>
+);
+export const CopyIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <rect x="8" y="8" width="12" height="12" rx="2" />
+    <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+  </Svg>
+);
+export const SunIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+  </Svg>
+);
