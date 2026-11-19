@@ -2,7 +2,7 @@
 
 Ein Windows-Launcher zum **Erstellen, Bauen und Testen von Minecraft-Mods**. Projekt anlegen, auf **▶ Testen** klicken und Minecraft startet mit deiner Mod.
 
-> Status: Phase 1 (MVP) · NeoForge · Minecraft 1.21.1 / 1.21.4 / 1.21.8 / 1.21.10
+> Version 0.2 · NeoForge · Minecraft 1.21.1 / 1.21.4 / 1.21.8 / 1.21.10
 
 ## Funktionen
 
@@ -14,6 +14,9 @@ Ein Windows-Launcher zum **Erstellen, Bauen und Testen von Minecraft-Mods**. Pro
 - **Crash-Reports:** Der neueste Absturz wird zusammengefasst angezeigt und kann geöffnet werden
 - **Export:** `.jar` bauen und im Explorer anzeigen
 - **IDE:** Projekt per Knopf in VS Code oder IntelliJ IDEA öffnen
+- **Studio-Oberfläche:** Eigene Titelleiste, Activity-Bar, Statusleiste, Startkonfigurationen wie in einer IDE, Animationen (abschaltbar)
+- **Einstellungen:** Update-Verhalten, Standard-Editor, Speicherort, Darstellung
+- **Automatische Updates:** Anvil Studio sucht auf GitHub-Releases nach neuen Versionen (bei jedem Start, täglich, wöchentlich oder nur manuell). Es lädt den Installer, prüft die SHA-256-Prüfsumme, installiert und startet neu. Läuft gerade ein Spiel oder Build, wartet es damit.
 
 ## Geplant (Phase 2)
 
@@ -41,7 +44,18 @@ cd src-tauri
 ANVIL_TEST_MDK=/pfad/zu/MDK-1.21.1-ModDevGradle-main.zip cargo test
 ```
 
-Bei jedem Push auf `main` baut GitHub Actions den Windows-Installer. Er liegt dann als Artefakt am Workflow-Lauf.
+Bei jedem Push auf `main` baut GitHub Actions den Windows-Installer (als Artefakt am Workflow-Lauf).
+
+## Neue Version veröffentlichen
+
+```bash
+node scripts/version.mjs 0.3.0      # setzt die Version in allen Dateien
+git commit -am "Version 0.3.0"
+git tag v0.3.0
+git push --follow-tags
+```
+
+Der Tag löst den Workflow aus. Der baut den Installer und erstellt das GitHub-Release, und laufende Anvil-Studio-Installationen finden das Update dann von selbst. Tags mit Bindestrich (z. B. `v0.3.0-beta.1`) werden als Vorabversion veröffentlicht und nur angeboten, wenn „Vorabversionen“ in den Einstellungen aktiv ist.
 
 ## Aufbau
 
@@ -55,9 +69,11 @@ src-tauri/src/
   template.rs        MDK laden, entpacken, umbenennen
   runner.rs          gradlew starten/stoppen, Ausgabe als Events streamen
   util.rs            IDE/Explorer öffnen, Jars & Crash-Reports finden
+  settings.rs        Einstellungen (settings.json)
+  updater.rs         GitHub-Releases prüfen, Installer laden & starten
 ```
 
-Daten liegen unter `%APPDATA%\net.forgehost.anvilstudio` (Projektliste, JDK). Projekte landen standardmäßig unter `Dokumente\Anvil Studio`.
+Daten liegen unter `%APPDATA%\net.forgehost.anvilstudio` (Projektliste, Einstellungen, JDK). Projekte landen standardmäßig unter `Dokumente\Anvil Studio`.
 
 ## Hinweise
 

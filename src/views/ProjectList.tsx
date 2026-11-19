@@ -1,75 +1,92 @@
 import { useState } from "react";
-import { Project, TASK_LABELS, Task, timeAgo } from "../api";
-import { PlayIcon, PlusIcon } from "../icons";
+import { JavaStatus, Project, TASK_LABELS, Task, timeAgo } from "../api";
+import { AlertIcon, CubeIcon, PlayIcon, PlusIcon, SearchIcon, TrashIcon } from "../icons";
 import { useAllRunning } from "../store";
 
-// Farbige Kopfzeile pro Projekt, abgeleitet aus der Mod-ID
-const HEADER_COLORS = ["#2B2147", "#3A2A17", "#173A2E", "#1B2E45", "#3D1E2A", "#2E3517"];
-function headerColor(id: string) {
+// Farbton pro Projekt aus der Mod-ID – für den Pixel-Kopf der Karte
+const HUES = [265, 32, 150, 210, 340, 90, 190];
+function hue(id: string) {
   let h = 0;
   for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return HEADER_COLORS[h % HEADER_COLORS.length];
+  return HUES[h % HUES.length];
 }
 
 type Props = {
   projects: Project[];
+  java: JavaStatus | null;
+  javaProgress: string | null;
+  onInstallJava: () => void;
   onOpen: (id: string) => void;
   onTest: (id: string) => void;
   onNew: () => void;
   onRemove: (id: string) => void;
 };
 
-export default function ProjectList({ projects, onOpen, onTest, onNew, onRemove }: Props) {
+export default function ProjectList({ projects, java, javaProgress, onInstallJava, onOpen, onTest, onNew, onRemove }: Props) {
   const [query, setQuery] = useState("");
   const running = useAllRunning();
-  const shown = projects.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()));
+  const shown = projects.filter((p) => `${p.name} ${p.modId}`.toLowerCase().includes(query.toLowerCase()));
 
   return (
     <div className="page">
       <header className="page-header">
         <div>
+          <div className="eyebrow">Werkstatt</div>
           <h1>Projekte</h1>
-          <p className="muted">Erstelle Mods, baue sie und teste sie mit einem Klick im Spiel.</p>
         </div>
         <div className="row">
-          <label htmlFor="search" className="sr-only">
-            Projekte durchsuchen
-          </label>
-          <input
-            id="search"
-            className="input"
-            type="search"
-            placeholder="Projekte durchsuchen …"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
+          <div className="search">
+            <SearchIcon size={15} />
+            <label htmlFor="search" className="sr-only">
+              Projekte durchsuchen
+            </label>
+            <input id="search" type="search" placeholder="Suchen …" value={query} onChange={(e) => setQuery(e.target.value)} />
+          </div>
           <button className="btn primary" onClick={onNew}>
-            <PlusIcon /> Neues Projekt
+            <PlusIcon size={15} /> Neues Projekt
           </button>
         </div>
       </header>
 
+      {java && !java.installed && (
+        <div className="callout warn">
+          <AlertIcon size={18} />
+          <div className="grow">
+            <div className="callout-title">Java 21 fehlt noch</div>
+            <div className="muted small">Wird zum Bauen und Testen gebraucht. Anvil Studio lädt Eclipse Temurin herunter (ca. 190 MB).</div>
+          </div>
+          <button className="btn primary" onClick={onInstallJava} disabled={!!javaProgress}>
+            {javaProgress ?? "Jetzt installieren"}
+          </button>
+        </div>
+      )}
+
       {projects.length === 0 ? (
         <div className="empty">
-          <h2>Noch keine Projekte</h2>
+          <div className="empty-icon">
+            <CubeIcon size={28} />
+          </div>
+          <h2>Deine Werkbank ist noch leer</h2>
           <p className="muted">Lege deine erste Mod an. Anvil Studio lädt die NeoForge-Vorlage und richtet alles ein.</p>
           <button className="btn primary" onClick={onNew}>
-            <PlusIcon /> Erste Mod erstellen
+            <PlusIcon size={15} /> Erste Mod erstellen
           </button>
         </div>
       ) : (
         <div className="grid">
-          {shown.map((p) => {
+          {shown.map((p, i) => {
             const run = running[p.id];
             return (
-              <article className="card" key={p.id}>
-                <div className="card-head" style={{ background: headerColor(p.modId) }}>
-                  <span>{p.name}</span>
-                </div>
+              <article className="card" key={p.id} style={{ "--hue": hue(p.modId), "--i": i } as React.CSSProperties}>
+                <button className="card-head" onClick={() => onOpen(p.id)} aria-label={`${p.name} öffnen`}>
+                  <span className="card-pixels" aria-hidden="true" />
+                  <span className="card-title">{p.name}</span>
+                  {run && <span className="card-live">läuft</span>}
+                </button>
                 <div className="card-body">
-                  <div className="row wrap">
+                  <div className="row wrap gap-6">
                     <span className="tag">NeoForge</span>
-                    <span className="tag">MC {p.mcVersion}</span>
+                    <span className="tag">{p.mcVersion}</span>
                     <span className="tag mono">{p.modId}</span>
                   </div>
                   <Status project={p} runningTask={run?.task as Task | undefined} />
@@ -78,21 +95,24 @@ export default function ProjectList({ projects, onOpen, onTest, onNew, onRemove 
                       Öffnen
                     </button>
                     <button className="btn primary grow" onClick={() => onTest(p.id)} disabled={!!run}>
-                      <PlayIcon /> Testen
+                      <PlayIcon size={12} /> Testen
+                    </button>
+                    <button
+                      className="icon-btn"
+                      aria-label="Aus Liste entfernen"
+                      data-tip="Aus Liste entfernen"
+                      onClick={() => {
+                        if (confirm(`„${p.name}“ aus der Liste entfernen? Die Dateien bleiben erhalten.`)) onRemove(p.id);
+                      }}
+                    >
+                      <TrashIcon size={15} />
                     </button>
                   </div>
-                  <button
-                    className="link subtle"
-                    onClick={() => {
-                      if (confirm(`„${p.name}“ aus der Liste entfernen? Die Dateien bleiben erhalten.`)) onRemove(p.id);
-                    }}
-                  >
-                    Aus Liste entfernen
-                  </button>
                 </div>
               </article>
             );
           })}
+          {shown.length === 0 && <p className="muted">Keine Treffer für „{query}“.</p>}
         </div>
       )}
     </div>
@@ -103,7 +123,7 @@ function Status({ project, runningTask }: { project: Project; runningTask?: Task
   if (runningTask) {
     return (
       <div className="status">
-        <span className="dot run" /> {TASK_LABELS[runningTask] ?? runningTask} läuft …
+        <span className="pulse-dot" /> {TASK_LABELS[runningTask] ?? runningTask} läuft …
       </div>
     );
   }

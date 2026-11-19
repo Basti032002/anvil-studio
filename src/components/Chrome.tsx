@@ -1,0 +1,242 @@
+// Fensterrahmen: eigene Titelleiste, Activity-Bar, Statusleiste und Toasts.
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useEffect, useState } from "react";
+import { JavaStatus } from "../api";
+import {
+  AlertIcon,
+  AnvilLogo,
+  CheckIcon,
+  CloseIcon,
+  CoffeeIcon,
+  CubeIcon,
+  DownloadIcon,
+  GearIcon,
+  GridIcon,
+  MaximizeIcon,
+  MinimizeIcon,
+  PlusIcon,
+  SparkIcon,
+} from "../icons";
+import { dismissToast, useAppVersion, useToasts, useUpdate } from "../state";
+import { useAllRunning } from "../store";
+
+export function TitleBar({ subtitle }: { subtitle?: string }) {
+  const win = getCurrentWindow();
+  const [maximized, setMaximized] = useState(false);
+
+  useEffect(() => {
+    win.isMaximized().then(setMaximized).catch(() => {});
+    const un = win.onResized(() => win.isMaximized().then(setMaximized).catch(() => {}));
+    return () => {
+      un.then((f) => f());
+    };
+  }, []);
+
+  return (
+    <header className="titlebar" data-tauri-drag-region>
+      <div className="titlebar-brand" data-tauri-drag-region>
+        <span className="titlebar-logo">
+          <AnvilLogo size={13} />
+        </span>
+        <span data-tauri-drag-region>Anvil Studio</span>
+        {subtitle && (
+          <span className="titlebar-sub" data-tauri-drag-region>
+            — {subtitle}
+          </span>
+        )}
+      </div>
+      <div className="window-controls">
+        <button aria-label="Minimieren" onClick={() => win.minimize()}>
+          <MinimizeIcon />
+        </button>
+        <button aria-label={maximized ? "Wiederherstellen" : "Maximieren"} onClick={() => win.toggleMaximize()}>
+          <MaximizeIcon />
+        </button>
+        <button aria-label="Schließen" className="close" onClick={() => win.close()}>
+          <CloseIcon />
+        </button>
+      </div>
+    </header>
+  );
+}
+
+export type NavKey = "projects" | "workspace" | "new" | "settings";
+
+export function ActivityBar({
+  active,
+  hasWorkspace,
+  onNavigate,
+  settingsBadge,
+}: {
+  active: NavKey;
+  hasWorkspace: boolean;
+  onNavigate: (k: NavKey) => void;
+  settingsBadge: boolean;
+}) {
+  const top: { key: NavKey; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
+    { key: "projects", label: "Projekte", icon: <GridIcon size={19} /> },
+    { key: "workspace", label: "Arbeitsbereich", icon: <CubeIcon size={19} />, disabled: !hasWorkspace },
+    { key: "new", label: "Neues Projekt", icon: <PlusIcon size={19} /> },
+  ];
+  const topIndex = top.findIndex((t) => t.key === active);
+
+  return (
+    <nav className="activitybar" aria-label="Hauptnavigation">
+      <div className="activity-group">
+        {topIndex >= 0 && <span className="activity-indicator" style={{ transform: `translateY(${topIndex * 48}px)` }} />}
+        {top.map((t) => (
+          <button
+            key={t.key}
+            className={active === t.key ? "activity-item active" : "activity-item"}
+            aria-label={t.label}
+            data-tip={t.label}
+            disabled={t.disabled}
+            onClick={() => onNavigate(t.key)}
+          >
+            {t.icon}
+          </button>
+        ))}
+      </div>
+      <div className="activity-group bottom">
+        {active === "settings" && <span className="activity-indicator" />}
+        <button
+          className={active === "settings" ? "activity-item active" : "activity-item"}
+          aria-label="Einstellungen"
+          data-tip="Einstellungen"
+          onClick={() => onNavigate("settings")}
+        >
+          <GearIcon size={19} />
+          {settingsBadge && <span className="activity-badge" />}
+        </button>
+      </div>
+    </nav>
+  );
+}
+
+export function StatusBar({
+  java,
+  javaProgress,
+  onInstallJava,
+  onOpenSettings,
+}: {
+  java: JavaStatus | null;
+  javaProgress: string | null;
+  onInstallJava: () => void;
+  onOpenSettings: () => void;
+}) {
+  const running = Object.values(useAllRunning());
+  const update = useUpdate();
+  const version = useAppVersion();
+
+  return (
+    <footer className="statusbar">
+      <div className="status-left">
+        {java?.installed ? (
+          <span className="status-item">
+            <CoffeeIcon size={13} /> Java {java.version}
+          </span>
+        ) : (
+          <button className="status-item warn" onClick={onInstallJava} disabled={!!javaProgress}>
+            <AlertIcon size={13} /> {javaProgress ?? "Java fehlt – jetzt installieren"}
+          </button>
+        )}
+        {running.length > 0 && (
+          <span className="status-item live">
+            <span className="pulse-dot" /> {running.length === 1 ? `${running[0].task} läuft` : `${running.length} Prozesse laufen`}
+          </span>
+        )}
+      </div>
+      <div className="status-right">
+        {update.phase === "available" && (
+          <button className="status-item accent" onClick={onOpenSettings}>
+            <DownloadIcon size={13} /> Update {update.info?.version}
+            {update.waitingForIdle ? " · wartet bis nichts mehr läuft" : ""}
+          </button>
+        )}
+        {update.phase === "downloading" && (
+          <span className="status-item accent">
+            <DownloadIcon size={13} /> Update wird geladen {update.progress !== undefined ? `${Math.round(update.progress * 100)} %` : "…"}
+          </span>
+        )}
+        {update.phase === "installing" && <span className="status-item accent">Wird installiert – Neustart …</span>}
+        {update.phase === "checking" && <span className="status-item">Suche nach Updates …</span>}
+        <span className="status-item">NeoForge</span>
+        <span className="status-item">v{version}</span>
+      </div>
+    </footer>
+  );
+}
+
+export function Toasts() {
+  const toasts = useToasts();
+  return (
+    <div className="toasts" role="status" aria-live="polite">
+      {toasts.map((t) => (
+        <div key={t.id} className={`toast ${t.kind} ${t.leaving ? "leaving" : ""}`}>
+          <span className="toast-icon">{t.kind === "error" ? <AlertIcon size={15} /> : t.kind === "success" ? <CheckIcon size={15} /> : <SparkIcon size={15} />}</span>
+          <span className="toast-text">{t.text}</span>
+          <button aria-label="Schließen" className="toast-close" onClick={() => dismissToast(t.id)}>
+            <CloseIcon size={11} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function Toggle({
+  checked,
+  onChange,
+  label,
+  id,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+  id?: string;
+}) {
+  return (
+    <button
+      id={id}
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={checked ? "toggle on" : "toggle"}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="toggle-knob" />
+    </button>
+  );
+}
+
+export function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+  label,
+}: {
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (v: T) => void;
+  label: string;
+}) {
+  const index = Math.max(0, options.findIndex((o) => o.value === value));
+  return (
+    <div className="segmented" role="radiogroup" aria-label={label} style={{ "--count": options.length } as React.CSSProperties}>
+      <span className="segmented-thumb" style={{ transform: `translateX(${index * 100}%)` }} />
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={o.value === value}
+          className={o.value === value ? "segmented-item active" : "segmented-item"}
+          onClick={() => onChange(o.value)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}

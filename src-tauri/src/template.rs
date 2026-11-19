@@ -56,6 +56,10 @@ pub fn supported_versions(app: AppHandle) -> Result<serde_json::Value, String> {
 }
 
 fn default_parent(app: &AppHandle) -> Result<PathBuf, String> {
+    let configured = crate::settings::load(app).projects_dir;
+    if !configured.trim().is_empty() {
+        return Ok(PathBuf::from(configured.trim()));
+    }
     let docs = app
         .path()
         .document_dir()

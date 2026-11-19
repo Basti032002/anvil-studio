@@ -1,7 +1,9 @@
 mod java;
 mod projects;
 mod runner;
+mod settings;
 mod template;
+mod updater;
 mod util;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -22,6 +24,10 @@ pub fn run() {
             util::open_path,
             util::list_jars,
             util::latest_crash_report,
+            settings::get_settings,
+            settings::save_settings,
+            updater::check_update,
+            updater::install_update,
         ])
         .run(tauri::generate_context!())
         .expect("Anvil Studio konnte nicht gestartet werden");

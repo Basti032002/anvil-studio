@@ -1,150 +1,120 @@
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
 import { api, JavaStatus, Project } from "./api";
-import { AnvilLogo } from "./icons";
-import { useAllRunning } from "./store";
+import { ActivityBar, NavKey, StatusBar, TitleBar, Toasts } from "./components/Chrome";
+import { toast, useUpdate } from "./state";
 import NewProject from "./views/NewProject";
 import ProjectList from "./views/ProjectList";
+import Settings from "./views/Settings";
 import Workspace from "./views/Workspace";
 
-type View = { name: "list" } | { name: "new" } | { name: "workspace"; id: string; autoRun?: boolean };
-
 export default function App() {
-  const [view, setView] = useState<View>({ name: "list" });
+  const [nav, setNav] = useState<NavKey>("projects");
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [autoRun, setAutoRun] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [java, setJava] = useState<JavaStatus | null>(null);
   const [javaProgress, setJavaProgress] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const running = useAllRunning();
+  const update = useUpdate();
 
   const reload = useCallback(async () => {
     try {
       setProjects(await api.listProjects());
       setJava(await api.javaStatus());
     } catch (e) {
-      setError(String(e));
+      toast(String(e), "error");
     }
   }, []);
 
   useEffect(() => {
     reload();
-  }, [reload]);
-
-  // Liste aktualisieren, wenn ein Lauf endet (Status „Build erfolgreich“ usw.)
-  useEffect(() => {
-    const un = listen("run-exit", () => reload());
-    return () => {
-      un.then((f) => f());
-    };
-  }, [reload]);
-
-  useEffect(() => {
-    const un = listen<{ phase: string; downloaded: number; total: number | null }>("java-progress", (e) => {
+    const a = listen("run-exit", () => reload());
+    const b = listen<{ phase: string; downloaded: number; total: number | null }>("java-progress", (e) => {
       const { phase, downloaded, total } = e.payload;
       const mb = (n: number) => (n / 1024 / 1024).toFixed(0);
-      if (phase === "download") setJavaProgress(total ? `Lade … ${mb(downloaded)} / ${mb(total)} MB` : "Lade …");
-      else if (phase === "extract") setJavaProgress("Entpacke …");
-      else setJavaProgress(null);
+      if (phase === "download") setJavaProgress(total ? `Java wird geladen … ${mb(downloaded)} / ${mb(total)} MB` : "Java wird geladen …");
+      else if (phase === "extract") setJavaProgress("Java wird entpackt …");
     });
     return () => {
-      un.then((f) => f());
+      a.then((f) => f());
+      b.then((f) => f());
     };
-  }, []);
+  }, [reload]);
 
   async function installJava() {
-    setError(null);
     setJavaProgress("Starte Download …");
     try {
       setJava(await api.installJava());
+      toast("Java 21 ist installiert.", "success");
     } catch (e) {
-      setError(`Java-Installation fehlgeschlagen: ${e}`);
+      toast(`Java-Installation fehlgeschlagen: ${e}`, "error");
     } finally {
       setJavaProgress(null);
     }
   }
 
-  const current = view.name === "workspace" ? projects.find((p) => p.id === view.id) : undefined;
-  const runningCount = Object.keys(running).length;
+  function openWorkspace(id: string, run = false) {
+    setWorkspaceId(id);
+    setAutoRun(run);
+    setNav("workspace");
+  }
+
+  const current = workspaceId ? projects.find((p) => p.id === workspaceId) : undefined;
+  const subtitle = nav === "workspace" && current ? current.name : nav === "settings" ? "Einstellungen" : undefined;
 
   return (
-    <div className="app">
-      <nav className="sidebar">
-        <div className="brand">
-          <AnvilLogo />
-          <span>Anvil Studio</span>
-        </div>
-        <div className="nav">
-          <button className={view.name !== "new" ? "nav-item active" : "nav-item"} onClick={() => setView({ name: "list" })}>
-            Projekte
-          </button>
-          <button className={view.name === "new" ? "nav-item active" : "nav-item"} onClick={() => setView({ name: "new" })}>
-            Neues Projekt
-          </button>
-        </div>
-
-        <div className="env-box">
-          <div className="env-title">Umgebung</div>
-          <div className="env-row">
-            <span>Java {java?.version ?? 21} (Temurin)</span>
-            {java?.installed ? <span className="ok">bereit</span> : <span className="warn">fehlt</span>}
+    <div className="shell">
+      <TitleBar subtitle={subtitle} />
+      <div className="shell-body">
+        <ActivityBar
+          active={nav}
+          hasWorkspace={!!current}
+          onNavigate={setNav}
+          settingsBadge={update.phase === "available"}
+        />
+        <main className="main">
+          {/* key sorgt für die Einblend-Animation bei jedem Ansichtswechsel */}
+          <div className="view" key={nav === "workspace" ? `ws-${current?.id}` : nav}>
+            {nav === "projects" && (
+              <ProjectList
+                projects={projects}
+                java={java}
+                javaProgress={javaProgress}
+                onInstallJava={installJava}
+                onOpen={(id) => openWorkspace(id)}
+                onTest={(id) => openWorkspace(id, true)}
+                onNew={() => setNav("new")}
+                onRemove={async (id) => {
+                  await api.removeProject(id);
+                  if (id === workspaceId) setWorkspaceId(null);
+                  reload();
+                }}
+              />
+            )}
+            {nav === "new" && (
+              <NewProject
+                onCancel={() => setNav("projects")}
+                onCreated={async (p) => {
+                  await reload();
+                  toast(`„${p.name}“ wurde erstellt.`, "success");
+                  openWorkspace(p.id);
+                }}
+              />
+            )}
+            {nav === "workspace" && current && (
+              <Workspace project={current} javaReady={!!java?.installed} autoRun={autoRun} onBack={() => setNav("projects")} />
+            )}
+            {nav === "workspace" && !current && (
+              <div className="page">
+                <p className="muted">Kein Projekt geöffnet.</p>
+              </div>
+            )}
+            {nav === "settings" && <Settings />}
           </div>
-          {java && !java.installed && (
-            <button className="btn small primary" disabled={!!javaProgress} onClick={installJava}>
-              {javaProgress ?? "Java installieren"}
-            </button>
-          )}
-          <div className="env-row">
-            <span>Laufende Prozesse</span>
-            <span className={runningCount ? "ok" : ""}>{runningCount}</span>
-          </div>
-          <div className="env-row">
-            <span>Testkonto</span>
-            <span>Offline · Dev</span>
-          </div>
-        </div>
-      </nav>
-
-      <main className="content">
-        {error && (
-          <div className="banner error" role="alert">
-            <span>{error}</span>
-            <button className="link" onClick={() => setError(null)}>
-              Schließen
-            </button>
-          </div>
-        )}
-        {view.name === "list" && (
-          <ProjectList
-            projects={projects}
-            onOpen={(id) => setView({ name: "workspace", id })}
-            onTest={(id) => setView({ name: "workspace", id, autoRun: true })}
-            onNew={() => setView({ name: "new" })}
-            onRemove={async (id) => {
-              await api.removeProject(id);
-              reload();
-            }}
-          />
-        )}
-        {view.name === "new" && (
-          <NewProject
-            onCancel={() => setView({ name: "list" })}
-            onCreated={async (p) => {
-              await reload();
-              setView({ name: "workspace", id: p.id });
-            }}
-          />
-        )}
-        {view.name === "workspace" && current && (
-          <Workspace
-            key={current.id}
-            project={current}
-            javaReady={!!java?.installed}
-            autoRun={view.autoRun}
-            onBack={() => setView({ name: "list" })}
-            onError={setError}
-          />
-        )}
-      </main>
+        </main>
+      </div>
+      <StatusBar java={java} javaProgress={javaProgress} onInstallJava={installJava} onOpenSettings={() => setNav("settings")} />
+      <Toasts />
     </div>
   );
 }

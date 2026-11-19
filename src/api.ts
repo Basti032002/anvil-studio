@@ -64,3 +64,38 @@ export function timeAgo(seconds: number): string {
   if (diff < 86400) return `vor ${Math.floor(diff / 3600)} Std.`;
   return `vor ${Math.floor(diff / 86400)} Tagen`;
 }
+
+// ---- Einstellungen & Updates -------------------------------------------
+
+export type UpdateCheck = "startup" | "daily" | "weekly" | "manual";
+
+export type Settings = {
+  updateCheck: UpdateCheck;
+  autoInstall: boolean;
+  includePrerelease: boolean;
+  defaultIde: "code" | "idea";
+  projectsDir: string;
+  reduceMotion: boolean;
+  consoleFontSize: number;
+  lastUpdateCheck: number;
+};
+
+export type UpdateInfo = {
+  version: string;
+  current: string;
+  notes: string;
+  publishedAt: string;
+  htmlUrl: string;
+  assetUrl: string;
+  assetName: string;
+  size: number;
+  digest: string | null;
+  prerelease: boolean;
+};
+
+export const settingsApi = {
+  get: () => invoke<Settings>("get_settings"),
+  save: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
+  checkUpdate: (includePrerelease: boolean) => invoke<UpdateInfo | null>("check_update", { includePrerelease }),
+  installUpdate: (info: UpdateInfo) => invoke<void>("install_update", { info }),
+};
