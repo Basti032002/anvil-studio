@@ -51,11 +51,10 @@ Bei jedem Push auf `main` baut GitHub Actions den Windows-Installer (als Artefak
 ```bash
 node scripts/version.mjs 0.3.0      # setzt die Version in allen Dateien
 git commit -am "Version 0.3.0"
-git tag v0.3.0
-git push --follow-tags
+git push
 ```
 
-Der Tag löst den Workflow aus. Der baut den Installer und erstellt das GitHub-Release, und laufende Anvil-Studio-Installationen finden das Update dann von selbst. Tags mit Bindestrich (z. B. `v0.3.0-beta.1`) werden als Vorabversion veröffentlicht und nur angeboten, wenn „Vorabversionen“ in den Einstellungen aktiv ist.
+Sobald auf `main` eine Version ankommt, für die es noch kein Release gibt, baut der Workflow den Installer und erstellt das GitHub-Release mit dem Tag `v0.3.0`. Laufende Anvil-Studio-Installationen finden das Update dann von selbst. Versionen mit Bindestrich (z. B. `0.3.0-beta.1`) werden als Vorabversion veröffentlicht und nur angeboten, wenn „Vorabversionen“ in den Einstellungen aktiv ist.
 
 ## Aufbau
 

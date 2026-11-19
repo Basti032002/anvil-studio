@@ -1,5 +1,5 @@
 // Setzt die Version überall gleichzeitig:  node scripts/version.mjs 0.3.0
-// Danach: git commit -am "Version 0.3.0" && git tag v0.3.0 && git push --follow-tags
+// Danach: git commit -am "Version 0.3.0" && git push  → GitHub erstellt das Release automatisch
 import { readFileSync, writeFileSync } from "node:fs";
 
 const version = process.argv[2];
@@ -38,5 +38,4 @@ edit("package-lock.json", (s) => {
 
 console.log(`\nVersion ${version} gesetzt. Release veröffentlichen:\n`);
 console.log(`  git commit -am "Version ${version}"`);
-console.log(`  git tag v${version}`);
-console.log(`  git push --follow-tags`);
+console.log(`  git push`);
