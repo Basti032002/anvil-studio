@@ -1,5 +1,9 @@
 mod admin;
+mod content;
+mod fsx;
 mod java;
+mod migrate;
+mod mods;
 mod projects;
 mod runner;
 mod settings;
@@ -10,10 +14,33 @@ mod util;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(runner::Runner::default())
+        .setup(|app| {
+            if let Err(e) = migrate::run(app.handle()) {
+                eprintln!("Migration fehlgeschlagen: {e}");
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             projects::list_projects,
             projects::remove_project,
+            projects::import_project,
+            content::content_load,
+            content::content_save,
+            content::texture_get,
+            content::texture_save,
+            content::project_open,
+            mods::mods_search,
+            mods::mods_list,
+            mods::mods_add,
+            mods::mods_remove,
+            mods::mods_toggle,
+            mods::mods_update,
+            fsx::files_list,
+            fsx::files_read,
+            fsx::files_write,
+            fsx::files_create,
             java::java_status,
             java::install_java,
             template::supported_versions,

@@ -99,6 +99,20 @@ pub async fn run_task(
     let mut paths = vec![java.join("bin")];
     paths.extend(std::env::split_paths(&path_var));
 
+    // Mitgeladene Mods (Modrinth) vor dem Start in run/mods kopieren
+    if task == "runClient" || task == "runServer" {
+        let side = if task == "runServer" { "server" } else { "client" };
+        match crate::mods::sync(&project, side) {
+            Ok(n) if n > 0 => {
+                let _ = app.emit("log", LogLine { project_id: project_id.clone(), stream: "system", line: format!("▶ {n} zusätzliche Mods werden mitgeladen") });
+            }
+            Ok(_) => {}
+            Err(e) => {
+                let _ = app.emit("log", LogLine { project_id: project_id.clone(), stream: "system", line: format!("⚠ Mods konnten nicht kopiert werden: {e}") });
+            }
+        }
+    }
+
     let mut cmd = Command::new(&wrapper);
     cmd.args(&args)
         .current_dir(&dir)

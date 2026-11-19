@@ -23,4 +23,6 @@ tar = "0.4"
 walkdir = "2"
 sha2 = "0.10"
 base64 = "0.22"
+regex = "1"
+tauri-plugin-dialog = "2"
 keyring = { version = "3", features = ["windows-native", "apple-native"] }

@@ -12,7 +12,7 @@ const OLD_PACKAGE: &str = "com.example.examplemod";
 const OLD_MODID: &str = "examplemod";
 const OLD_CLASS: &str = "ExampleMod";
 
-const GRADLE_SNIPPET: &str = r#"
+pub const GRADLE_SNIPPET: &str = r#"
 
 // --- Anvil Studio -------------------------------------------------------
 // Ermöglicht "Testen → direkt in Welt laden". Anvil Studio übergibt den
