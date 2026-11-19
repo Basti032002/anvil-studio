@@ -88,7 +88,7 @@ jobs:
           if [ -n "$PREV" ] && git cat-file -e "$PREV" 2>/dev/null; then RANGE="$PREV..HEAD"; else RANGE="-n 15 HEAD"; fi
           {
             echo "## Änderungen"
-            git log $RANGE --no-merges --pretty='- %s' | grep -vE '^- Version [0-9]' || true
+            git log $RANGE --no-merges --pretty='- %s' | grep -vE '^- Version [0-9.]+(-[0-9A-Za-z.]+)?$' || true
             echo
             echo "<sub>Commit: $GITHUB_SHA</sub>"
           } > notes.md
