@@ -191,6 +191,11 @@ function UpdatesSection({ onAccount }: { onAccount: () => void }) {
           ) : u.phase === "error" ? (
             <>
               <div className="update-title">{u.info ? `Update auf ${u.info.version} fehlgeschlagen` : "Update-Prüfung fehlgeschlagen"}</div>
+              {u.info && (
+                <div className="muted small">
+                  Die Verbindung zu GitHub wurde unterbrochen – oft durch Virenscanner, Firewall oder DNS-Filter. Du kannst den Installer auch im Browser laden.
+                </div>
+              )}
               <div className="error-text small" style={{ whiteSpace: "pre-wrap", userSelect: "text" }}>{u.error}</div>
             </>
           ) : (
@@ -200,6 +205,11 @@ function UpdatesSection({ onAccount }: { onAccount: () => void }) {
             </>
           )}
         </div>
+        {u.phase === "error" && u.info && (
+          <button className="btn" onClick={() => openGithub(u.info!.htmlUrl)}>
+            Im Browser herunterladen
+          </button>
+        )}
         {u.phase === "available" || (u.phase === "error" && u.info) ? (
           <button className="btn primary" onClick={installUpdate}>
             <DownloadIcon size={15} /> {u.phase === "error" ? "Erneut versuchen" : "Jetzt installieren"}
