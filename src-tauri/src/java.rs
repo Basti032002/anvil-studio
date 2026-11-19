@@ -1,6 +1,5 @@
 use crate::util::{data_dir, err};
 use serde::Serialize;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter};
 
@@ -81,23 +80,15 @@ pub async fn install_java(app: AppHandle) -> Result<JavaStatus, String> {
     };
 
     emit("download", 0, None);
-    let mut resp = reqwest::get(&url).await.map_err(err)?;
-    if !resp.status().is_success() {
-        return Err(format!("Download fehlgeschlagen: HTTP {}", resp.status()));
-    }
-    let total = resp.content_length();
-    let mut file = std::fs::File::create(&archive).map_err(err)?;
-    let mut downloaded = 0u64;
-    let mut last_emit = 0u64;
-    while let Some(chunk) = resp.chunk().await.map_err(err)? {
-        file.write_all(&chunk).map_err(err)?;
-        downloaded += chunk.len() as u64;
-        if downloaded - last_emit > 2 * 1024 * 1024 {
-            last_emit = downloaded;
-            emit("download", downloaded, total);
-        }
-    }
-    drop(file);
+    let app_p = app.clone();
+    let progress = move |downloaded: u64, total: Option<u64>| {
+        let _ = app_p.emit("java-progress", JavaProgress { phase: "download".into(), downloaded, total });
+    };
+    crate::util::download(&url, &archive, &progress)
+        .await
+        .map_err(|e| format!("Java-Download fehlgeschlagen: {e}"))?;
+    let downloaded = std::fs::metadata(&archive).map(|m| m.len()).unwrap_or(0);
+    let total = Some(downloaded);
 
     emit("extract", downloaded, total);
     let target = jdk_dir(&app)?;

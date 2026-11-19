@@ -136,8 +136,8 @@ function UpdatesSection() {
             </>
           ) : u.phase === "error" ? (
             <>
-              <div className="update-title">Update-Prüfung fehlgeschlagen</div>
-              <div className="error-text small">{u.error}</div>
+              <div className="update-title">{u.info ? `Update auf ${u.info.version} fehlgeschlagen` : "Update-Prüfung fehlgeschlagen"}</div>
+              <div className="error-text small" style={{ whiteSpace: "pre-wrap", userSelect: "text" }}>{u.error}</div>
             </>
           ) : (
             <>
@@ -146,9 +146,9 @@ function UpdatesSection() {
             </>
           )}
         </div>
-        {u.phase === "available" ? (
+        {u.phase === "available" || (u.phase === "error" && u.info) ? (
           <button className="btn primary" onClick={installUpdate}>
-            <DownloadIcon size={15} /> Jetzt installieren
+            <DownloadIcon size={15} /> {u.phase === "error" ? "Erneut versuchen" : "Jetzt installieren"}
           </button>
         ) : (
           <button className="btn" onClick={() => checkForUpdate(true)} disabled={busy}>

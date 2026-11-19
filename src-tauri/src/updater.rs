@@ -11,9 +11,7 @@
 
 use crate::util::{err, now};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
-use std::io::Write;
 use tauri::{AppHandle, Emitter};
 
 const RELEASE_REPO: &str = "Basti032002/anvil-studio-releases";
@@ -71,10 +69,7 @@ fn compare(a: &Version, b: &Version) -> Ordering {
 }
 
 fn client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .user_agent(concat!("AnvilStudio/", env!("CARGO_PKG_VERSION")))
-        .build()
-        .map_err(err)
+    crate::util::http_client()
 }
 
 #[tauri::command]
@@ -87,7 +82,7 @@ pub async fn check_update(app: AppHandle, include_prerelease: bool) -> Result<Op
         .header("Accept", "application/vnd.github+json")
         .send()
         .await
-        .map_err(|e| format!("GitHub nicht erreichbar: {e}"))?;
+        .map_err(|e| format!("GitHub nicht erreichbar: {}", crate::util::net_err(&e)))?;
     if resp.status().as_u16() == 404 {
         return Err(format!("Release-Repo {RELEASE_REPO} nicht gefunden oder nicht öffentlich."));
     }
@@ -164,29 +159,16 @@ pub async fn install_update(app: AppHandle, info: UpdateInfo) -> Result<(), Stri
     std::fs::create_dir_all(&dir).map_err(err)?;
     let installer = dir.join(&safe_name);
 
-    let mut resp = client()?.get(&info.asset_url).send().await.map_err(err)?;
-    if !resp.status().is_success() {
-        return Err(format!("Download fehlgeschlagen: HTTP {}", resp.status()));
-    }
-    let total = resp.content_length();
-    let mut file = std::fs::File::create(&installer).map_err(err)?;
-    let mut hasher = Sha256::new();
-    let mut downloaded = 0u64;
-    let mut last = 0u64;
-    while let Some(chunk) = resp.chunk().await.map_err(err)? {
-        file.write_all(&chunk).map_err(err)?;
-        hasher.update(&chunk);
-        downloaded += chunk.len() as u64;
-        if downloaded - last > 256 * 1024 {
-            last = downloaded;
-            let _ = app.emit("update-progress", Progress { downloaded, total });
-        }
-    }
-    drop(file);
-    let _ = app.emit("update-progress", Progress { downloaded, total });
+    let app_p = app.clone();
+    let progress = move |downloaded: u64, total: Option<u64>| {
+        let _ = app_p.emit("update-progress", Progress { downloaded, total });
+    };
+    crate::util::download(&info.asset_url, &installer, &progress)
+        .await
+        .map_err(|e| format!("Download fehlgeschlagen: {e}"))?;
 
     if let Some(expected) = info.digest.as_deref().and_then(|d| d.strip_prefix("sha256:")) {
-        let actual: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
+        let actual = crate::util::sha256_file(&installer)?;
         if !actual.eq_ignore_ascii_case(expected) {
             let _ = std::fs::remove_file(&installer);
             return Err("Prüfsumme stimmt nicht – die Datei wurde verworfen.".into());

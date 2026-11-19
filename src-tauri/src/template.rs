@@ -122,10 +122,14 @@ async fn download_mdk(version: &str) -> Result<Vec<u8>, String> {
     let mut last_error = String::new();
     for branch in ["main", "master"] {
         let url = format!("https://github.com/NeoForgeMDKs/{repo}/archive/refs/heads/{branch}.zip");
-        match reqwest::get(&url).await {
-            Ok(r) if r.status().is_success() => return Ok(r.bytes().await.map_err(err)?.to_vec()),
-            Ok(r) => last_error = format!("HTTP {}", r.status()),
-            Err(e) => last_error = e.to_string(),
+        let tmp = std::env::temp_dir().join(format!("anvil-mdk-{version}-{branch}.zip"));
+        match crate::util::download(&url, &tmp, &|_, _| {}).await {
+            Ok(()) => {
+                let bytes = std::fs::read(&tmp).map_err(err)?;
+                let _ = std::fs::remove_file(&tmp);
+                return Ok(bytes);
+            }
+            Err(e) => last_error = e,
         }
     }
     Err(format!("Die NeoForge-Vorlage für {version} konnte nicht geladen werden ({last_error}). Besteht eine Internetverbindung?"))

@@ -181,3 +181,95 @@ pub fn latest_crash_report(app: AppHandle, project_id: String) -> Result<Option<
         }
     }
 }
+
+// ---- Netzwerk -------------------------------------------------------------
+
+/// Fehlermeldung inklusive aller Ursachen (reqwest zeigt sonst nur
+/// „error sending request for url …“ ohne den eigentlichen Grund).
+pub fn net_err(e: &(dyn std::error::Error + 'static)) -> String {
+    let mut msg = e.to_string();
+    let mut src = e.source();
+    while let Some(s) = src {
+        let part = s.to_string();
+        if !msg.contains(&part) {
+            msg.push_str(" → ");
+            msg.push_str(&part);
+        }
+        src = s.source();
+    }
+    msg
+}
+
+pub fn http_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .user_agent(concat!("AnvilStudio/", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| net_err(&e))
+}
+
+async fn download_reqwest(url: &str, target: &Path, progress: &(dyn Fn(u64, Option<u64>) + Send + Sync)) -> Result<(), String> {
+    use std::io::Write;
+    let mut resp = http_client()?.get(url).send().await.map_err(|e| net_err(&e))?;
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    let total = resp.content_length();
+    let mut file = std::fs::File::create(target).map_err(err)?;
+    let mut done = 0u64;
+    let mut last = 0u64;
+    while let Some(chunk) = resp.chunk().await.map_err(|e| net_err(&e))? {
+        file.write_all(&chunk).map_err(err)?;
+        done += chunk.len() as u64;
+        if done - last > 512 * 1024 {
+            last = done;
+            progress(done, total);
+        }
+    }
+    progress(done, total);
+    Ok(())
+}
+
+/// Lädt eine Datei herunter. Klappt das mit dem eingebauten Client nicht
+/// (z. B. wegen Virenscanner/Proxy), wird unter Windows curl.exe benutzt,
+/// das die Netzwerk- und Zertifikatseinstellungen von Windows verwendet.
+pub async fn download(url: &str, target: &Path, progress: &(dyn Fn(u64, Option<u64>) + Send + Sync)) -> Result<(), String> {
+    let first = download_reqwest(url, target, progress).await;
+    let Err(first_err) = first else { return Ok(()) };
+    if !cfg!(windows) {
+        return Err(first_err);
+    }
+    let _ = std::fs::remove_file(target);
+    let url = url.to_string();
+    let target_c = target.to_path_buf();
+    let out = tauri::async_runtime::spawn_blocking(move || {
+        let mut cmd = Command::new("curl.exe");
+        cmd.args(["-L", "--fail", "--silent", "--show-error", "--retry", "2", "-o"])
+            .arg(&target_c)
+            .arg(&url);
+        hide_window_std(&mut cmd).output()
+    })
+    .await
+    .map_err(err)?;
+    match out {
+        Ok(o) if o.status.success() && target.exists() => {
+            let size = std::fs::metadata(target).map(|m| m.len()).unwrap_or(0);
+            progress(size, Some(size));
+            Ok(())
+        }
+        Ok(o) => Err(format!(
+            "{first_err}\nAuch curl.exe ist gescheitert: {}",
+            String::from_utf8_lossy(&o.stderr).trim()
+        )),
+        Err(e) => Err(format!("{first_err}\ncurl.exe konnte nicht gestartet werden: {e}")),
+    }
+}
+
+/// SHA-256 einer Datei als Hex-String.
+pub fn sha256_file(path: &Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    let mut f = std::fs::File::open(path).map_err(err)?;
+    let mut h = Sha256::new();
+    std::io::copy(&mut f, &mut h).map_err(err)?;
+    Ok(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
