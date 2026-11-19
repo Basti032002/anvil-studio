@@ -1,5 +1,9 @@
 //! Update-System über GitHub-Releases.
 //!
+//! Der Quellcode liegt in einem privaten Repo. Die fertigen Installer werden
+//! deshalb in das öffentliche Repo RELEASE_REPO veröffentlicht, das ohne Login
+//! abgefragt werden kann.
+//!
 //! Ablauf: Releases von GitHub abfragen → neueste passende Version mit
 //! NSIS-Installer finden → herunterladen → SHA-256 gegen die von GitHub
 //! angegebene Prüfsumme vergleichen → Installer im Passiv-Modus starten,
@@ -12,7 +16,7 @@ use std::cmp::Ordering;
 use std::io::Write;
 use tauri::{AppHandle, Emitter};
 
-const REPO: &str = "Basti032002/anvil-studio";
+const RELEASE_REPO: &str = "Basti032002/anvil-studio-releases";
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -79,11 +83,14 @@ pub async fn check_update(app: AppHandle, include_prerelease: bool) -> Result<Op
     let current = parse_version(&current_str).ok_or("Eigene Version unlesbar")?;
 
     let resp = client()?
-        .get(format!("https://api.github.com/repos/{REPO}/releases?per_page=20"))
+        .get(format!("https://api.github.com/repos/{RELEASE_REPO}/releases?per_page=20"))
         .header("Accept", "application/vnd.github+json")
         .send()
         .await
         .map_err(|e| format!("GitHub nicht erreichbar: {e}"))?;
+    if resp.status().as_u16() == 404 {
+        return Err(format!("Release-Repo {RELEASE_REPO} nicht gefunden oder nicht öffentlich."));
+    }
     if resp.status().as_u16() == 403 || resp.status().as_u16() == 429 {
         return Err("GitHub-Limit erreicht – bitte später erneut versuchen.".into());
     }
@@ -141,7 +148,7 @@ pub async fn install_update(app: AppHandle, info: UpdateInfo) -> Result<(), Stri
     if !cfg!(windows) {
         return Err("Automatische Installation gibt es nur unter Windows.".into());
     }
-    if !info.asset_url.starts_with(&format!("https://github.com/{REPO}/releases/download/")) {
+    if !info.asset_url.starts_with(&format!("https://github.com/{RELEASE_REPO}/releases/download/")) {
         return Err("Unerwartete Download-Adresse – Update abgebrochen.".into());
     }
     let safe_name: String = info

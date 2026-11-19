@@ -6,6 +6,10 @@ name: Windows-Build
 #                  seine Updates.
 # Version mit Bindestrich (z. B. 1.2.3-beta.1) → Release als Vorabversion.
 # Ein manuell gepushter Tag v* funktioniert ebenfalls.
+#
+# Releases landen im ÖFFENTLICHEN Repo RELEASE_REPO (dieser Code bleibt privat).
+# Dafür wird das Secret RELEASES_TOKEN gebraucht: ein Fine-grained Token mit
+# „Contents: Read and write“ nur für das Release-Repo.
 on:
   push:
     branches: [main]
@@ -14,13 +18,18 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  RELEASE_REPO: Basti032002/anvil-studio-releases
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # für die Änderungsliste im Release
 
       - name: Version prüfen (Tag = tauri.conf.json)
         if: startsWith(github.ref, 'refs/tags/v')
@@ -55,25 +64,41 @@ jobs:
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/msi/*.msi
 
-      - name: GitHub-Release erstellen (falls neue Version)
+      - name: Release veröffentlichen (falls neue Version)
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
         run: |
-          APP=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          TAG="v$APP"
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::Secret RELEASES_TOKEN fehlt – es wird kein Release veröffentlicht."
+            exit 0
+          fi
           if [[ "$GITHUB_REF" == refs/heads/* && "$GITHUB_REF_NAME" != "main" ]]; then
             echo "Kein Release für Branch $GITHUB_REF_NAME"; exit 0
           fi
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          APP=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          TAG="v$APP"
+          if gh release view "$TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
             echo "Release $TAG existiert bereits – nichts zu tun."; exit 0
           fi
+
+          # Änderungen seit dem letzten Release (dessen Commit steht in der Beschreibung)
+          PREV=$(gh release view --repo "$RELEASE_REPO" --json body --jq .body 2>/dev/null | grep -oE 'Commit: [0-9a-f]{40}' | head -1 | cut -d' ' -f2 || true)
+          if [ -n "$PREV" ] && git cat-file -e "$PREV" 2>/dev/null; then RANGE="$PREV..HEAD"; else RANGE="-n 15 HEAD"; fi
+          {
+            echo "## Änderungen"
+            git log $RANGE --no-merges --pretty='- %s' | grep -vE '^- Version [0-9]' || true
+            echo
+            echo "<sub>Commit: $GITHUB_SHA</sub>"
+          } > notes.md
+          cat notes.md
+
           PRE=""
           if [[ "$APP" == *-* ]]; then PRE="--prerelease"; fi
           gh release create "$TAG" \
             src-tauri/target/release/bundle/nsis/*-setup.exe \
             src-tauri/target/release/bundle/msi/*.msi \
-            --target "$GITHUB_SHA" \
+            --repo "$RELEASE_REPO" \
             --title "Anvil Studio $APP" \
-            --generate-notes $PRE
+            --notes-file notes.md $PRE

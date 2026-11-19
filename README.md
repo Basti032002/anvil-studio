@@ -16,7 +16,7 @@ Ein Windows-Launcher zum **Erstellen, Bauen und Testen von Minecraft-Mods**. Pro
 - **IDE:** Projekt per Knopf in VS Code oder IntelliJ IDEA öffnen
 - **Studio-Oberfläche:** Eigene Titelleiste, Activity-Bar, Statusleiste, Startkonfigurationen wie in einer IDE, Animationen (abschaltbar)
 - **Einstellungen:** Update-Verhalten, Standard-Editor, Speicherort, Darstellung
-- **Automatische Updates:** Anvil Studio sucht auf GitHub-Releases nach neuen Versionen (bei jedem Start, täglich, wöchentlich oder nur manuell). Es lädt den Installer, prüft die SHA-256-Prüfsumme, installiert und startet neu. Läuft gerade ein Spiel oder Build, wartet es damit.
+- **Automatische Updates:** Anvil Studio sucht im öffentlichen Repo [anvil-studio-releases](https://github.com/Basti032002/anvil-studio-releases) nach neuen Versionen (bei jedem Start, täglich, wöchentlich oder nur manuell). Es lädt den Installer, prüft die SHA-256-Prüfsumme, installiert und startet neu. Läuft gerade ein Spiel oder Build, wartet es damit.
 
 ## Geplant (Phase 2)
 
@@ -54,7 +54,7 @@ git commit -am "Version 0.3.0"
 git push
 ```
 
-Sobald auf `main` eine Version ankommt, für die es noch kein Release gibt, baut der Workflow den Installer und erstellt das GitHub-Release mit dem Tag `v0.3.0`. Laufende Anvil-Studio-Installationen finden das Update dann von selbst. Versionen mit Bindestrich (z. B. `0.3.0-beta.1`) werden als Vorabversion veröffentlicht und nur angeboten, wenn „Vorabversionen“ in den Einstellungen aktiv ist.
+Sobald auf `main` eine Version ankommt, für die es noch kein Release gibt, baut der Workflow den Installer und veröffentlicht ihn als Release `v0.3.0` im öffentlichen Repo `Basti032002/anvil-studio-releases`. Der Quellcode bleibt privat. Dafür braucht der Workflow das Secret `RELEASES_TOKEN`, ein Fine-grained Token mit „Contents: Read and write“ nur für das Release-Repo. Laufende Anvil-Studio-Installationen finden das Update dann von selbst. Versionen mit Bindestrich (z. B. `0.3.0-beta.1`) werden als Vorabversion veröffentlicht und nur angeboten, wenn „Vorabversionen“ in den Einstellungen aktiv ist.
 
 ## Aufbau
 
