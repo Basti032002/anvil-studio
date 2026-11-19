@@ -225,3 +225,141 @@ export const SunIcon = ({ size }: P) => (
     <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
   </Svg>
 );
+export const ArrowLeftIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M19 12H5M11 6l-6 6 6 6" />
+  </Svg>
+);
+export const ArrowRightIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M5 12h14M13 6l6 6-6 6" />
+  </Svg>
+);
+export const ExternalIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+  </Svg>
+);
+export const LogoutIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l-4-4 4-4M6 12h10" />
+  </Svg>
+);
+export const SaveIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M5 4h11l3 3v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z" />
+    <path d="M8 4v5h7V4M8 20v-6h8v6" />
+  </Svg>
+);
+export const FileIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+    <path d="M14 3v5h5" />
+  </Svg>
+);
+export const PackageIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
+    <path d="M4 7.5l8 4.5 8-4.5M12 12v9M8 5.3l8 4.5" />
+  </Svg>
+);
+export const WrenchIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M14.5 5.5a4 4 0 0 0 4.9 4.9l-8.6 8.6a2.1 2.1 0 0 1-3-3l8.6-8.6a4 4 0 0 0-1.9-1.9z" />
+    <path d="M14.5 5.5L17 3l1.5 1.5L21 7l-2.5 2.5" />
+  </Svg>
+);
+export const EyeIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+    <circle cx="12" cy="12" r="3" />
+  </Svg>
+);
+export const TagIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z" />
+    <circle cx="7.5" cy="7.5" r="1.5" />
+  </Svg>
+);
+export const UserIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 21a8 8 0 0 1 16 0" />
+  </Svg>
+);
+export const InfoIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v6M12 7.5v.5" />
+  </Svg>
+);
+export const PaletteIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.8 1.6-1.6 0-1.3-1.1-1.5-1.1-2.7 0-1 .8-1.7 1.8-1.7H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z" />
+    <circle cx="7.5" cy="11.5" r="1" />
+    <circle cx="10" cy="7.5" r="1" />
+    <circle cx="15" cy="7.5" r="1" />
+  </Svg>
+);
+export const SwordIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M20 4v4L10 18l-4-4L16 4zM5 15l4 4M4 20l2.5-2.5" />
+  </Svg>
+);
+export const PickaxeIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M4 7c4-4 11-4 15 1-4-2-8-2-11 1zM12 9l8 11" />
+    <path d="M10.5 7.5l3 3" />
+  </Svg>
+);
+export const ChestplateIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M8 3l4 3 4-3 4 3-2 4v10H6V10L4 6z" />
+  </Svg>
+);
+export const LayersIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M12 3l9 5-9 5-9-5z" />
+    <path d="M3 13l9 5 9-5" />
+  </Svg>
+);
+export const GemIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M6 3h12l4 6-10 12L2 9z" />
+    <path d="M2 9h20M9 3l3 18 3-18" />
+  </Svg>
+);
+export const GlobeIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18" />
+  </Svg>
+);
+export const ImageIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <circle cx="9" cy="10" r="2" />
+    <path d="M21 16l-5-5-9 9" />
+  </Svg>
+);
+export const MoonIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" />
+  </Svg>
+);
+export const UploadIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
+  </Svg>
+);
+export const ImportIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M12 3v12M7 10l5 5 5-5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" />
+  </Svg>
+);
+export const BoxIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M3 7l9-4 9 4v10l-9 4-9-4z" />
+    <path d="M3 7l9 4 9-4M12 11v10" />
+  </Svg>
+);

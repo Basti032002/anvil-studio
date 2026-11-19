@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mc: ["1.21.1", "1.21.4", "1.21.10"]
+        mc: ["1.21.1", "1.21.4", "1.21.8", "1.21.10"]
     steps:
       - uses: actions/checkout@v4
 
@@ -80,7 +80,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mc: ["1.21.1", "1.21.4", "1.21.10"]
+        mc: ["1.21.1", "1.21.4", "1.21.8", "1.21.10"]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

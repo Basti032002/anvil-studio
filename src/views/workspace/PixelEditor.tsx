@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { contentApi } from "../../api";
-import { BucketIcon, EraserIcon, GridToggleIcon, MirrorIcon, PencilIcon, PipetteIcon, RedoIcon, UndoIcon } from "../../icons";
+import { BucketIcon, CheckIcon, EraserIcon, GridToggleIcon, MirrorIcon, PencilIcon, PipetteIcon, RedoIcon, TrashIcon, UndoIcon } from "../../icons";
 import { toast } from "../../state";
 
 const SIZE = 16;
@@ -271,9 +271,9 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
               scheduleSave();
             }}
           >
-            Leeren
+            <TrashIcon size={14} /> Leeren
           </button>
-          <div className={`save-state ${status}`}>{status === "saving" ? "Speichert …" : status === "saved" ? "✓ Gespeichert" : " "}</div>
+          <div className={`save-state ${status}`}>{status === "saving" ? "Speichert …" : status === "saved" ? (<><CheckIcon size={12} /> Gespeichert</>) : " "}</div>
         </div>
       </div>
       <div className="pixel-preview">

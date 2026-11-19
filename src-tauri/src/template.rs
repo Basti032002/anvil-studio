@@ -165,10 +165,14 @@ fn extract_strip(bytes: &[u8], target: &Path) -> Result<(), String> {
 }
 
 /// Gradle liest gradle.properties als ISO-8859-1 – Umlaute daher als \uXXXX schreiben.
-fn escape_property(value: &str) -> String {
+pub fn escape_property(value: &str) -> String {
     let mut out = String::new();
     for c in value.chars() {
-        if c.is_ascii() && c != '\\' {
+        if c == '\n' {
+            out.push_str("\\n");
+        } else if c == '\r' {
+            continue;
+        } else if c.is_ascii() && c != '\\' {
             out.push(c);
         } else {
             let mut buf = [0u16; 2];
@@ -180,7 +184,7 @@ fn escape_property(value: &str) -> String {
     out
 }
 
-fn set_properties(file: &Path, values: &[(&str, &str)]) -> Result<(), String> {
+pub fn set_properties(file: &Path, values: &[(&str, &str)]) -> Result<(), String> {
     let content = std::fs::read_to_string(file).map_err(err)?;
     let lines: Vec<String> = content
         .lines()

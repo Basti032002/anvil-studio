@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BlockDef, Content, contentApi, ItemDef, Project, Recipe } from "../../api";
+import { ArmorSlot, BlockDef, Content, contentApi, ItemDef, Project, Recipe } from "../../api";
 import { useCatalog } from "../../catalog";
 import { Segmented, Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
 import McIcon from "../../components/McIcon";
-import { CloseIcon, CopyIcon, CubeIcon, PlusIcon, SearchIcon, SparkIcon, TrashIcon } from "../../icons";
+import { BoxIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TrashIcon } from "../../icons";
 import { toast } from "../../state";
 import PixelEditor from "./PixelEditor";
+import { ArmorForm, BlockExtras, Field, ItemKindSwitch, ToolForm } from "./ContentForms";
+import { armorPreset, newBlock, newItem, normalizeBlock, normalizeItem, SLOT_EN, SLOT_LABEL, variantIds } from "./contentDefaults";
 
-const emptyRecipe = (): Recipe => ({ enabled: false, kind: "crafting", shaped: true, grid: Array(9).fill(""), count: 1, experience: 0.1, cookingTime: 200 });
+const normalize = (c: Content): Content => ({ ...c, blocks: c.blocks.map(normalizeBlock), items: c.items.map(normalizeItem), tabIcon: c.tabIcon ?? "", tabName: c.tabName ?? "" });
 
 type Sel = { kind: "block" | "item"; index: number } | null;
 
@@ -35,7 +37,8 @@ export default function ContentTab({ project }: { project: Project }) {
   useEffect(() => {
     contentApi
       .load(project.id)
-      .then((c) => {
+      .then((raw) => {
+        const c = normalize(raw);
         setContent(c);
         setSaved(JSON.stringify(c));
         loadTextures(c);
@@ -54,9 +57,10 @@ export default function ContentTab({ project }: { project: Project }) {
     setBusy(true);
     try {
       const r = await contentApi.save(project.id, content);
-      setContent(r.content);
-      setSaved(JSON.stringify(r.content));
-      loadTextures(r.content);
+      const c = normalize(r.content);
+      setContent(c);
+      setSaved(JSON.stringify(c));
+      loadTextures(c);
       if (r.registration === "ok" || r.registration === "added") {
         setHint(null);
         toast(r.registration === "added" ? "Gespeichert – die Hauptklasse wurde einmalig ergänzt." : "Gespeichert, Code und Dateien erzeugt.", "success");
@@ -82,12 +86,14 @@ export default function ContentTab({ project }: { project: Project }) {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const allIds = useMemo(() => (content ? [...content.blocks.map((b) => b.id), ...content.items.map((i) => i.id)] : []), [content]);
+  const allIds = useMemo(() => (content ? [...content.blocks.flatMap((b) => variantIds(b).map((v) => v.id)), ...content.items.map((i) => i.id)] : []), [content]);
   const own: OwnEntry[] = useMemo(
     () =>
       content
         ? [
-            ...content.blocks.map((b) => ({ id: b.id, name: b.nameDe || b.nameEn || b.id, kind: "block" as const, texture: textures[b.id] })),
+            ...content.blocks.flatMap((b) =>
+              variantIds(b).map((v) => ({ id: v.id, name: v.name, kind: "block" as const, texture: textures[b.id], shape: v.shape })),
+            ),
             ...content.items.map((i) => ({ id: i.id, name: i.nameDe || i.nameEn || i.id, kind: "item" as const, texture: textures[i.id] })),
           ]
         : [],
@@ -105,20 +111,49 @@ export default function ContentTab({ project }: { project: Project }) {
     if (!content) return;
     const b: BlockDef = from
       ? { ...structuredClone(from), id: uniqueId(`${from.id}_kopie`), nameDe: `${from.nameDe} (Kopie)`, nameEn: `${from.nameEn} (Copy)` }
-      : { id: uniqueId("neuer_block"), nameDe: "Neuer Block", nameEn: "New Block", material: "stone", hardness: 1.5, resistance: 6, light: 0, tool: "pickaxe", tier: "wood", recipe: emptyRecipe() };
+      : newBlock(uniqueId("neuer_block"));
     setContent({ ...content, blocks: [...content.blocks, b] });
     setSel({ kind: "block", index: content.blocks.length });
     setFilter("");
   }
 
-  function addItem(from?: ItemDef) {
+  function addItem(from?: ItemDef, kind: ItemDef["kind"] = "basic") {
     if (!content) return;
+    const base = kind === "tool" ? "neues_werkzeug" : kind === "armor" ? "neue_ruestung" : "neues_item";
     const i: ItemDef = from
       ? { ...structuredClone(from), id: uniqueId(`${from.id}_kopie`), nameDe: `${from.nameDe} (Kopie)`, nameEn: `${from.nameEn} (Copy)` }
-      : { id: uniqueId("neues_item"), nameDe: "Neues Item", nameEn: "New Item", stackSize: 64, rarity: "common", food: false, nutrition: 4, saturation: 0.3, recipe: emptyRecipe() };
+      : newItem(uniqueId(base), kind);
     setContent({ ...content, items: [...content.items, i] });
     setSel({ kind: "item", index: content.items.length });
     setFilter("");
+  }
+
+  function createArmorSet(from: ItemDef) {
+    if (!content) return;
+    const mat = from.armorMaterial || "material";
+    const have = content.items.filter((i) => i.kind === "armor" && i.armorMaterial === mat).map((i) => i.armorSlot);
+    const matName = (from.nameDe || mat).replace(/[- ]?(Helm|Brustpanzer|Hose|Stiefel)$/i, "").trim() || mat;
+    const matEn = (from.nameEn || mat).replace(/[- ]?(Helmet|Chestplate|Leggings|Boots)$/i, "").trim() || mat;
+    const ids = new Set(allIds);
+    const added: ItemDef[] = [];
+    for (const slot of ["helmet", "chestplate", "leggings", "boots"] as ArmorSlot[]) {
+      if (have.includes(slot)) continue;
+      let id = `${mat}_${slot}`;
+      let n = 2;
+      while (ids.has(id)) id = `${mat}_${slot}_${n++}`;
+      ids.add(id);
+      added.push({
+        ...structuredClone(from),
+        id,
+        nameDe: `${matName}-${SLOT_LABEL[slot]}`,
+        nameEn: `${matEn} ${SLOT_EN[slot]}`,
+        armorSlot: slot,
+        defense: armorPreset("iron", slot).defense! + Math.max(0, from.defense - armorPreset("iron", from.armorSlot).defense!),
+        recipe: { ...from.recipe, enabled: false },
+      });
+    }
+    setContent({ ...content, items: [...content.items, ...added] });
+    toast(`${added.length} Rüstungsteile hinzugefügt.`, "success");
   }
 
   function remove() {
@@ -180,15 +215,29 @@ export default function ContentTab({ project }: { project: Project }) {
                   <span className="entry-name">{b.nameDe || b.id}</span>
                   <span className="entry-id">{b.id}</span>
                 </span>
+                {(b.ore.enabled || b.shapes.length > 0) && (
+                  <span className="entry-badges">
+                    {b.ore.enabled && <span className="badge-mini">Erz</span>}
+                    {b.shapes.length > 0 && <span className="badge-mini">+{b.shapes.length}</span>}
+                  </span>
+                )}
               </button>
             ) : null,
           )}
           {content.blocks.length === 0 && <p className="muted small pad">Noch keine Blöcke.</p>}
           <div className="content-list-head">
             <span>Items · {content.items.length}</span>
-            <button className="icon-btn" onClick={() => addItem()} aria-label="Item hinzufügen" data-tip="Item hinzufügen">
-              <PlusIcon size={15} />
-            </button>
+            <span className="row gap-2">
+              <button className="icon-btn" onClick={() => addItem(undefined, "tool")} aria-label="Werkzeug hinzufügen" data-tip="Werkzeug / Waffe">
+                <SwordIcon size={15} />
+              </button>
+              <button className="icon-btn" onClick={() => addItem(undefined, "armor")} aria-label="Rüstung hinzufügen" data-tip="Rüstung">
+                <ChestplateIcon size={15} />
+              </button>
+              <button className="icon-btn" onClick={() => addItem()} aria-label="Item hinzufügen" data-tip="Item">
+                <PlusIcon size={15} />
+              </button>
+            </span>
           </div>
           {content.items.map((it, i) =>
             matches(it) ? (
@@ -198,6 +247,7 @@ export default function ContentTab({ project }: { project: Project }) {
                   <span className="entry-name">{it.nameDe || it.id}</span>
                   <span className="entry-id">{it.id}</span>
                 </span>
+                {it.kind !== "basic" && <span className="entry-badges">{it.kind === "tool" ? <SwordIcon size={12} /> : <ChestplateIcon size={12} />}</span>}
               </button>
             ) : null,
           )}
@@ -205,7 +255,7 @@ export default function ContentTab({ project }: { project: Project }) {
         </div>
         <div className="content-save">
           <button className={busy ? "btn primary full loading" : "btn primary full"} disabled={busy || (!dirty && content.generatorVersion > 0)} onClick={save}>
-            {dirty ? "Speichern & Code erzeugen" : "Alles gespeichert"}
+            <SaveIcon size={14} /> {dirty ? "Speichern & Code erzeugen" : "Alles gespeichert"}
           </button>
           <div className="muted small center">Strg S</div>
         </div>
@@ -237,7 +287,13 @@ export default function ContentTab({ project }: { project: Project }) {
                 <PlusIcon size={15} /> Block
               </button>
               <button className="btn" onClick={() => addItem()}>
-                <PlusIcon size={15} /> Item
+                <BoxIcon size={15} /> Item
+              </button>
+              <button className="btn" onClick={() => addItem(undefined, "tool")}>
+                <SwordIcon size={15} /> Werkzeug
+              </button>
+              <button className="btn" onClick={() => addItem(undefined, "armor")}>
+                <ChestplateIcon size={15} /> Rüstung
               </button>
             </div>
           </div>
@@ -247,7 +303,7 @@ export default function ContentTab({ project }: { project: Project }) {
               <div className="panel-head">
                 <div className="row">
                   {entryIcon(sel!.kind, current.id, current.nameDe)}
-                  <div className="panel-title-lg">{sel!.kind === "block" ? "Block" : "Item"}</div>
+                  <div className="panel-title-lg">{block ? (block.ore.enabled ? "Erz" : "Block") : item!.kind === "tool" ? "Werkzeug" : item!.kind === "armor" ? "Rüstung" : "Item"}</div>
                 </div>
                 <div className="row gap-6">
                   <button className="icon-btn" onClick={() => (block ? addBlock(block) : addItem(item))} aria-label="Duplizieren" data-tip="Duplizieren">
@@ -322,21 +378,14 @@ export default function ContentTab({ project }: { project: Project }) {
                   </>
                 )}
 
-                {item && (
+                {item && <ItemKindSwitch item={item} onChange={updItem} />}
+                {item && item.kind === "basic" && (
                   <>
                     <Field label="Stapelgröße">
                       <select className="input" value={item.stackSize} onChange={(e) => updItem({ stackSize: Number(e.target.value) })}>
                         <option value={64}>64</option>
                         <option value={16}>16</option>
                         <option value={1}>1 (nicht stapelbar)</option>
-                      </select>
-                    </Field>
-                    <Field label="Seltenheit" hint="Farbe des Namens">
-                      <select className="input" value={item.rarity} onChange={(e) => updItem({ rarity: e.target.value as ItemDef["rarity"] })}>
-                        <option value="common">Gewöhnlich (weiß)</option>
-                        <option value="uncommon">Ungewöhnlich (gelb)</option>
-                        <option value="rare">Selten (türkis)</option>
-                        <option value="epic">Episch (lila)</option>
                       </select>
                     </Field>
                     <div className="span-2 toggle-row" style={{ flexDirection: "row" }}>
@@ -355,7 +404,32 @@ export default function ContentTab({ project }: { project: Project }) {
                     )}
                   </>
                 )}
+                {item && (
+                  <Field label="Seltenheit" hint="Farbe des Namens">
+                    <select className="input" value={item.rarity} onChange={(e) => updItem({ rarity: e.target.value as ItemDef["rarity"] })}>
+                      <option value="common">Gewöhnlich (weiß)</option>
+                      <option value="uncommon">Ungewöhnlich (gelb)</option>
+                      <option value="rare">Selten (türkis)</option>
+                      <option value="epic">Episch (lila)</option>
+                    </select>
+                  </Field>
+                )}
               </div>
+
+              {block && <BlockExtras project={project} block={block} own={own} texture={textures[block.id]} onChange={updBlock} />}
+              {item?.kind === "tool" && <ToolForm project={project} item={item} own={own} onChange={updItem} />}
+              {item?.kind === "armor" && (
+                <ArmorForm
+                  project={project}
+                  item={item}
+                  own={own}
+                  onChange={updItem}
+                  onCreateSet={() => createArmorSet(item)}
+                  missingSlots={(["helmet", "chestplate", "leggings", "boots"] as ArmorSlot[]).filter(
+                    (sl) => !content.items.some((x) => x.kind === "armor" && x.armorMaterial === item.armorMaterial && x.armorSlot === sl),
+                  )}
+                />
+              )}
 
               <RecipeEditor
                 project={project}
@@ -380,7 +454,7 @@ export default function ContentTab({ project }: { project: Project }) {
                   <SparkIcon size={20} />
                   <p className="muted small">Speichere zuerst, dann kannst du die Textur malen.</p>
                   <button className="btn small primary" onClick={save} disabled={busy}>
-                    Jetzt speichern
+                    <SaveIcon size={14} /> Jetzt speichern
                   </button>
                 </div>
               )}
@@ -389,17 +463,6 @@ export default function ContentTab({ project }: { project: Project }) {
         )}
       </section>
     </div>
-  );
-}
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <label className="field">
-      <span className="field-label">
-        {label} {hint && <span className="muted normal">· {hint}</span>}
-      </span>
-      {children}
-    </label>
   );
 }
 

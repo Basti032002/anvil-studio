@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Catalog, McIconDef } from "../api";
 import { COMMON_TAGS, useCatalog } from "../catalog";
-import { CloseIcon, SearchIcon } from "../icons";
+import { CheckIcon, CloseIcon, SearchIcon } from "../icons";
 import McIcon from "./McIcon";
+import { shapeIcon } from "../views/workspace/contentDefaults";
 
-export type OwnEntry = { id: string; name: string; kind: "block" | "item"; texture?: string };
+export type OwnEntry = { id: string; name: string; kind: "block" | "item"; texture?: string; shape?: "block" | "deepslate" | "stairs" | "slab" | "wall" | "fence" };
 type Cat = "all" | "block" | "item" | "own" | "tags";
 
 export type Resolved = { name: string; icon?: McIconDef; textures?: Record<string, string> };
@@ -17,7 +18,7 @@ export function resolveItem(id: string, catalog: Catalog | undefined, own: OwnEn
   if (mine) {
     const key = `own:${mine.id}`;
     const textures = mine.texture ? { [key]: mine.texture } : undefined;
-    const icon: McIconDef = mine.kind === "block" ? { kind: "cube", top: key, side: key } : { kind: "flat", tex: key };
+    const icon: McIconDef = mine.kind === "block" ? shapeIcon(mine.shape ?? "block", key) : { kind: "flat", tex: key };
     return { name: mine.name || mine.id, icon, textures };
   }
   const tag = COMMON_TAGS.find((t) => t.id === id);
@@ -69,7 +70,7 @@ export default function ItemPicker({
       id: `${modId}:${o.id}`,
       name: o.name || o.id,
       sub: o.id,
-      icon: o.kind === "block" ? { kind: "cube", top: `own:${o.id}`, side: `own:${o.id}` } : { kind: "flat", tex: `own:${o.id}` },
+      icon: (o.kind === "block" ? shapeIcon(o.shape ?? "block", `own:${o.id}`) : { kind: "flat", tex: `own:${o.id}` }) as McIconDef,
       textures: ownTextures,
     }));
     const tagRows: Row[] = COMMON_TAGS.map((t) => {
@@ -150,7 +151,7 @@ export default function ItemPicker({
               <p>Nichts gefunden.</p>
               {/^#?[a-z0-9_.-]+:[a-z0-9_./-]+$/.test(query.trim()) && (
                 <button className="btn small" onClick={() => onPick(query.trim())}>
-                  „{query.trim()}“ verwenden
+                  <CheckIcon size={14} /> „{query.trim()}“ verwenden
                 </button>
               )}
             </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { contentApi, JavaStatus, Project, TASK_LABELS, Task, timeAgo } from "../api";
-import { AlertIcon, CubeIcon, FolderIcon, PlayIcon, PlusIcon, SearchIcon, TrashIcon } from "../icons";
+import { AlertIcon, ArrowRightIcon, CoffeeIcon, CubeIcon, FolderIcon, PlayIcon, PlusIcon, SearchIcon, TrashIcon } from "../icons";
 import { useAllRunning } from "../store";
 
 /** Erste Textur eines Projekts als Symbol (Block bevorzugt). */
@@ -90,7 +90,7 @@ export default function ProjectList({ projects, java, javaProgress, onInstallJav
             </div>
           </div>
           <button className="btn primary" onClick={onInstallJava} disabled={!!javaProgress}>
-            {javaProgress ?? (java.broken ? "Java reparieren" : "Jetzt installieren")}
+            <CoffeeIcon size={14} /> {javaProgress ?? (java.broken ? "Java reparieren" : "Jetzt installieren")}
           </button>
         </div>
       )}
@@ -156,7 +156,7 @@ function ProjectCard({
       <Status project={p} runningTask={running} />
       <div className="card-actions">
         <button className="btn" onClick={() => onOpen(p.id)}>
-          Öffnen
+          <ArrowRightIcon size={14} /> Öffnen
         </button>
         <button className="btn primary" onClick={() => onTest(p.id)} disabled={!!running}>
           <PlayIcon size={12} /> Testen

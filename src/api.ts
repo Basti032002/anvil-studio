@@ -128,7 +128,26 @@ export type BlockDef = {
   tool: "none" | "pickaxe" | "axe" | "shovel" | "hoe";
   tier: "wood" | "stone" | "iron" | "diamond";
   recipe: Recipe;
+  shapes: BlockShape[];
+  ore: OreDef;
 };
+export type BlockShape = "stairs" | "slab" | "wall" | "fence";
+export type OreDef = {
+  enabled: boolean;
+  drop: string;
+  dropMin: number;
+  dropMax: number;
+  xpMin: number;
+  xpMax: number;
+  deepslate: boolean;
+  dimension: "overworld" | "nether" | "end";
+  veinSize: number;
+  veinsPerChunk: number;
+  minY: number;
+  maxY: number;
+};
+export type ToolType = "sword" | "pickaxe" | "axe" | "shovel" | "hoe";
+export type ArmorSlot = "helmet" | "chestplate" | "leggings" | "boots";
 export type ItemDef = {
   id: string;
   nameDe: string;
@@ -139,6 +158,20 @@ export type ItemDef = {
   nutrition: number;
   saturation: number;
   recipe: Recipe;
+  kind: "basic" | "tool" | "armor";
+  toolType: ToolType;
+  toolTier: "wood" | "stone" | "iron" | "diamond" | "netherite";
+  durability: number;
+  attackDamage: number;
+  attackSpeed: number;
+  miningSpeed: number;
+  enchantability: number;
+  repairItem: string;
+  armorSlot: ArmorSlot;
+  armorMaterial: string;
+  defense: number;
+  toughness: number;
+  knockbackResistance: number;
 };
 export type Content = {
   schemaVersion: number;
@@ -147,6 +180,8 @@ export type Content = {
   items: ItemDef[];
   generatedBlocks: string[];
   generatedItems: string[];
+  tabIcon: string;
+  tabName: string;
 };
 export type ModEntry = {
   projectId: string;
@@ -186,6 +221,21 @@ export const filesApi = {
   read: (projectId: string, rel: string) => invoke<string>("files_read", { projectId, rel }),
   write: (projectId: string, rel: string, content: string) => invoke<void>("files_write", { projectId, rel, content }),
   create: (projectId: string, rel: string, isDir: boolean) => invoke<void>("files_create", { projectId, rel, isDir }),
+};
+
+export type ModSettings = {
+  name: string;
+  version: string;
+  authors: string;
+  description: string;
+  license: string;
+  logo: string | null;
+  tabName: string;
+  tabIcon: string;
+};
+export const modSettingsApi = {
+  get: (projectId: string) => invoke<ModSettings>("mod_settings_get", { projectId }),
+  save: (projectId: string, settings: ModSettings) => invoke<void>("mod_settings_save", { projectId, settings }),
 };
 
 export const importProject = (path: string, setupWorld: boolean) => invoke<Project>("import_project", { path, setupWorld });

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { pickFolder, UpdateCheck } from "../api";
 import { Segmented, Toggle } from "../components/Chrome";
-import { AnvilLogo, CheckIcon, DownloadIcon, RefreshIcon } from "../icons";
+import { AnvilLogo, CheckIcon, DownloadIcon, ExternalIcon, FolderIcon, GithubIcon, LogoutIcon, RefreshIcon, ShieldIcon } from "../icons";
 import { logout, useAccount } from "../admin";
 import { GitHubLogin, openGithub } from "./Admin";
 import { checkForUpdate, installUpdate, updateSettings, useAppVersion, useSettings, useUpdate } from "../state";
@@ -207,7 +207,7 @@ function UpdatesSection({ onAccount }: { onAccount: () => void }) {
         </div>
         {u.phase === "error" && u.info && (
           <button className="btn" onClick={() => openGithub(u.info!.htmlUrl)}>
-            Im Browser herunterladen
+            <ExternalIcon size={14} /> Im Browser herunterladen
           </button>
         )}
         {u.phase === "available" || (u.phase === "error" && u.info) ? (
@@ -260,7 +260,7 @@ function UpdatesSection({ onAccount }: { onAccount: () => void }) {
           <div className="setting-row hint">
             <div className="muted small">Dev-Versionen gibt es nur für eingeladene Tester mit GitHub-Anmeldung.</div>
             <button className="btn small" onClick={onAccount}>
-              {account ? "Konto ansehen" : "Mit GitHub anmelden"}
+              <GithubIcon size={14} /> {account ? "Konto ansehen" : "Mit GitHub anmelden"}
             </button>
           </div>
         )}
@@ -291,7 +291,7 @@ function AccountSection({ onOpenAdmin }: { onOpenAdmin: () => void }) {
               <div className="muted small">@{account.user.login}</div>
             </div>
             <button className="btn ghost" onClick={() => logout()}>
-              Abmelden
+              <LogoutIcon size={14} /> Abmelden
             </button>
           </div>
           <div className="setting-list" style={{ marginTop: 16 }}>
@@ -300,14 +300,14 @@ function AccountSection({ onOpenAdmin }: { onOpenAdmin: () => void }) {
                 <span className="tag ch-dev">Tester</span>
               ) : (
                 <button className="btn small" onClick={() => openGithub("https://github.com/Basti032002/anvil-studio-dev/invitations")}>
-                  Einladung öffnen
+                  <ExternalIcon size={14} /> Einladung öffnen
                 </button>
               )}
             </Row>
             {account.isAdmin && (
               <Row title="Entwicklerbereich" desc="Versionen veröffentlichen, Releases, Tester und Builds verwalten.">
                 <button className="btn" onClick={onOpenAdmin}>
-                  Öffnen
+                  <ShieldIcon size={14} /> Öffnen
                 </button>
               </Row>
             )}
@@ -337,7 +337,7 @@ function About({ onOpenAdmin }: { onOpenAdmin: () => void }) {
       <div className="setting-list" style={{ marginTop: 16 }}>
         <Row title="Entwicklerbereich" desc={admin ? `Angemeldet als ${admin.login}.` : "Versionen veröffentlichen und Releases verwalten. Nur für den Entwickler."}>
           <button className="btn" onClick={onOpenAdmin}>
-            {admin ? "Öffnen" : "Mit GitHub anmelden"}
+            <ShieldIcon size={14} /> {admin ? "Öffnen" : "Mit GitHub anmelden"}
           </button>
         </Row>
       </div>
@@ -380,7 +380,7 @@ function ProjectsDirInput({ value, onSave }: { value: string; onSave: (v: string
           }
         }}
       >
-        Durchsuchen …
+        <FolderIcon size={14} /> Durchsuchen …
       </button>
     </div>
   );

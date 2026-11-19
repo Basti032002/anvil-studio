@@ -2,27 +2,15 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { api, contentApi, CrashReport, Project, Task, TASK_LABELS } from "../api";
 import ContentTab from "./workspace/ContentTab";
 import ModsTab from "./workspace/ModsTab";
+import ModSettingsTab from "./workspace/ModSettingsTab";
 
 const CodeTab = lazy(() => import("./workspace/CodeTab"));
-type MainTab = "content" | "code" | "mods" | "console";
-import {
-  AlertIcon,
-  ChevronIcon,
-  CodeIcon,
-  DownloadIcon,
-  FolderIcon,
-  HammerIcon,
-  PlayIcon,
-  SearchIcon,
-  SparkIcon,
-  StopIcon,
-  TerminalIcon,
-  TrashIcon,
-} from "../icons";
+type MainTab = "content" | "code" | "mods" | "settings" | "console";
+import { AlertIcon, CheckIcon, ChevronIcon, CloseIcon, CodeIcon, CubeIcon, GearIcon, DownloadIcon, FileIcon, FolderIcon, HammerIcon, PackageIcon, PlayIcon, SearchIcon, SparkIcon, StopIcon, TerminalIcon, TrashIcon } from "../icons";
 import { toast, useSettings } from "../state";
 import { clearLogs, markNotRunning, markStarted, pushLog, useLastExit, useLogs, useRunning } from "../store";
 
-type Props = { project: Project; javaReady: boolean; autoRun?: boolean; onBack: () => void };
+type Props = { project: Project; javaReady: boolean; autoRun?: boolean; onBack: () => void; onChanged?: () => void };
 
 type RunConfig = "client" | "client-world" | "server" | "data";
 const RUN_CONFIGS: { id: RunConfig; label: string; task: Task }[] = [
@@ -49,7 +37,7 @@ function save(key: string, value: string) {
   }
 }
 
-export default function Workspace({ project, javaReady, autoRun, onBack }: Props) {
+export default function Workspace({ project, javaReady, autoRun, onBack, onChanged }: Props) {
   const settings = useSettings();
   const logs = useLogs(project.id);
   const running = useRunning(project.id);
@@ -97,7 +85,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack }: Props
         const list = await api.listJars(project.id);
         if (lastExit.success && list.length) {
           const jar = list[list.length - 1];
-          pushLog(project.id, `✔ Mod-Datei fertig: ${jar}`);
+          pushLog(project.id, `Mod-Datei fertig: ${jar}`);
           toast("Mod-Datei ist fertig gebaut.", "success");
           api.openPath(jar).catch(() => {});
         }
@@ -129,7 +117,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack }: Props
       markStarted(project.id, task);
       await api.runTask(project.id, task, opts.world);
     } catch (e) {
-      pushLog(project.id, `✖ ${e}`);
+      pushLog(project.id, `Fehler: ${e}`);
       toast(String(e), "error");
       const list = await api.runningTasks();
       if (!list.some((r) => r.projectId === project.id)) markNotRunning(project.id);
@@ -252,13 +240,15 @@ export default function Workspace({ project, javaReady, autoRun, onBack }: Props
       <nav className="view-tabs" aria-label="Bereiche">
         {(
           [
-            ["content", "Inhalte"],
-            ["code", "Code"],
-            ["mods", "Mods"],
-            ["console", "Konsole"],
-          ] as [MainTab, string][]
-        ).map(([k, label]) => (
+            ["content", "Inhalte", <CubeIcon size={14} />],
+            ["code", "Code", <CodeIcon size={14} />],
+            ["mods", "Mods", <PackageIcon size={14} />],
+            ["settings", "Mod-Einstellungen", <GearIcon size={14} />],
+            ["console", "Konsole", <TerminalIcon size={14} />],
+          ] as [MainTab, string, React.ReactNode][]
+        ).map(([k, label, icon]) => (
           <button key={k} className={mainTab === k ? "view-tab active" : "view-tab"} onClick={() => setMainTab(k)}>
+            {icon}
             {label}
             {k === "console" && busy && <span className="pulse-dot" />}
             {k === "console" && !busy && problems.length > 0 && <span className="count">{problems.length}</span>}
@@ -274,6 +264,11 @@ export default function Workspace({ project, javaReady, autoRun, onBack }: Props
       {mainTab === "mods" && (
         <div className="ws-view">
           <ModsTab project={project} />
+        </div>
+      )}
+      {mainTab === "settings" && (
+        <div className="ws-view">
+          <ModSettingsTab project={project} onSaved={onChanged} />
         </div>
       )}
       {mainTab === "code" && (
@@ -316,7 +311,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack }: Props
                 {jars.map((j) => (
                   <li key={j}>
                     <button className="file" onClick={() => api.openPath(j)}>
-                      <span className="file-icon" />
+                      <PackageIcon size={14} />
                       <span className="mono">{j.split(/[\\/]/).pop()}</span>
                     </button>
                   </li>
@@ -376,7 +371,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack }: Props
                   <div className="muted small">{new Date(crash.modified * 1000).toLocaleString("de-DE")}</div>
                 </div>
                 <button className="btn small" onClick={() => api.openPath(crash.path)}>
-                  Datei öffnen
+                  <FileIcon size={14} /> Datei öffnen
                 </button>
               </div>
               <pre className="crash-body" style={{ fontSize: settings?.consoleFontSize ?? 12 }}>
@@ -401,7 +396,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack }: Props
                       "Keine Probleme – sauber!"
                     ) : (
                       <>
-                        Drücke <kbd>▶</kbd>, um Minecraft mit deiner Mod zu starten.
+                        Drücke <kbd className="kbd-icon"><PlayIcon size={10} /></kbd>, um Minecraft mit deiner Mod zu starten.
                         <br />
                         <span className="muted">Der erste Start dauert einige Minuten, weil Gradle Minecraft und NeoForge lädt.</span>
                       </>
@@ -411,6 +406,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack }: Props
               ) : (
                 shown.map((l) => (
                   <div key={l.id} className={`log ${l.level}`}>
+                    {l.level === "system" && <LogIcon line={l.line} />}
                     {l.line}
                   </div>
                 ))
@@ -439,7 +435,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack }: Props
                 {TASK_LABELS[lastExit.task as Task] ?? lastExit.task} {lastExit.success ? "beendet" : "fehlgeschlagen"}
               </div>
             ) : (
-              <div className="muted small">Bereit. Wähle oben eine Konfiguration und drücke ▶.</div>
+              <div className="muted small">Bereit. Wähle oben eine Konfiguration und drücke Start.</div>
             )}
           </div>
 
@@ -485,4 +481,18 @@ function Section({ title, open, onToggle, children }: { title: string; open: boo
       </div>
     </div>
   );
+}
+
+/** Symbol vor Systemzeilen der Konsole (Start, Ende, Fehler, Datei). */
+function LogIcon({ line }: { line: string }) {
+  const icon = /^gradlew|zusätzliche Mods/.test(line) ? (
+    <PlayIcon size={10} />
+  ) : /^Beendet mit Fehler|^Fehler/.test(line) ? (
+    <CloseIcon size={11} />
+  ) : /^Beendet/.test(line) ? (
+    <StopIcon size={10} />
+  ) : /^Mod-Datei fertig/.test(line) ? (
+    <CheckIcon size={11} />
+  ) : null;
+  return icon ? <span className="log-icon">{icon}</span> : null;
 }

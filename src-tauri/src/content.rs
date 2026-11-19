@@ -312,7 +312,7 @@ pub fn load(p: &Project) -> Result<(Content, bool), String> {
     Ok((c, migrated))
 }
 
-fn save_file(p: &Project, c: &Content) -> Result<(), String> {
+pub fn save_file(p: &Project, c: &Content) -> Result<(), String> {
     let mut c = c.clone();
     c.schema_version = CONTENT_SCHEMA;
     write_json(&content_file(p), &serde_json::to_value(&c).map_err(err)?)
@@ -398,10 +398,16 @@ struct Api {
     materials_v2: bool,
     /// ab 1.21.5: Werkzeuge/Rüstung über Item.Properties#sword/#pickaxe/#humanoidArmor
     props_tools: bool,
+    /// ab 1.21.9: Properties nur noch als Supplier (werden erst beim Registrieren gebaut)
+    lazy_props: bool,
 }
 
 fn api(p: &Project) -> Api {
-    Api { materials_v2: mc_at_least(&p.mc_version, (1, 21, 2)), props_tools: mc_at_least(&p.mc_version, (1, 21, 5)) }
+    Api {
+        materials_v2: mc_at_least(&p.mc_version, (1, 21, 2)),
+        props_tools: mc_at_least(&p.mc_version, (1, 21, 5)),
+        lazy_props: mc_at_least(&p.mc_version, (1, 21, 9)),
+    }
 }
 
 fn incorrect_tag(tier: &str) -> &'static str {
@@ -460,12 +466,15 @@ fn generate_java(p: &Project, c: &Content) -> String {
     let mut fields = String::new();
     let mut tab = String::new();
     let up = |s: &str| s.to_uppercase();
+    let lazy = api.lazy_props;
+    let lz = move |e: String| if lazy { format!("() -> {e}") } else { e };
 
     for v in all_variants(c) {
         let b = v.base;
         let k = up(&v.id);
         let base_k = up(&b.id);
         let props = block_props(b, v.shape == "deepslate");
+        let props = if api.lazy_props { format!("() -> {props}") } else { props };
         let (ty, reg) = match v.shape {
             "block" if b.ore.enabled => (
                 "DropExperienceBlock".to_string(),
@@ -568,12 +577,12 @@ fn generate_java(p: &Project, c: &Content) -> String {
                 let reg = if api.props_tools {
                     match i.tool_type.as_str() {
                         "sword" | "pickaxe" => {
-                            format!("ITEMS.registerItem(\"{id}\", Item::new, {props}.{t}({mk}, {d}, {spd}))", id = i.id, t = i.tool_type)
+                            format!("ITEMS.registerItem(\"{id}\", Item::new, {})", lz(format!("{props}.{t}({mk}, {d}, {spd})", t = i.tool_type)), id = i.id)
                         }
-                        _ => format!("ITEMS.registerItem(\"{id}\", p -> new {class}({mk}, {d}, {spd}, p), {props})", id = i.id),
+                        _ => format!("ITEMS.registerItem(\"{id}\", p -> new {class}({mk}, {d}, {spd}, p), {})", lz(props.clone()), id = i.id),
                     }
                 } else if api.materials_v2 {
-                    format!("ITEMS.registerItem(\"{id}\", p -> new {class}({mk}, {d}, {spd}, p), {props})", id = i.id)
+                    format!("ITEMS.registerItem(\"{id}\", p -> new {class}({mk}, {d}, {spd}, p), {})", lz(props.clone()), id = i.id)
                 } else {
                     let attrs = if i.tool_type == "sword" {
                         format!("SwordItem.createAttributes({mk}, {}, {spd})", dmg.round() as i64)
@@ -589,7 +598,7 @@ fn generate_java(p: &Project, c: &Content) -> String {
                 let mk = format!("ARMOR_{}", up(&i.armor_material));
                 let at = armor_type(&i.armor_slot, &api);
                 let (ty, reg) = if api.props_tools {
-                    ("Item", format!("ITEMS.registerItem(\"{id}\", Item::new, {props}.humanoidArmor({mk}, {at}))", id = i.id))
+                    ("Item", format!("ITEMS.registerItem(\"{id}\", Item::new, {})", lz(format!("{props}.humanoidArmor({mk}, {at})")), id = i.id))
                 } else if api.materials_v2 {
                     ("ArmorItem", format!("ITEMS.registerItem(\"{id}\", p -> new ArmorItem({mk}, {at}, p), {props})", id = i.id))
                 } else {
@@ -599,7 +608,7 @@ fn generate_java(p: &Project, c: &Content) -> String {
                 fields.push_str(&format!("    public static final DeferredItem<{ty}> {k} = {reg};\n\n"));
             }
             _ => {
-                fields.push_str(&format!("    public static final DeferredItem<Item> {k} = ITEMS.registerSimpleItem(\"{id}\", {props});\n\n", id = i.id));
+                fields.push_str(&format!("    public static final DeferredItem<Item> {k} = ITEMS.registerSimpleItem(\"{id}\", {});\n\n", lz(props.clone()), id = i.id));
             }
         }
         tab.push_str(&format!("                output.accept({k}.get());\n"));

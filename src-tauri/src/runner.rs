@@ -104,7 +104,7 @@ pub async fn run_task(
         let side = if task == "runServer" { "server" } else { "client" };
         match crate::mods::sync(&project, side) {
             Ok(n) if n > 0 => {
-                let _ = app.emit("log", LogLine { project_id: project_id.clone(), stream: "system", line: format!("▶ {n} zusätzliche Mods werden mitgeladen") });
+                let _ = app.emit("log", LogLine { project_id: project_id.clone(), stream: "system", line: format!("{n} zusätzliche Mods werden mitgeladen") });
             }
             Ok(_) => {}
             Err(e) => {
@@ -131,7 +131,7 @@ pub async fn run_task(
 
     let _ = app.emit(
         "log",
-        LogLine { project_id: project_id.clone(), stream: "system", line: format!("▶ gradlew {}", args.join(" ")) },
+        LogLine { project_id: project_id.clone(), stream: "system", line: format!("gradlew {}", args.join(" ")) },
     );
     if let Some(out) = child.stdout.take() {
         pump(app.clone(), project_id.clone(), "stdout", out);

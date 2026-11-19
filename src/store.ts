@@ -76,7 +76,7 @@ export async function initStore() {
       const { [projectId]: _removed, ...rest } = running;
       running = rest;
       lastExit = { ...lastExit, [projectId]: { task, success, at: Date.now() / 1000 } };
-      pushLog(projectId, success ? "■ Beendet" : `■ Beendet mit Fehler (Code ${e.payload.code ?? "?"})`);
+      pushLog(projectId, success ? "Beendet" : `Beendet mit Fehler (Code ${e.payload.code ?? "?"})`);
       notify();
     },
   );

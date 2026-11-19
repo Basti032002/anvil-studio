@@ -190,7 +190,7 @@ export default function App() {
               />
             )}
             {nav === "workspace" && current && (
-              <Workspace project={current} javaReady={!!java?.installed} autoRun={autoRun} onBack={() => setNav("projects")} />
+              <Workspace project={current} javaReady={!!java?.installed} autoRun={autoRun} onBack={() => setNav("projects")} onChanged={reload} />
             )}
             {nav === "workspace" && !current && (
               <div className="page">

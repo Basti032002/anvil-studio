@@ -4,6 +4,7 @@ mod fsx;
 mod java;
 mod mcassets;
 mod migrate;
+mod modsettings;
 mod mods;
 mod projects;
 mod runner;
@@ -28,6 +29,8 @@ pub fn run() {
             projects::remove_project,
             projects::import_project,
             content::content_load,
+            modsettings::mod_settings_get,
+            modsettings::mod_settings_save,
             content::content_save,
             content::texture_get,
             content::texture_save,

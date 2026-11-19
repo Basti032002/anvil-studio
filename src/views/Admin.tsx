@@ -18,7 +18,7 @@ import {
   useAccount,
 } from "../admin";
 import { Segmented } from "../components/Chrome";
-import { AlertIcon, CheckIcon, CloseIcon, DownloadIcon, GithubIcon, PlusIcon, RefreshIcon, RocketIcon, ShieldIcon, TrashIcon } from "../icons";
+import { AlertIcon, ArrowRightIcon, CheckIcon, CloseIcon, CopyIcon, DownloadIcon, ExternalIcon, GithubIcon, LogoutIcon, PencilIcon, PlusIcon, RefreshIcon, RocketIcon, SaveIcon, ShieldIcon, TagIcon, TrashIcon } from "../icons";
 import { toast } from "../state";
 
 const openUrl = (url: string) => invoke("open_url", { url }).catch((e) => toast(String(e), "error"));
@@ -140,7 +140,7 @@ export function GitHubLogin({ compact }: { compact?: boolean }) {
                   navigator.clipboard.writeText(code.userCode).then(() => toast("Code kopiert.", "success"));
                 }}
               >
-                Code kopieren
+                <CopyIcon size={14} /> Code kopieren
               </button>
               <button className="btn small" onClick={() => openUrl(code.verificationUri)}>
                 <GithubIcon size={14} /> GitHub öffnen
@@ -215,7 +215,7 @@ function Dashboard({ account }: { account: AccountInfo }) {
             </span>
           </button>
           <button className="btn ghost" onClick={() => logout().then(() => toast("Abgemeldet.", "info"))}>
-            Abmelden
+            <LogoutIcon size={14} /> Abmelden
           </button>
         </div>
       </header>
@@ -371,14 +371,14 @@ function PublishTab({
               <div className="muted small">Alle Installationen mit automatischen Updates bekommen {release.tag} beim nächsten Check.</div>
             </div>
             <button className="btn small" onClick={() => openUrl(release.htmlUrl)}>
-              Ansehen
+              <ExternalIcon size={14} /> Ansehen
             </button>
           </div>
         )}
         <div className="row">
           {run && (
             <button className="btn small" onClick={() => openUrl(run.htmlUrl)}>
-              Build-Log
+              <ExternalIcon size={14} /> Build-Log
             </button>
           )}
           {failed && run && (
@@ -388,7 +388,7 @@ function PublishTab({
           )}
           {(release || failed) && (
             <button className="btn small ghost" onClick={onReset}>
-              Neue Version vorbereiten
+              <RefreshIcon size={14} /> Neue Version vorbereiten
             </button>
           )}
         </div>
@@ -438,7 +438,7 @@ function PublishTab({
         </div>
         <div className="version-row">
           <div className="version-from mono">{data.repoVersion}</div>
-          <span className="version-arrow">→</span>
+          <span className="version-arrow"><ArrowRightIcon size={14} /></span>
           <label htmlFor="ver" className="sr-only">
             Neue Version
           </label>
@@ -511,7 +511,7 @@ function ReleasesTab({ releases, onChanged }: { releases: ReleaseRow[]; onChange
                   .catch((e) => toast(String(e), "error"))
               }
             >
-              {r.prerelease ? "Als stabil markieren" : "Zur Beta machen"}
+              <TagIcon size={14} /> {r.prerelease ? "Als stabil markieren" : "Zur Beta machen"}
             </button>
             )}
             <button
@@ -521,7 +521,7 @@ function ReleasesTab({ releases, onChanged }: { releases: ReleaseRow[]; onChange
                 setDraft(r.body);
               }}
             >
-              Notizen
+              <PencilIcon size={14} /> Notizen
             </button>
             <button className="icon-btn" aria-label="Auf GitHub ansehen" data-tip="Auf GitHub" onClick={() => openUrl(r.htmlUrl)}>
               <GithubIcon size={15} />
@@ -549,7 +549,7 @@ function ReleasesTab({ releases, onChanged }: { releases: ReleaseRow[]; onChange
               <textarea className="input textarea mono" rows={8} value={draft} onChange={(e) => setDraft(e.target.value)} aria-label="Release-Notizen" />
               <div className="row end">
                 <button className="btn small ghost" onClick={() => setEditing(null)}>
-                  Abbrechen
+                  <CloseIcon size={14} /> Abbrechen
                 </button>
                 <button
                   className="btn small primary"
@@ -564,7 +564,7 @@ function ReleasesTab({ releases, onChanged }: { releases: ReleaseRow[]; onChange
                       .catch((e) => toast(String(e), "error"))
                   }
                 >
-                  Speichern
+                  <SaveIcon size={14} /> Speichern
                 </button>
               </div>
             </div>

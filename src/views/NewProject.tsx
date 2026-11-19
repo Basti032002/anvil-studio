@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 import { api, pickFolder, Project } from "../api";
-import { CheckIcon, FolderIcon } from "../icons";
+import { CheckIcon, CloseIcon, FolderIcon, PlusIcon } from "../icons";
 
 type Props = { onCancel: () => void; onCreated: (p: Project) => void };
 
@@ -210,10 +210,10 @@ export default function NewProject({ onCancel, onCreated }: Props) {
 
       <div className="row end">
         <button type="button" className="btn ghost" onClick={onCancel} disabled={busy}>
-          Abbrechen
+          <CloseIcon size={14} /> Abbrechen
         </button>
         <button type="submit" className={busy ? "btn primary loading" : "btn primary"} disabled={busy || !name.trim()}>
-          {busy ? "Wird erstellt …" : "Projekt erstellen"}
+          <PlusIcon size={14} /> {busy ? "Wird erstellt …" : "Projekt erstellen"}
         </button>
       </div>
     </form>

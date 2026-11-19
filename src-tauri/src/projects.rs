@@ -90,10 +90,15 @@ pub fn remove_project(app: AppHandle, project_id: String) -> Result<(), String> 
     save(&app, &list)
 }
 
-fn unescape_properties(s: &str) -> String {
+pub fn unescape_properties(s: &str) -> String {
     let mut out = String::new();
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
+        if c == '\\' && chars.peek() == Some(&'n') {
+            chars.next();
+            out.push('\n');
+            continue;
+        }
         if c == '\\' && chars.peek() == Some(&'u') {
             chars.next();
             let hex: String = chars.by_ref().take(4).collect();
