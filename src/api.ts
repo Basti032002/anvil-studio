@@ -199,7 +199,8 @@ export async function pickFolder(title: string, defaultPath?: string): Promise<s
 
 // ---- Minecraft-Katalog (0.5.0-dev.2) -----------------------------------------
 
-export type McIconDef = { kind: "flat" | "cube" | "none"; tex?: string; top?: string; side?: string; front?: string };
+export type { McIconDef } from "./iconRender";
+import type { McIconDef } from "./iconRender";
 export type CatalogEntry = { id: string; name: string; nameEn: string; kind: "block" | "item"; icon: McIconDef };
 export type Catalog = { format: number; version: string; entries: CatalogEntry[]; textures: Record<string, string> };
 export const mcCatalog = (version: string) => invoke<Catalog>("mc_catalog", { version });

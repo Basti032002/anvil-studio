@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { McIconDef } from "../api";
+import { renderIcon } from "../iconRender";
 
-/** Item-/Block-Symbol: flache Textur oder kleiner isometrischer Würfel. */
+/** Item-/Block-Symbol wie im Minecraft-Inventar (3D-Blockmodell oder flache Textur). */
 export default function McIcon({
   icon,
   textures,
@@ -12,31 +14,26 @@ export default function McIcon({
   size?: number;
   fallback?: string;
 }) {
-  const url = (t?: string) => (t && textures?.[t] ? `url("${textures[t]}")` : undefined);
-  const style = { width: size, height: size } as React.CSSProperties;
+  const [src, setSrc] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    let alive = true;
+    renderIcon(icon, textures, Math.max(48, 16 * Math.ceil((size * 2) / 16))).then((s) => alive && setSrc(s));
+    return () => {
+      alive = false;
+    };
+  }, [icon, textures, size]);
 
-  if (icon?.kind === "flat" && url(icon.tex)) {
+  const style = { width: size, height: size } as React.CSSProperties;
+  if (src) {
     return (
       <span className="mc-icon" style={style} aria-hidden="true">
-        <span className="mc-flat" style={{ backgroundImage: url(icon.tex) }} />
-      </span>
-    );
-  }
-  if (icon?.kind === "cube" && url(icon.top) && url(icon.side)) {
-    const half = (size * 0.62) / 2;
-    return (
-      <span className="mc-icon" style={style} aria-hidden="true">
-        <span className="mc-cube" style={{ "--h": `${half}px` } as React.CSSProperties}>
-          <span className="t" style={{ backgroundImage: url(icon.top) }} />
-          <span className="f" style={{ backgroundImage: url(icon.front ?? icon.side) }} />
-          <span className="r" style={{ backgroundImage: url(icon.side) }} />
-        </span>
+        <img className="mc-img" src={src} alt="" draggable={false} />
       </span>
     );
   }
   return (
     <span className="mc-icon" style={style} aria-hidden="true">
-      <span className="mc-letter">{(fallback ?? "?").slice(0, 2).toUpperCase()}</span>
+      {src === null && <span className="mc-letter">{(fallback ?? "?").slice(0, 2).toUpperCase()}</span>}
     </span>
   );
 }

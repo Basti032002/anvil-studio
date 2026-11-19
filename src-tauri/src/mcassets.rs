@@ -20,7 +20,7 @@ use tauri::{AppHandle, Emitter};
 
 const MANIFEST: &str = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 /// Bei Änderungen an der Auswertung hochzählen → Katalog wird neu erstellt.
-const CATALOG_FORMAT: u32 = 1;
+const CATALOG_FORMAT: u32 = 2;
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -35,6 +35,35 @@ pub struct Icon {
     side: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     front: Option<String>,
+    /// Bei kind "model": die Quader des Blockmodells (nur sichtbare Seiten)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    elements: Vec<Element>,
+    /// Drehung im Inventar (display.gui.rotation), falls vom Standard abweichend
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    gui: Option<[f32; 3]>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Face {
+    tex: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    uv: Option<[f32; 4]>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    rot: u16,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    tint: bool,
+}
+
+fn is_zero(v: &u16) -> bool {
+    *v == 0
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Element {
+    from: [f32; 3],
+    to: [f32; 3],
+    /// "up" | "north" | "south" | "east" | "west"
+    faces: BTreeMap<String, Face>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -102,8 +131,10 @@ fn split_ref(r: &str) -> (String, String) {
 
 /// Folgt der parent-Kette eines Modells; liefert zusammengeführte Texturen
 /// und ob es ein flaches Item-Modell ist.
-fn resolve_model(jar: &mut Jar, model_ref: &str) -> (Map<String, Value>, bool, bool) {
+fn resolve_model(jar: &mut Jar, model_ref: &str) -> (Map<String, Value>, bool, bool, Option<Value>, Option<[f32; 3]>) {
     let mut textures = Map::new();
+    let mut elements: Option<Value> = None;
+    let mut gui: Option<[f32; 3]> = None;
     let mut flat = false;
     let mut builtin = false;
     let mut current = Some(model_ref.to_string());
@@ -122,9 +153,15 @@ fn resolve_model(jar: &mut Jar, model_ref: &str) -> (Map<String, Value>, bool, b
                 textures.entry(k.clone()).or_insert(v.clone());
             }
         }
+        if gui.is_none() {
+            gui = vec3(&model["display"]["gui"]["rotation"]);
+        }
+        if elements.is_none() && model["elements"].is_array() {
+            elements = Some(model["elements"].clone());
+        }
         current = model["parent"].as_str().map(|s| s.to_string());
     }
-    (textures, flat, builtin)
+    (textures, flat, builtin, elements, gui)
 }
 
 fn lookup_tex(textures: &Map<String, Value>, keys: &[&str]) -> Option<String> {
@@ -157,6 +194,44 @@ fn first_tex(textures: &Map<String, Value>, keys: &[&str]) -> Option<String> {
     None
 }
 
+fn vec3(v: &Value) -> Option<[f32; 3]> {
+    let a = v.as_array()?;
+    Some([a.first()?.as_f64()? as f32, a.get(1)?.as_f64()? as f32, a.get(2)?.as_f64()? as f32])
+}
+
+/// Quader eines Modells mit aufgelösten Texturen. Gedrehte Quader werden
+/// ohne Drehung übernommen (reicht für Inventar-Symbole).
+fn parse_elements(textures: &Map<String, Value>, els: &[Value]) -> Vec<Element> {
+    let mut out = vec![];
+    for el in els.iter().take(64) {
+        let (Some(from), Some(to)) = (vec3(&el["from"]), vec3(&el["to"])) else { continue };
+        let mut faces = BTreeMap::new();
+        for name in ["up", "north", "south", "east", "west"] {
+            let f = &el["faces"][name];
+            let Some(t) = f["texture"].as_str() else { continue };
+            let tex = if let Some(key) = t.strip_prefix('#') {
+                match lookup_tex(textures, &[key]) {
+                    Some(t) => t,
+                    None => continue,
+                }
+            } else {
+                split_ref(t).1
+            };
+            let uv = f["uv"].as_array().and_then(|a| {
+                let n: Vec<f32> = a.iter().filter_map(|x| x.as_f64().map(|v| v as f32)).collect();
+                (n.len() == 4).then(|| [n[0], n[1], n[2], n[3]])
+            });
+            let rot = f["rotation"].as_u64().unwrap_or(0) as u16 % 360;
+            let tint = f.get("tintindex").map(|v| !v.is_null()).unwrap_or(false);
+            faces.insert(name.to_string(), Face { tex, uv, rot, tint });
+        }
+        if !faces.is_empty() {
+            out.push(Element { from, to, faces });
+        }
+    }
+    out
+}
+
 /// Sucht in einer Item-Definition (ab 1.21.4) das erste referenzierte Modell.
 fn find_model_ref(v: &Value) -> Option<String> {
     match v {
@@ -174,8 +249,9 @@ fn find_model_ref(v: &Value) -> Option<String> {
 }
 
 fn icon_for(jar: &mut Jar, model_ref: &str) -> Icon {
-    let (textures, flat, builtin) = resolve_model(jar, model_ref);
-    let none = Icon { kind: "none".into(), tex: None, top: None, side: None, front: None };
+    let (textures, flat, builtin, elements, gui) = resolve_model(jar, model_ref);
+    let gui = gui.filter(|g| (g[0] - 30.0).abs() > 0.1 || (g[1] - 225.0).abs() > 0.1);
+    let none = Icon { kind: "none".into(), tex: None, top: None, side: None, front: None, elements: vec![], gui: None };
     if flat || textures.contains_key("layer0") {
         return match lookup_tex(&textures, &["layer0"]) {
             Some(t) => Icon { kind: "flat".into(), tex: Some(t), ..none },
@@ -191,8 +267,14 @@ fn icon_for(jar: &mut Jar, model_ref: &str) -> Icon {
             None => none,
         };
     }
+    if let Some(els) = elements.as_ref().and_then(|e| e.as_array()) {
+        let parsed = parse_elements(&textures, els);
+        if !parsed.is_empty() {
+            return Icon { kind: "model".into(), tex: None, top, side, front, elements: parsed, gui };
+        }
+    }
     match (top, side) {
-        (Some(top), Some(side)) => Icon { kind: "cube".into(), tex: None, top: Some(top), side: Some(side), front },
+        (Some(top), Some(side)) => Icon { kind: "cube".into(), tex: None, top: Some(top), side: Some(side), front, elements: vec![], gui: None },
         (Some(t), None) | (None, Some(t)) => Icon { kind: "flat".into(), tex: Some(t), ..none },
         _ => none,
     }
@@ -242,6 +324,11 @@ pub fn build_from_jar(jar_path: &Path, version: &str, de: &HashMap<String, Strin
         for t in [&icon.tex, &icon.top, &icon.side, &icon.front].into_iter().flatten() {
             needed.push(t.clone());
         }
+        for el in &icon.elements {
+            for f in el.faces.values() {
+                needed.push(f.tex.clone());
+            }
+        }
         let name_en = en.get(&key).cloned().unwrap_or(id.clone());
         let name = de.get(&key).cloned().unwrap_or(name_en.clone());
         entries.push(CatalogEntry { id: format!("minecraft:{id}"), name, name_en, kind: kind.into(), icon });
@@ -257,9 +344,16 @@ pub fn build_from_jar(jar_path: &Path, version: &str, de: &HashMap<String, Strin
     }
     // Icons mit fehlenden Texturen entschärfen
     for e in entries.iter_mut() {
+        for el in e.icon.elements.iter_mut() {
+            el.faces.retain(|_, f| textures.contains_key(&f.tex));
+        }
+        e.icon.elements.retain(|el| !el.faces.is_empty());
+        if e.icon.kind == "model" && e.icon.elements.is_empty() {
+            e.icon.kind = if e.icon.top.is_some() && e.icon.side.is_some() { "cube".into() } else { "none".into() };
+        }
         let missing = |t: &Option<String>| t.as_ref().map(|t| !textures.contains_key(t)).unwrap_or(false);
-        if missing(&e.icon.tex) || missing(&e.icon.top) || missing(&e.icon.side) {
-            e.icon = Icon { kind: "none".into(), tex: None, top: None, side: None, front: None };
+        if e.icon.kind != "model" && (missing(&e.icon.tex) || missing(&e.icon.top) || missing(&e.icon.side)) {
+            e.icon = Icon { kind: "none".into(), tex: None, top: None, side: None, front: None, elements: vec![], gui: None };
         }
     }
     Ok(Catalog { format: CATALOG_FORMAT, version: version.to_string(), entries, textures })
@@ -348,10 +442,13 @@ mod tests {
         let get = |id: &str| c.entries.iter().find(|e| e.id == id).unwrap_or_else(|| panic!("{id} fehlt"));
         println!("{} Einträge, {} Texturen", c.entries.len(), c.textures.len());
         assert!(c.entries.len() > 1000, "zu wenige Einträge: {}", c.entries.len());
-        assert_eq!(get("minecraft:stone").icon.kind, "cube");
+        assert_eq!(get("minecraft:stone").icon.kind, "model");
+        assert!(get("minecraft:oak_fence").icon.elements.len() >= 4, "Zaun ohne Pfosten/Latten");
+        assert!(get("minecraft:bamboo_fence").icon.elements.len() >= 4);
+        assert!(get("minecraft:grass_block").icon.elements.iter().any(|e| e.faces.values().any(|f| f.tint)));
         assert_eq!(get("minecraft:stone").name, "Stein");
         assert_eq!(get("minecraft:diamond").icon.kind, "flat");
-        assert_eq!(get("minecraft:oak_log").icon.kind, "cube");
+        assert_eq!(get("minecraft:oak_log").icon.kind, "model");
         assert_eq!(get("minecraft:oak_log").kind, "block");
         let none = c.entries.iter().filter(|e| e.icon.kind == "none").count();
         println!("ohne Icon: {none}");

@@ -497,11 +497,7 @@ select option { background: var(--panel); color: var(--text); }
 /* Item-Symbole */
 .mc-icon { display: inline-grid; place-items: center; flex: none; width: 32px; height: 32px; }
 .mc-flat { width: 100%; height: 100%; background-size: 100% auto; background-repeat: no-repeat; background-position: top; image-rendering: pixelated; }
-.mc-cube { position: relative; width: 62%; height: 62%; transform-style: preserve-3d; transform: rotateX(-30deg) rotateY(45deg); }
-.mc-cube > span { position: absolute; inset: 0; background-size: 100% auto; background-repeat: no-repeat; background-position: top; image-rendering: pixelated; }
-.mc-cube .t { transform: rotateX(90deg) translateZ(var(--h)); }
-.mc-cube .f { transform: translateZ(var(--h)); filter: brightness(0.8); }
-.mc-cube .r { transform: rotateY(90deg) translateZ(var(--h)); filter: brightness(0.62); }
+.mc-img { width: 100%; height: 100%; display: block; image-rendering: auto; }
 .mc-letter { width: 100%; height: 100%; border-radius: 6px; display: grid; place-items: center; background: var(--elevated); color: var(--muted); font-weight: 700; font-size: 11px; }
 .entry .mc-icon { width: 24px; height: 24px; }
 
