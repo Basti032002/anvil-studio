@@ -7,9 +7,12 @@ name: Windows-Build
 # Version mit Bindestrich (z. B. 1.2.3-beta.1) → Release als Vorabversion.
 # Ein manuell gepushter Tag v* funktioniert ebenfalls.
 #
-# Releases landen im ÖFFENTLICHEN Repo RELEASE_REPO (dieser Code bleibt privat).
+# Kanäle:
+#   1.2.3          → stabil, öffentliches Repo RELEASE_REPO
+#   1.2.3-beta.1   → Beta (Pre-Release), öffentliches Repo RELEASE_REPO
+#   1.2.3-dev.1    → Dev, PRIVATES Repo DEV_REPO (nur eingeladene Tester)
 # Dafür wird das Secret RELEASES_TOKEN gebraucht: ein Fine-grained Token mit
-# „Contents: Read and write“ nur für das Release-Repo.
+# „Contents: Read and write“ für RELEASE_REPO und DEV_REPO.
 on:
   push:
     branches: [main]
@@ -22,6 +25,7 @@ permissions:
 
 env:
   RELEASE_REPO: Basti032002/anvil-studio-releases
+  DEV_REPO: Basti032002/anvil-studio-dev
 
 jobs:
   build:
@@ -93,12 +97,14 @@ jobs:
           fi
           APP=$(node -p "require('./src-tauri/tauri.conf.json').version")
           TAG="v$APP"
-          if gh release view "$TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
+          if [[ "$APP" == *-dev* ]]; then TARGET="$DEV_REPO"; else TARGET="$RELEASE_REPO"; fi
+          echo "Ziel-Repo: $TARGET"
+          if gh release view "$TAG" --repo "$TARGET" >/dev/null 2>&1; then
             echo "Release $TAG existiert bereits – nichts zu tun."; exit 0
           fi
 
           # Änderungen seit dem letzten Release (dessen Commit steht in der Beschreibung)
-          PREV=$(gh release view --repo "$RELEASE_REPO" --json body --jq .body 2>/dev/null | grep -oE 'Commit: [0-9a-f]{40}' | head -1 | cut -d' ' -f2 || true)
+          PREV=$(gh release view --repo "$TARGET" --json body --jq .body 2>/dev/null | grep -oE 'Commit: [0-9a-f]{40}' | head -1 | cut -d' ' -f2 || true)
           if [ -n "$PREV" ] && git cat-file -e "$PREV" 2>/dev/null; then RANGE="$PREV..HEAD"; else RANGE="-n 15 HEAD"; fi
           BODY=$(git log -1 --pretty=%b)
           {
@@ -115,6 +121,6 @@ jobs:
           gh release create "$TAG" \
             src-tauri/target/release/bundle/nsis/*-setup.exe \
             src-tauri/target/release/bundle/msi/*.msi \
-            --repo "$RELEASE_REPO" \
+            --repo "$TARGET" \
             --title "Anvil Studio $APP" \
             --notes-file notes.md $PRE

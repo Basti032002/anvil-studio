@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { restoreSession, useAdminSession } from "./admin";
+import { restoreSession, useAccount } from "./admin";
 import { api, JavaStatus, Project } from "./api";
 import { ActivityBar, NavKey, StatusBar, TitleBar, Toasts } from "./components/Chrome";
 import CommandPalette, { Command } from "./components/CommandPalette";
@@ -26,7 +26,8 @@ export default function App() {
   const [javaProgress, setJavaProgress] = useState<string | null>(null);
   const [palette, setPalette] = useState(false);
   const update = useUpdate();
-  const admin = useAdminSession();
+  const account = useAccount();
+  const admin = account?.isAdmin ?? false;
 
   const reload = useCallback(async () => {
     try {
@@ -143,7 +144,7 @@ export default function App() {
           hasWorkspace={!!current}
           onNavigate={setNav}
           settingsBadge={update.phase === "available"}
-          showAdmin={!!admin}
+          showAdmin={admin}
         />
         <main className="main">
           <div className="view" key={nav === "workspace" ? `ws-${current?.id}` : nav}>

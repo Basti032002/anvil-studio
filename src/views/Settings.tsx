@@ -2,12 +2,14 @@ import { useState } from "react";
 import { UpdateCheck } from "../api";
 import { Segmented, Toggle } from "../components/Chrome";
 import { AnvilLogo, CheckIcon, DownloadIcon, RefreshIcon } from "../icons";
-import { useAdminSession } from "../admin";
+import { logout, useAccount } from "../admin";
+import { GitHubLogin, openGithub } from "./Admin";
 import { checkForUpdate, installUpdate, updateSettings, useAppVersion, useSettings, useUpdate } from "../state";
 
-type Section = "updates" | "general" | "appearance" | "about";
+type Section = "updates" | "account" | "general" | "appearance" | "about";
 const SECTIONS: { id: Section; label: string }[] = [
   { id: "updates", label: "Updates" },
+  { id: "account", label: "Konto" },
   { id: "general", label: "Allgemein" },
   { id: "appearance", label: "Darstellung" },
   { id: "about", label: "Über" },
@@ -36,7 +38,8 @@ export default function Settings({ onOpenAdmin }: { onOpenAdmin: () => void }) {
         ))}
       </nav>
       <div className="settings-content" key={section}>
-        {section === "updates" && <UpdatesSection />}
+        {section === "updates" && <UpdatesSection onAccount={() => setSection("account")} />}
+        {section === "account" && <AccountSection onOpenAdmin={onOpenAdmin} />}
         {section === "general" && (
           <>
             <h2>Allgemein</h2>
@@ -90,8 +93,10 @@ export default function Settings({ onOpenAdmin }: { onOpenAdmin: () => void }) {
   );
 }
 
-function UpdatesSection() {
+function UpdatesSection({ onAccount }: { onAccount: () => void }) {
   const s = useSettings()!;
+  const account = useAccount();
+  const tester = !!account?.isTester;
   const u = useUpdate();
   const version = useAppVersion();
   const last = s.lastUpdateCheck ? new Date(s.lastUpdateCheck * 1000).toLocaleString("de-DE") : "noch nie";
@@ -172,17 +177,93 @@ function UpdatesSection() {
         <Row title="Updates automatisch installieren" desc="Gefundene Updates direkt herunterladen und installieren. Läuft gerade ein Spiel oder Build, wird gewartet.">
           <Toggle label="Updates automatisch installieren" checked={s.autoInstall} onChange={(v) => updateSettings({ autoInstall: v })} />
         </Row>
-        <Row title="Vorabversionen" desc="Auch Beta-Versionen (Pre-Releases) anbieten.">
-          <Toggle label="Vorabversionen" checked={s.includePrerelease} onChange={(v) => updateSettings({ includePrerelease: v })} />
+        <Row
+          title="Update-Kanal"
+          desc={
+            s.updateChannel === "dev"
+              ? "Dev: experimentelle Funktionen für Tester. Kann instabil sein."
+              : s.updateChannel === "beta"
+                ? "Beta: neue Funktionen früher ausprobieren. Du bekommst auch alle stabilen Versionen."
+                : "Stabil: nur getestete Versionen."
+          }
+        >
+          <Segmented
+            label="Update-Kanal"
+            value={s.updateChannel}
+            onChange={(v) => updateSettings({ updateChannel: v })}
+            options={[
+              { value: "stable", label: "Stabil" },
+              { value: "beta", label: "Beta" },
+              { value: "dev", label: "Dev", disabled: !tester, title: tester ? undefined : "Nur für angemeldete Tester" },
+            ]}
+          />
         </Row>
+        {!tester && (
+          <div className="setting-row hint">
+            <div className="muted small">Dev-Versionen gibt es nur für eingeladene Tester mit GitHub-Anmeldung.</div>
+            <button className="btn small" onClick={onAccount}>
+              {account ? "Konto ansehen" : "Mit GitHub anmelden"}
+            </button>
+          </div>
+        )}
       </div>
+    </>
+  );
+}
+
+function AccountSection({ onOpenAdmin }: { onOpenAdmin: () => void }) {
+  const account = useAccount();
+  return (
+    <>
+      <h2>Konto</h2>
+      {!account ? (
+        <div className="panel account-login">
+          <div>
+            <div className="setting-title">Mit GitHub anmelden</div>
+            <div className="muted small">Nötig für Dev-Versionen (nur eingeladene Tester) und den Entwicklerbereich. Anvil Studio bekommt dabei nur Lesezugriff auf das Dev-Repo.</div>
+          </div>
+          <GitHubLogin compact />
+        </div>
+      ) : (
+        <>
+          <div className="about">
+            <img className="avatar" src={account.user.avatarUrl} alt="" />
+            <div className="grow">
+              <div className="update-title">{account.user.name ?? account.user.login}</div>
+              <div className="muted small">@{account.user.login}</div>
+            </div>
+            <button className="btn ghost" onClick={() => logout()}>
+              Abmelden
+            </button>
+          </div>
+          <div className="setting-list" style={{ marginTop: 16 }}>
+            <Row title="Dev-Versionen" desc={account.isTester ? "Du bist als Tester freigeschaltet und kannst den Kanal „Dev“ wählen." : "Kein Zugriff. Wenn du eingeladen wurdest, nimm die Einladung auf GitHub an und melde dich neu an."}>
+              {account.isTester ? (
+                <span className="tag ch-dev">Tester</span>
+              ) : (
+                <button className="btn small" onClick={() => openGithub("https://github.com/Basti032002/anvil-studio-dev/invitations")}>
+                  Einladung öffnen
+                </button>
+              )}
+            </Row>
+            {account.isAdmin && (
+              <Row title="Entwicklerbereich" desc="Versionen veröffentlichen, Releases, Tester und Builds verwalten.">
+                <button className="btn" onClick={onOpenAdmin}>
+                  Öffnen
+                </button>
+              </Row>
+            )}
+          </div>
+        </>
+      )}
     </>
   );
 }
 
 function About({ onOpenAdmin }: { onOpenAdmin: () => void }) {
   const version = useAppVersion();
-  const admin = useAdminSession();
+  const account = useAccount();
+  const admin = account?.isAdmin ? account.user : null;
   return (
     <>
       <h2>Über</h2>

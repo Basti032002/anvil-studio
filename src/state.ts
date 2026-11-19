@@ -98,7 +98,7 @@ export async function checkForUpdate(manual = false) {
   if (phase === "checking" || phase === "downloading" || phase === "installing") return;
   updateStore.set({ phase: "checking" });
   try {
-    const info = await settingsApi.checkUpdate(s.includePrerelease);
+    const info = await settingsApi.checkUpdate(s.updateChannel);
     settingsStore.set({ ...(settingsStore.get() ?? s), lastUpdateCheck: Math.floor(Date.now() / 1000) });
     if (!info) {
       updateStore.set({ phase: "none" });

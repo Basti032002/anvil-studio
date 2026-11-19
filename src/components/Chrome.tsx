@@ -41,6 +41,7 @@ export function TitleBar({ subtitle, onSearch }: { subtitle?: string; onSearch: 
           <AnvilLogo size={13} />
         </span>
         <span data-tauri-drag-region>Anvil Studio</span>
+        <ChannelBadge />
         {subtitle && (
           <span className="titlebar-sub" data-tauri-drag-region>
             — {subtitle}
@@ -235,7 +236,7 @@ export function Segmented<T extends string>({
   label,
 }: {
   value: T;
-  options: { value: T; label: string }[];
+  options: { value: T; label: string; disabled?: boolean; title?: string }[];
   onChange: (v: T) => void;
   label: string;
 }) {
@@ -250,6 +251,8 @@ export function Segmented<T extends string>({
           role="radio"
           aria-checked={o.value === value}
           className={o.value === value ? "segmented-item active" : "segmented-item"}
+          disabled={o.disabled}
+          title={o.title}
           onClick={() => onChange(o.value)}
         >
           {o.label}
@@ -257,4 +260,12 @@ export function Segmented<T extends string>({
       ))}
     </div>
   );
+}
+
+/** Zeigt BETA/DEV in der Titelleiste, wenn eine Vorabversion läuft. */
+function ChannelBadge() {
+  const v = useAppVersion();
+  if (v.includes("-dev")) return <span className="build-badge dev">DEV</span>;
+  if (v.includes("-")) return <span className="build-badge beta">BETA</span>;
+  return null;
 }

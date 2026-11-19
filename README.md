@@ -18,16 +18,36 @@ Ein Windows-Launcher zum **Erstellen, Bauen und Testen von Minecraft-Mods**. Pro
 - **Einstellungen:** Update-Verhalten, Standard-Editor, Speicherort, Darstellung
 - **Automatische Updates:** Anvil Studio sucht im öffentlichen Repo [anvil-studio-releases](https://github.com/Basti032002/anvil-studio-releases) nach neuen Versionen (bei jedem Start, täglich, wöchentlich oder nur manuell). Es lädt den Installer, prüft die SHA-256-Prüfsumme, installiert und startet neu. Läuft gerade ein Spiel oder Build, wartet es damit.
 
+## Update-Kanäle
+
+| Kanal | Version | Wo | Wer bekommt sie |
+|---|---|---|---|
+| Stabil | `1.2.3` | öffentlich: `anvil-studio-releases` | alle |
+| Beta | `1.2.3-beta.1` | öffentlich: `anvil-studio-releases` (Pre-Release) | wer in den Einstellungen „Beta“ wählt |
+| Dev | `1.2.3-dev.1` | **privat**: `anvil-studio-dev` | nur eingeladene Tester mit GitHub-Anmeldung |
+
+Die Dev-Sperre erzwingt GitHub selbst: Nur wer Lesezugriff auf `anvil-studio-dev` hat, kann die Installer laden. Tester lädst du im Entwicklerbereich unter **Tester** ein.
+
+Experimentelle Funktionen nur in Dev-Builds zeigen:
+
+```ts
+const isDev = useAppVersion().includes("-dev");   // Oberfläche
+```
+```rust
+let is_dev = env!("CARGO_PKG_VERSION").contains("-dev");  // Backend
+```
+
 ## Entwicklerbereich
 
-Nur für das Konto `Basti032002`. Anmeldung mit GitHub (Device Flow), das Token liegt in der Windows-Anmeldeinformationsverwaltung.
+Nur für das Konto `Basti032002`. Anmeldung über die GitHub App „Anvil Studio“ (Device Flow), das Token liegt in der Windows-Anmeldeinformationsverwaltung.
 
 - **Übersicht:** Version im Code, neuestes Release, Downloads, letzter Build und noch nicht veröffentlichte Commits
 - **Veröffentlichen:** Fehlerbehebung, neue Funktionen, großes Update oder Beta wählen und Notizen schreiben. Anvil Studio erstellt den Versions-Commit auf `main`, danach erscheint das Release automatisch. Der Fortschritt wird live angezeigt.
 - **Releases:** Downloads je Version, als Beta oder stabil markieren, Notizen bearbeiten, löschen
+- **Tester:** Tester für Dev-Versionen einladen und entfernen
 - **Builds:** Status der GitHub-Actions-Läufe, fehlgeschlagene Läufe neu starten
 
-Einrichtung (einmalig): Lege unter GitHub → Settings → Developer settings → **OAuth Apps** eine App an und aktiviere „Enable Device Flow“. Als Callback-URL kannst du z. B. `https://github.com` eintragen. Die **Client ID** hinterlegst du im Repo unter Settings → Secrets and variables → Actions → **Variables** als `ANVIL_GITHUB_CLIENT_ID`.
+Einrichtung (einmalig): GitHub App unter Settings → Developer settings → **GitHub Apps** anlegen. Device Flow aktivieren, Webhook aus, Ablauf der Nutzer-Tokens aus. Repository-Rechte: Contents (Read & write), Actions (Read & write), Administration (Read & write), Metadata (Read). Die App auf `anvil-studio`, `anvil-studio-releases` und `anvil-studio-dev` installieren. Die **Client ID** als Repo-Variable `ANVIL_GITHUB_CLIENT_ID` hinterlegen.
 
 Tastenkürzel: `Strg K` Befehlspalette · `F5` Starten · `Umschalt F5` Stoppen · `Strg B` Bauen · `Strg N` Neues Projekt · `Strg ,` Einstellungen
 

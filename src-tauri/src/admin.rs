@@ -1,10 +1,14 @@
-//! Admin-Bereich: Anmeldung mit GitHub (Device Flow) und Verwaltung von
-//! Versionen, Releases und Builds.
+//! GitHub-Konto (Anmeldung per Device Flow über die GitHub App) sowie der
+//! Entwicklerbereich: Versionen, Releases, Builds und Tester verwalten.
 //!
-//! Sicherheit: Zugang gibt es nur für das Konto OWNER. Alle Aktionen laufen
-//! mit dem GitHub-Token des angemeldeten Kontos – GitHub selbst erzwingt also
-//! zusätzlich, dass nur jemand mit Schreibrechten etwas verändern kann.
-//! Das Token liegt in der Windows-Anmeldeinformationsverwaltung, nie in Dateien.
+//! Rollen:
+//! - Admin  = das Konto OWNER (wird bei jedem Admin-Befehl neu geprüft)
+//! - Tester = hat Lesezugriff auf das private Repo DEV_REPO und darf damit
+//!   Dev-Versionen herunterladen. Das erzwingt GitHub selbst.
+//!
+//! Alle Aufrufe laufen mit dem Token des angemeldeten Kontos. Weil es ein
+//! Token der GitHub App ist, reicht es nur so weit, wie App UND Konto Rechte
+//! haben. Das Token liegt in der Windows-Anmeldeinformationsverwaltung.
 
 use crate::util::{err, http_client, net_err};
 use base64::Engine;
@@ -13,8 +17,9 @@ use serde_json::{json, Value};
 
 const OWNER: &str = "Basti032002";
 const CODE_REPO: &str = "Basti032002/anvil-studio";
-const RELEASE_REPO: &str = "Basti032002/anvil-studio-releases";
-/// Client-ID der GitHub-OAuth-App, wird beim Build über die Umgebung gesetzt.
+pub const RELEASE_REPO: &str = "Basti032002/anvil-studio-releases";
+pub const DEV_REPO: &str = "Basti032002/anvil-studio-dev";
+/// Client-ID der GitHub App, wird beim Build über die Umgebung gesetzt.
 const CLIENT_ID: Option<&str> = option_env!("ANVIL_GITHUB_CLIENT_ID");
 const KEYRING_SERVICE: &str = "AnvilStudio";
 const KEYRING_USER: &str = "github-admin";
@@ -32,7 +37,7 @@ const VERSION_FILES: &[&str] = &[
 fn entry() -> Result<keyring::Entry, String> {
     keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(err)
 }
-fn load_token() -> Option<String> {
+pub fn load_token() -> Option<String> {
     entry().ok()?.get_password().ok().filter(|t| !t.is_empty())
 }
 fn store_token(t: &str) -> Result<(), String> {
@@ -93,8 +98,32 @@ pub struct AdminUser {
     avatar_url: String,
 }
 
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountInfo {
+    user: AdminUser,
+    is_admin: bool,
+    is_tester: bool,
+}
+
+async fn account_info(user: AdminUser) -> AccountInfo {
+    let is_admin = user.login.eq_ignore_ascii_case(OWNER);
+    // Tester = Konto kann das private Dev-Repo sehen
+    let is_tester = is_admin || get(&format!("/repos/{DEV_REPO}")).await.is_ok();
+    AccountInfo { user, is_admin, is_tester }
+}
+
+async fn require_admin() -> Result<(), String> {
+    let u = fetch_user().await?;
+    if u.login.eq_ignore_ascii_case(OWNER) {
+        Ok(())
+    } else {
+        Err("Nur der Entwickler darf das.".into())
+    }
+}
+
 #[tauri::command]
-pub fn admin_configured() -> bool {
+pub fn account_configured() -> bool {
     CLIENT_ID.map(|c| !c.is_empty()).unwrap_or(false)
 }
 
@@ -109,12 +138,12 @@ pub struct DeviceCode {
 }
 
 #[tauri::command]
-pub async fn admin_start_login() -> Result<DeviceCode, String> {
+pub async fn account_start_login() -> Result<DeviceCode, String> {
     let client_id = CLIENT_ID.filter(|c| !c.is_empty()).ok_or("Diese Version wurde ohne GitHub-Client-ID gebaut.")?;
     let resp = http_client()?
         .post("https://github.com/login/device/code")
         .header("Accept", "application/json")
-        .form(&[("client_id", client_id), ("scope", "repo")])
+        .form(&[("client_id", client_id)])
         .send()
         .await
         .map_err(|e| net_err(&e))?;
@@ -134,10 +163,9 @@ pub async fn admin_start_login() -> Result<DeviceCode, String> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PollResult {
-    /// "pending" | "slow_down" | "done" | "denied" | "expired" | "forbidden"
+    /// "pending" | "slow_down" | "done" | "denied" | "expired"
     status: String,
-    user: Option<AdminUser>,
-    login: Option<String>,
+    account: Option<AccountInfo>,
 }
 
 async fn fetch_user() -> Result<AdminUser, String> {
@@ -150,7 +178,7 @@ async fn fetch_user() -> Result<AdminUser, String> {
 }
 
 #[tauri::command]
-pub async fn admin_poll_login(device_code: String) -> Result<PollResult, String> {
+pub async fn account_poll_login(device_code: String) -> Result<PollResult, String> {
     let client_id = CLIENT_ID.ok_or("Keine Client-ID")?;
     let resp = http_client()?
         .post("https://github.com/login/oauth/access_token")
@@ -164,7 +192,7 @@ pub async fn admin_poll_login(device_code: String) -> Result<PollResult, String>
         .await
         .map_err(|e| net_err(&e))?;
     let v: Value = serde_json::from_str(&resp.text().await.map_err(|e| net_err(&e))?).map_err(err)?;
-    let status = |s: &str| PollResult { status: s.into(), user: None, login: None };
+    let status = |s: &str| PollResult { status: s.into(), account: None };
     if let Some(e) = v["error"].as_str() {
         return Ok(match e {
             "authorization_pending" => status("pending"),
@@ -176,7 +204,6 @@ pub async fn admin_poll_login(device_code: String) -> Result<PollResult, String>
     }
     let Some(access) = v["access_token"].as_str() else { return Err("Kein Token erhalten.".into()) };
 
-    // Erst prüfen, wem das Token gehört – nur der Besitzer wird gespeichert.
     store_token(access)?;
     let user = match fetch_user().await {
         Ok(u) => u,
@@ -185,31 +212,23 @@ pub async fn admin_poll_login(device_code: String) -> Result<PollResult, String>
             return Err(e);
         }
     };
-    if !user.login.eq_ignore_ascii_case(OWNER) {
-        clear_token();
-        return Ok(PollResult { status: "forbidden".into(), user: None, login: Some(user.login) });
-    }
-    Ok(PollResult { status: "done".into(), user: Some(user), login: None })
+    Ok(PollResult { status: "done".into(), account: Some(account_info(user).await) })
 }
 
 #[tauri::command]
-pub async fn admin_session() -> Result<Option<AdminUser>, String> {
+pub async fn account_session() -> Result<Option<AccountInfo>, String> {
     if load_token().is_none() {
         return Ok(None);
     }
     match fetch_user().await {
-        Ok(u) if u.login.eq_ignore_ascii_case(OWNER) => Ok(Some(u)),
-        Ok(_) => {
-            clear_token();
-            Ok(None)
-        }
+        Ok(u) => Ok(Some(account_info(u).await)),
         Err(e) if e.contains("abgelaufen") => Ok(None),
         Err(e) => Err(e),
     }
 }
 
 #[tauri::command]
-pub fn admin_logout() {
+pub fn account_logout() {
     clear_token();
 }
 
@@ -219,6 +238,9 @@ pub fn admin_logout() {
 #[serde(rename_all = "camelCase")]
 pub struct ReleaseRow {
     id: u64,
+    repo: String,
+    /// "stable" | "beta" | "dev"
+    channel: String,
     tag: String,
     name: String,
     prerelease: bool,
@@ -263,24 +285,27 @@ async fn read_file(path: &str, r#ref: &str) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn admin_overview() -> Result<Overview, String> {
+    require_admin().await?;
     let head = get(&format!("/repos/{CODE_REPO}/git/ref/heads/main")).await?;
     let head_sha = head["object"]["sha"].as_str().unwrap_or_default().to_string();
     let conf: Value = serde_json::from_str(&read_file("src-tauri/tauri.conf.json", &head_sha).await?).map_err(err)?;
     let repo_version = conf["version"].as_str().unwrap_or_default().to_string();
 
-    let rel = get(&format!("/repos/{RELEASE_REPO}/releases?per_page=30")).await?;
-    let releases: Vec<ReleaseRow> = rel
-        .as_array()
-        .cloned()
-        .unwrap_or_default()
-        .into_iter()
-        .map(|r| {
+    let mut releases: Vec<ReleaseRow> = vec![];
+    for repo in [RELEASE_REPO, DEV_REPO] {
+        let Ok(rel) = get(&format!("/repos/{repo}/releases?per_page=30")).await else {
+            continue; // z. B. Dev-Repo noch nicht angelegt
+        };
+        for r in rel.as_array().cloned().unwrap_or_default() {
             let assets = r["assets"].as_array().cloned().unwrap_or_default();
-            ReleaseRow {
+            let prerelease = r["prerelease"].as_bool().unwrap_or(false);
+            releases.push(ReleaseRow {
                 id: r["id"].as_u64().unwrap_or(0),
+                repo: repo.to_string(),
+                channel: if repo == DEV_REPO { "dev" } else if prerelease { "beta" } else { "stable" }.into(),
                 tag: r["tag_name"].as_str().unwrap_or_default().into(),
                 name: r["name"].as_str().unwrap_or_default().into(),
-                prerelease: r["prerelease"].as_bool().unwrap_or(false),
+                prerelease,
                 draft: r["draft"].as_bool().unwrap_or(false),
                 published_at: r["published_at"].as_str().unwrap_or_default().into(),
                 html_url: r["html_url"].as_str().unwrap_or_default().into(),
@@ -290,9 +315,10 @@ pub async fn admin_overview() -> Result<Overview, String> {
                     .iter()
                     .map(|a| json!({ "name": a["name"], "downloads": a["download_count"], "size": a["size"] }))
                     .collect(),
-            }
-        })
-        .collect();
+            });
+        }
+    }
+    releases.sort_by(|a, b| b.published_at.cmp(&a.published_at));
 
     let runs_v = get(&format!("/repos/{CODE_REPO}/actions/runs?per_page=12")).await?;
     let runs = runs_v["workflow_runs"]
@@ -411,6 +437,7 @@ pub struct PublishRequest {
 /// den Installer und veröffentlicht das Release.
 #[tauri::command]
 pub async fn admin_publish(req: PublishRequest) -> Result<PublishResult, String> {
+    require_admin().await?;
     let version = req.version.trim().trim_start_matches('v').to_string();
     if !valid_version(&version) {
         return Err("Ungültige Versionsnummer (Beispiel: 0.3.0 oder 0.3.0-beta.1).".into());
@@ -454,28 +481,110 @@ pub async fn admin_publish(req: PublishRequest) -> Result<PublishResult, String>
 
 // ---- Releases & Builds verwalten --------------------------------------------------
 
+fn check_repo(repo: &str) -> Result<(), String> {
+    if repo == RELEASE_REPO || repo == DEV_REPO {
+        Ok(())
+    } else {
+        Err("Unbekanntes Repo".into())
+    }
+}
+
 #[tauri::command]
-pub async fn admin_set_prerelease(id: u64, prerelease: bool) -> Result<(), String> {
-    gh(reqwest::Method::PATCH, &format!("/repos/{RELEASE_REPO}/releases/{id}"), Some(json!({ "prerelease": prerelease }))).await?;
+pub async fn admin_set_prerelease(repo: String, id: u64, prerelease: bool) -> Result<(), String> {
+    require_admin().await?;
+    check_repo(&repo)?;
+    gh(reqwest::Method::PATCH, &format!("/repos/{repo}/releases/{id}"), Some(json!({ "prerelease": prerelease }))).await?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn admin_update_notes(id: u64, body: String) -> Result<(), String> {
-    gh(reqwest::Method::PATCH, &format!("/repos/{RELEASE_REPO}/releases/{id}"), Some(json!({ "body": body }))).await?;
+pub async fn admin_update_notes(repo: String, id: u64, body: String) -> Result<(), String> {
+    require_admin().await?;
+    check_repo(&repo)?;
+    gh(reqwest::Method::PATCH, &format!("/repos/{repo}/releases/{id}"), Some(json!({ "body": body }))).await?;
     Ok(())
 }
 
 /// Löscht ein Release samt Tag – Nutzer bekommen es danach nicht mehr angeboten.
 #[tauri::command]
-pub async fn admin_delete_release(id: u64, tag: String) -> Result<(), String> {
-    gh(reqwest::Method::DELETE, &format!("/repos/{RELEASE_REPO}/releases/{id}"), None).await?;
-    let _ = gh(reqwest::Method::DELETE, &format!("/repos/{RELEASE_REPO}/git/refs/tags/{tag}"), None).await;
+pub async fn admin_delete_release(repo: String, id: u64, tag: String) -> Result<(), String> {
+    require_admin().await?;
+    check_repo(&repo)?;
+    gh(reqwest::Method::DELETE, &format!("/repos/{repo}/releases/{id}"), None).await?;
+    let _ = gh(reqwest::Method::DELETE, &format!("/repos/{repo}/git/refs/tags/{tag}"), None).await;
+    Ok(())
+}
+
+// ---- Tester ---------------------------------------------------------------------
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Tester {
+    login: String,
+    avatar_url: String,
+    /// Einladung noch nicht angenommen
+    pending: bool,
+    invitation_id: Option<u64>,
+}
+
+fn valid_login(login: &str) -> bool {
+    !login.is_empty() && login.len() <= 39 && login.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+#[tauri::command]
+pub async fn admin_testers() -> Result<Vec<Tester>, String> {
+    require_admin().await?;
+    let mut out = vec![];
+    let collabs = get(&format!("/repos/{DEV_REPO}/collaborators?affiliation=direct&per_page=100")).await?;
+    for c in collabs.as_array().cloned().unwrap_or_default() {
+        let login = c["login"].as_str().unwrap_or_default().to_string();
+        if login.eq_ignore_ascii_case(OWNER) {
+            continue;
+        }
+        out.push(Tester { login, avatar_url: c["avatar_url"].as_str().unwrap_or_default().into(), pending: false, invitation_id: None });
+    }
+    if let Ok(inv) = get(&format!("/repos/{DEV_REPO}/invitations?per_page=100")).await {
+        for i in inv.as_array().cloned().unwrap_or_default() {
+            out.push(Tester {
+                login: i["invitee"]["login"].as_str().unwrap_or_default().into(),
+                avatar_url: i["invitee"]["avatar_url"].as_str().unwrap_or_default().into(),
+                pending: true,
+                invitation_id: i["id"].as_u64(),
+            });
+        }
+    }
+    Ok(out)
+}
+
+/// Lädt jemanden mit Lesezugriff auf das Dev-Repo ein (nur Installer, kein Quellcode).
+#[tauri::command]
+pub async fn admin_add_tester(login: String) -> Result<(), String> {
+    require_admin().await?;
+    let login = login.trim().trim_start_matches('@').to_string();
+    if !valid_login(&login) {
+        return Err("Ungültiger GitHub-Name.".into());
+    }
+    gh(reqwest::Method::PUT, &format!("/repos/{DEV_REPO}/collaborators/{login}"), Some(json!({ "permission": "pull" }))).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn admin_remove_tester(login: String, invitation_id: Option<u64>) -> Result<(), String> {
+    require_admin().await?;
+    if let Some(id) = invitation_id {
+        gh(reqwest::Method::DELETE, &format!("/repos/{DEV_REPO}/invitations/{id}"), None).await?;
+    } else {
+        if !valid_login(&login) {
+            return Err("Ungültiger GitHub-Name.".into());
+        }
+        gh(reqwest::Method::DELETE, &format!("/repos/{DEV_REPO}/collaborators/{login}"), None).await?;
+    }
     Ok(())
 }
 
 #[tauri::command]
 pub async fn admin_rerun(run_id: u64) -> Result<(), String> {
+    require_admin().await?;
     gh(reqwest::Method::POST, &format!("/repos/{CODE_REPO}/actions/runs/{run_id}/rerun"), None).await?;
     Ok(())
 }

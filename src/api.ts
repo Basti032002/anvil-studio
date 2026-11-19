@@ -68,11 +68,13 @@ export function timeAgo(seconds: number): string {
 // ---- Einstellungen & Updates -------------------------------------------
 
 export type UpdateCheck = "startup" | "daily" | "weekly" | "manual";
+export type UpdateChannel = "stable" | "beta" | "dev";
 
 export type Settings = {
   updateCheck: UpdateCheck;
   autoInstall: boolean;
   includePrerelease: boolean;
+  updateChannel: UpdateChannel;
   defaultIde: "code" | "idea";
   projectsDir: string;
   reduceMotion: boolean;
@@ -91,11 +93,13 @@ export type UpdateInfo = {
   size: number;
   digest: string | null;
   prerelease: boolean;
+  channel: UpdateChannel;
+  assetApiUrl: string;
 };
 
 export const settingsApi = {
   get: () => invoke<Settings>("get_settings"),
   save: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
-  checkUpdate: (includePrerelease: boolean) => invoke<UpdateInfo | null>("check_update", { includePrerelease }),
+  checkUpdate: (channel: UpdateChannel) => invoke<UpdateInfo | null>("check_update", { channel }),
   installUpdate: (info: UpdateInfo) => invoke<void>("install_update", { info }),
 };

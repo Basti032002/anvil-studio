@@ -208,9 +208,16 @@ pub fn http_client() -> Result<reqwest::Client, String> {
         .map_err(|e| net_err(&e))
 }
 
-async fn download_reqwest(url: &str, target: &Path, progress: &(dyn Fn(u64, Option<u64>) + Send + Sync)) -> Result<(), String> {
+pub type Headers<'a> = &'a [(&'a str, String)];
+
+async fn download_reqwest(url: &str, headers: Headers<'_>, target: &Path, progress: &(dyn Fn(u64, Option<u64>) + Send + Sync)) -> Result<(), String> {
     use std::io::Write;
-    let mut resp = http_client()?.get(url).send().await.map_err(|e| net_err(&e))?;
+    let mut req = http_client()?.get(url);
+    for (k, v) in headers {
+        req = req.header(*k, v);
+    }
+    // reqwest entfernt Authorization bei Weiterleitung auf einen anderen Host
+    let mut resp = req.send().await.map_err(|e| net_err(&e))?;
     if !resp.status().is_success() {
         return Err(format!("HTTP {}", resp.status()));
     }
@@ -234,7 +241,11 @@ async fn download_reqwest(url: &str, target: &Path, progress: &(dyn Fn(u64, Opti
 /// (z. B. wegen Virenscanner/Proxy), wird unter Windows curl.exe benutzt,
 /// das die Netzwerk- und Zertifikatseinstellungen von Windows verwendet.
 pub async fn download(url: &str, target: &Path, progress: &(dyn Fn(u64, Option<u64>) + Send + Sync)) -> Result<(), String> {
-    let first = download_reqwest(url, target, progress).await;
+    download_with(url, &[], target, progress).await
+}
+
+pub async fn download_with(url: &str, headers: Headers<'_>, target: &Path, progress: &(dyn Fn(u64, Option<u64>) + Send + Sync)) -> Result<(), String> {
+    let first = download_reqwest(url, headers, target, progress).await;
     let Err(first_err) = first else { return Ok(()) };
     if !cfg!(windows) {
         return Err(first_err);
@@ -242,11 +253,15 @@ pub async fn download(url: &str, target: &Path, progress: &(dyn Fn(u64, Option<u
     let _ = std::fs::remove_file(target);
     let url = url.to_string();
     let target_c = target.to_path_buf();
+    let header_args: Vec<String> = headers.iter().map(|(k, v)| format!("{k}: {v}")).collect();
     let out = tauri::async_runtime::spawn_blocking(move || {
         let mut cmd = Command::new("curl.exe");
-        cmd.args(["-L", "--fail", "--silent", "--show-error", "--retry", "2", "-o"])
-            .arg(&target_c)
-            .arg(&url);
+        // curl schickt -H-Header bei Weiterleitung auf andere Hosts nicht mit
+        cmd.args(["-L", "--fail", "--silent", "--show-error", "--retry", "2"]);
+        for h in &header_args {
+            cmd.arg("-H").arg(h);
+        }
+        cmd.arg("-o").arg(&target_c).arg(&url);
         hide_window_std(&mut cmd).output()
     })
     .await

@@ -3,10 +3,15 @@ import { useSyncExternalStore } from "react";
 
 export type AdminUser = { login: string; name: string | null; avatarUrl: string };
 export type DeviceCode = { deviceCode: string; userCode: string; verificationUri: string; interval: number; expiresIn: number };
-export type PollResult = { status: "pending" | "slow_down" | "done" | "denied" | "expired" | "forbidden"; user: AdminUser | null; login: string | null };
+export type AccountInfo = { user: AdminUser; isAdmin: boolean; isTester: boolean };
+export type PollResult = { status: "pending" | "slow_down" | "done" | "denied" | "expired"; account: AccountInfo | null };
+export type Tester = { login: string; avatarUrl: string; pending: boolean; invitationId: number | null };
+export type Channel = "stable" | "beta" | "dev";
 
 export type ReleaseRow = {
   id: number;
+  repo: string;
+  channel: Channel;
   tag: string;
   name: string;
   prerelease: boolean;
@@ -31,28 +36,32 @@ export type RunRow = {
 export type Overview = { repoVersion: string; headSha: string; releases: ReleaseRow[]; runs: RunRow[]; unreleased: string[] };
 
 export const adminApi = {
-  configured: () => invoke<boolean>("admin_configured"),
-  startLogin: () => invoke<DeviceCode>("admin_start_login"),
-  pollLogin: (deviceCode: string) => invoke<PollResult>("admin_poll_login", { deviceCode }),
-  session: () => invoke<AdminUser | null>("admin_session"),
-  logout: () => invoke<void>("admin_logout"),
+  configured: () => invoke<boolean>("account_configured"),
+  startLogin: () => invoke<DeviceCode>("account_start_login"),
+  pollLogin: (deviceCode: string) => invoke<PollResult>("account_poll_login", { deviceCode }),
+  session: () => invoke<AccountInfo | null>("account_session"),
+  logout: () => invoke<void>("account_logout"),
+  testers: () => invoke<Tester[]>("admin_testers"),
+  addTester: (login: string) => invoke<void>("admin_add_tester", { login }),
+  removeTester: (login: string, invitationId: number | null) => invoke<void>("admin_remove_tester", { login, invitationId }),
   overview: () => invoke<Overview>("admin_overview"),
   publish: (version: string, notes: string) => invoke<{ commitSha: string; commitUrl: string }>("admin_publish", { req: { version, notes } }),
-  setPrerelease: (id: number, prerelease: boolean) => invoke<void>("admin_set_prerelease", { id, prerelease }),
-  updateNotes: (id: number, body: string) => invoke<void>("admin_update_notes", { id, body }),
-  deleteRelease: (id: number, tag: string) => invoke<void>("admin_delete_release", { id, tag }),
+  setPrerelease: (repo: string, id: number, prerelease: boolean) => invoke<void>("admin_set_prerelease", { repo, id, prerelease }),
+  updateNotes: (repo: string, id: number, body: string) => invoke<void>("admin_update_notes", { repo, id, body }),
+  deleteRelease: (repo: string, id: number, tag: string) => invoke<void>("admin_delete_release", { repo, id, tag }),
   rerun: (runId: number) => invoke<void>("admin_rerun", { runId }),
 };
 
 // ---- Sitzung (global) -------------------------------------------------------
 
-let session: AdminUser | null = null;
+let session: AccountInfo | null = null;
 const listeners = new Set<() => void>();
-function setSession(u: AdminUser | null) {
+function setSession(u: AccountInfo | null) {
   session = u;
   listeners.forEach((l) => l());
 }
-export function useAdminSession() {
+/** Angemeldetes GitHub-Konto (mit Rollen) oder null. */
+export function useAccount() {
   return useSyncExternalStore(
     (l) => {
       listeners.add(l);
@@ -68,7 +77,7 @@ export async function restoreSession() {
     setSession(null);
   }
 }
-export function loggedIn(u: AdminUser) {
+export function loggedIn(u: AccountInfo) {
   setSession(u);
 }
 export async function logout() {
@@ -78,16 +87,18 @@ export async function logout() {
 
 // ---- Versionen ---------------------------------------------------------------
 
-export function bump(version: string, kind: "patch" | "minor" | "major" | "beta"): string {
+export type BumpKind = "patch" | "minor" | "major" | "beta" | "dev";
+export function bump(version: string, kind: BumpKind): string {
   const [main, pre] = version.split("-");
   const [a, b, c] = main.split(".").map((n) => parseInt(n, 10) || 0);
   if (kind === "major") return `${a + 1}.0.0`;
   if (kind === "minor") return `${a}.${b + 1}.0`;
   if (kind === "patch") return pre ? `${a}.${b}.${c}` : `${a}.${b}.${c + 1}`;
-  // beta: bestehende Beta hochzählen, sonst nächste Minor-Beta
-  const m = pre?.match(/^beta\.(\d+)$/);
-  if (m) return `${a}.${b}.${c}-beta.${parseInt(m[1], 10) + 1}`;
-  return `${a}.${b + 1}.0-beta.1`;
+  // beta/dev: bestehende Vorabversion hochzählen, sonst nächste Minor-Version
+  const m = pre?.match(new RegExp(`^${kind}\\.(\\d+)$`));
+  if (m) return `${a}.${b}.${c}-${kind}.${parseInt(m[1], 10) + 1}`;
+  if (pre) return `${a}.${b}.${c}-${kind}.1`;
+  return `${a}.${b + 1}.0-${kind}.1`;
 }
 
 export function relTime(iso: string): string {
@@ -98,3 +109,11 @@ export function relTime(iso: string): string {
   if (diff < 86400) return `vor ${Math.floor(diff / 3600)} Std.`;
   return `vor ${Math.floor(diff / 86400)} Tagen`;
 }
+
+export function channelOf(version: string): Channel {
+  if (version.includes("-dev")) return "dev";
+  if (version.includes("-")) return "beta";
+  return "stable";
+}
+
+export const CHANNEL_LABEL: Record<Channel, string> = { stable: "Stabil", beta: "Beta", dev: "Dev" };

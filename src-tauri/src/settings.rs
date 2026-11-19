@@ -12,8 +12,10 @@ pub struct Settings {
     pub update_check: String,
     /// Gefundene Updates direkt herunterladen und installieren
     pub auto_install: bool,
-    /// Auch Vorabversionen (Pre-Releases) anbieten
+    /// Alter Schalter (bis 0.3.0) – wird in update_channel übernommen
     pub include_prerelease: bool,
+    /// "stable" | "beta" | "dev"
+    pub update_channel: String,
     /// "code" | "idea"
     pub default_ide: String,
     /// Leer = Dokumente\Anvil Studio
@@ -31,6 +33,7 @@ impl Default for Settings {
             update_check: "startup".into(),
             auto_install: true,
             include_prerelease: false,
+            update_channel: String::new(),
             default_ide: "code".into(),
             projects_dir: String::new(),
             reduce_motion: false,
@@ -41,11 +44,20 @@ impl Default for Settings {
 }
 
 pub fn load(app: &AppHandle) -> Settings {
-    let Ok(dir) = data_dir(app) else { return Settings::default() };
-    std::fs::read_to_string(dir.join("settings.json"))
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+    let Ok(dir) = data_dir(app) else { return normalize(Settings::default()) };
+    normalize(
+        std::fs::read_to_string(dir.join("settings.json"))
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default(),
+    )
+}
+
+fn normalize(mut s: Settings) -> Settings {
+    if !matches!(s.update_channel.as_str(), "stable" | "beta" | "dev") {
+        s.update_channel = if s.include_prerelease { "beta".into() } else { "stable".into() };
+    }
+    s
 }
 
 #[tauri::command]
@@ -57,7 +69,8 @@ pub fn get_settings(app: AppHandle) -> Settings {
 #[tauri::command]
 pub fn save_settings(app: AppHandle, settings: Settings) -> Result<Settings, String> {
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut s = settings;
+    let mut s = normalize(settings);
+    s.include_prerelease = s.update_channel != "stable";
     if !matches!(s.update_check.as_str(), "startup" | "daily" | "weekly" | "manual") {
         s.update_check = "startup".into();
     }

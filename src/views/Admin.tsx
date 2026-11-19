@@ -1,24 +1,68 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { adminApi, AdminUser, bump, DeviceCode, loggedIn, logout, Overview, ReleaseRow, relTime, RunRow, useAdminSession } from "../admin";
+import {
+  AccountInfo,
+  adminApi,
+  bump,
+  BumpKind,
+  CHANNEL_LABEL,
+  channelOf,
+  DeviceCode,
+  loggedIn,
+  logout,
+  Overview,
+  ReleaseRow,
+  relTime,
+  RunRow,
+  Tester,
+  useAccount,
+} from "../admin";
 import { Segmented } from "../components/Chrome";
-import { AlertIcon, CheckIcon, CloseIcon, DownloadIcon, GithubIcon, RefreshIcon, RocketIcon, ShieldIcon, TrashIcon } from "../icons";
+import { AlertIcon, CheckIcon, CloseIcon, DownloadIcon, GithubIcon, PlusIcon, RefreshIcon, RocketIcon, ShieldIcon, TrashIcon } from "../icons";
 import { toast } from "../state";
 
 const openUrl = (url: string) => invoke("open_url", { url }).catch((e) => toast(String(e), "error"));
 
+export const openGithub = openUrl;
+
 export default function Admin() {
-  const session = useAdminSession();
-  return session ? <Dashboard user={session} /> : <Login />;
+  const account = useAccount();
+  if (!account) {
+    return (
+      <div className="admin-login">
+        <div className="login-card">
+          <div className="login-icon">
+            <ShieldIcon size={26} />
+          </div>
+          <h1>Entwicklerbereich</h1>
+          <p className="muted">Veröffentliche neue Versionen, verwalte Releases, Tester und Builds. Zugang nur für Basti032002.</p>
+          <GitHubLogin />
+        </div>
+      </div>
+    );
+  }
+  if (!account.isAdmin) {
+    return (
+      <div className="admin-login">
+        <div className="login-card">
+          <div className="login-icon warn">
+            <AlertIcon size={24} />
+          </div>
+          <h1>Kein Zugriff</h1>
+          <p className="muted">Angemeldet als {account.user.login}. Der Entwicklerbereich ist nur für Basti032002.</p>
+        </div>
+      </div>
+    );
+  }
+  return <Dashboard account={account} />;
 }
 
-// ---- Anmeldung ------------------------------------------------------------------
+// ---- Anmeldung (auch in den Einstellungen benutzt) --------------------------------
 
-function Login() {
+export function GitHubLogin({ compact }: { compact?: boolean }) {
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [code, setCode] = useState<DeviceCode | null>(null);
-  const [state, setState] = useState<"idle" | "waiting" | "forbidden" | "expired" | "denied">("idle");
-  const [forbiddenLogin, setForbiddenLogin] = useState("");
+  const [state, setState] = useState<"idle" | "waiting" | "expired" | "denied">("idle");
   const [busy, setBusy] = useState(false);
   const timer = useRef<number>();
 
@@ -46,16 +90,14 @@ function Login() {
     timer.current = window.setTimeout(async () => {
       try {
         const r = await adminApi.pollLogin(c.deviceCode);
-        if (r.status === "done" && r.user) {
-          toast(`Angemeldet als ${r.user.login}.`, "success");
-          loggedIn(r.user);
+        if (r.status === "done" && r.account) {
+          toast(`Angemeldet als ${r.account.user.login}.`, "success");
+          setState("idle");
+          setCode(null);
+          loggedIn(r.account);
         } else if (r.status === "pending") poll(c, interval);
         else if (r.status === "slow_down") poll(c, interval + 5);
-        else if (r.status === "forbidden") {
-          setForbiddenLogin(r.login ?? "");
-          setState("forbidden");
-          setCode(null);
-        } else {
+        else {
           setState(r.status === "denied" ? "denied" : "expired");
           setCode(null);
         }
@@ -68,22 +110,14 @@ function Login() {
   }
 
   return (
-    <div className="admin-login">
-      <div className="login-card">
-        <div className="login-icon">
-          <ShieldIcon size={26} />
-        </div>
-        <h1>Entwicklerbereich</h1>
-        <p className="muted">Veröffentliche neue Versionen, verwalte Releases und behalte die Builds im Blick. Zugang nur für Basti032002.</p>
-
+    <div className={compact ? "gh-login compact" : "gh-login"}>
         {configured === false && (
           <div className="callout warn left">
             <AlertIcon size={18} />
             <div>
               <div className="callout-title">GitHub-Login ist noch nicht eingerichtet</div>
               <div className="muted small">
-                Diese Version wurde ohne Client-ID gebaut. Lege eine GitHub-OAuth-App mit aktiviertem Device Flow an und hinterlege die Client-ID als
-                Repo-Variable <span className="mono">ANVIL_GITHUB_CLIENT_ID</span>.
+                Diese Version wurde ohne Client-ID der GitHub App gebaut.
               </div>
             </div>
           </div>
@@ -118,29 +152,24 @@ function Login() {
           </div>
         ) : (
           <>
-            {state === "forbidden" && (
-              <div className="callout error left">
-                Angemeldet als <b>{forbiddenLogin}</b> – dieses Konto hat keinen Zugriff.
-              </div>
-            )}
             {(state === "expired" || state === "denied") && (
               <div className="callout warn left">{state === "denied" ? "Anmeldung abgelehnt." : "Der Code ist abgelaufen."} Versuch es noch einmal.</div>
             )}
-            <button className="btn primary large" disabled={!configured || busy} onClick={start}>
+            <button className={compact ? "btn primary" : "btn primary large"} disabled={!configured || busy} onClick={start}>
               <GithubIcon size={17} /> Mit GitHub anmelden
             </button>
           </>
         )}
-      </div>
     </div>
   );
 }
 
 // ---- Dashboard ------------------------------------------------------------------
 
-type Tab = "overview" | "publish" | "releases" | "builds";
+type Tab = "overview" | "publish" | "releases" | "testers" | "builds";
 
-function Dashboard({ user }: { user: AdminUser }) {
+function Dashboard({ account }: { account: AccountInfo }) {
+  const user = account.user;
   const [tab, setTab] = useState<Tab>("overview");
   const [data, setData] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(false);
@@ -199,6 +228,7 @@ function Dashboard({ user }: { user: AdminUser }) {
           { value: "overview", label: "Übersicht" },
           { value: "publish", label: "Veröffentlichen" },
           { value: "releases", label: "Releases" },
+          { value: "testers", label: "Tester" },
           { value: "builds", label: "Builds" },
         ]}
       />
@@ -224,6 +254,7 @@ function Dashboard({ user }: { user: AdminUser }) {
             />
           )}
           {tab === "releases" && <ReleasesTab releases={data.releases} onChanged={refresh} />}
+          {tab === "testers" && <TestersTab />}
           {tab === "builds" && <BuildsTab runs={data.runs} onChanged={refresh} />}
         </div>
       )}
@@ -240,7 +271,7 @@ function runState(r?: RunRow) {
 }
 
 function OverviewTab({ data, onPublish }: { data: Overview; onPublish: () => void }) {
-  const latest = data.releases.find((r) => !r.draft);
+  const latest = data.releases.find((r) => !r.draft && r.channel === "stable");
   const total = data.releases.reduce((s, r) => s + r.downloads, 0);
   const lastRun = data.runs[0];
   const rs = runState(lastRun);
@@ -249,7 +280,7 @@ function OverviewTab({ data, onPublish }: { data: Overview; onPublish: () => voi
     <>
       <div className="stats">
         <Stat label="Version im Code" value={data.repoVersion} />
-        <Stat label="Neuestes Release" value={latest ? latest.tag : "–"} sub={latest ? relTime(latest.publishedAt) : "noch keins"} />
+        <Stat label="Neueste stabile Version" value={latest ? latest.tag : "–"} sub={latest ? relTime(latest.publishedAt) : "noch keins"} />
         <Stat label="Downloads gesamt" value={total.toLocaleString("de-DE")} sub={`${data.releases.length} Releases`} />
         <Stat label="Letzter Build" value={rs.label} cls={rs.cls} sub={lastRun ? relTime(lastRun.createdAt) : ""} />
       </div>
@@ -302,7 +333,7 @@ function PublishTab({
   onPublished: (version: string, sha: string) => void;
   onReset: () => void;
 }) {
-  const [kind, setKind] = useState<"patch" | "minor" | "major" | "beta">("patch");
+  const [kind, setKind] = useState<BumpKind>("patch");
   const [version, setVersion] = useState(() => bump(data.repoVersion, "patch"));
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
@@ -368,7 +399,8 @@ function PublishTab({
   const suggested = data.unreleased.filter((c) => !/^Version \d/.test(c));
 
   async function publish() {
-    if (!confirm(`Version ${version} jetzt veröffentlichen? Alle Nutzer bekommen das Update.`)) return;
+    const who = { stable: "Alle Nutzer", beta: "Alle Beta-Nutzer", dev: "Alle Tester" }[channelOf(version)];
+    if (!confirm(`Version ${version} jetzt veröffentlichen? ${who} bekommen das Update.`)) return;
     setBusy(true);
     try {
       const r = await adminApi.publish(version, notes);
@@ -395,8 +427,14 @@ function PublishTab({
               { value: "minor", label: "Neue Funktionen" },
               { value: "major", label: "Großes Update" },
               { value: "beta", label: "Beta" },
+              { value: "dev", label: "Dev" },
             ]}
           />
+        </div>
+        <div className={`channel-note ${channelOf(version)}`}>
+          {channelOf(version) === "stable" && "Stabile Version – alle Nutzer bekommen das Update."}
+          {channelOf(version) === "beta" && "Beta – nur Nutzer mit Update-Kanal „Beta“ oder „Dev“ bekommen sie."}
+          {channelOf(version) === "dev" && "Dev – landet im privaten Repo. Nur angemeldete Tester können sie laden."}
         </div>
         <div className="version-row">
           <div className="version-from mono">{data.repoVersion}</div>
@@ -405,7 +443,7 @@ function PublishTab({
             Neue Version
           </label>
           <input id="ver" className="input mono version-input" value={version} onChange={(e) => setVersion(e.target.value)} />
-          {version.includes("-") && <span className="tag">Vorabversion</span>}
+          <span className={`tag ch-${channelOf(version)}`}>{CHANNEL_LABEL[channelOf(version)]}</span>
         </div>
         <div className="field">
           <label htmlFor="notes">Was ist neu? (erscheint im Release und in der App)</label>
@@ -427,7 +465,7 @@ function PublishTab({
         <ol>
           <li>Die Versionsnummer wird in allen Dateien gesetzt und als Commit auf <span className="mono">main</span> gespeichert.</li>
           <li>GitHub Actions baut den Windows-Installer (ca. 4–12 Minuten).</li>
-          <li>Das Release erscheint im öffentlichen Repo – alle Installationen finden das Update automatisch.</li>
+          <li>Stabil &amp; Beta erscheinen im öffentlichen Repo, Dev im privaten Repo – passende Installationen finden das Update automatisch.</li>
         </ol>
       </div>
     </div>
@@ -448,8 +486,7 @@ function ReleasesTab({ releases, onChanged }: { releases: ReleaseRow[]; onChange
           <div className="release-main">
             <div className="row gap-6">
               <span className="release-tag mono">{r.tag}</span>
-              {i === 0 && !r.prerelease && <span className="tag accent">Aktuell</span>}
-              {r.prerelease && <span className="tag warn">Beta</span>}
+              <span className={`tag ch-${r.channel}`}>{CHANNEL_LABEL[r.channel]}</span>
             </div>
             <div className="muted small">{relTime(r.publishedAt)}</div>
           </div>
@@ -461,11 +498,12 @@ function ReleasesTab({ releases, onChanged }: { releases: ReleaseRow[]; onChange
             </div>
           </div>
           <div className="row gap-6">
+            {r.channel !== "dev" && (
             <button
               className="btn small"
               onClick={() =>
                 adminApi
-                  .setPrerelease(r.id, !r.prerelease)
+                  .setPrerelease(r.repo, r.id, !r.prerelease)
                   .then(() => {
                     toast(r.prerelease ? `${r.tag} ist jetzt stabil.` : `${r.tag} ist jetzt Beta.`, "success");
                     onChanged();
@@ -475,6 +513,7 @@ function ReleasesTab({ releases, onChanged }: { releases: ReleaseRow[]; onChange
             >
               {r.prerelease ? "Als stabil markieren" : "Zur Beta machen"}
             </button>
+            )}
             <button
               className="btn small"
               onClick={() => {
@@ -494,7 +533,7 @@ function ReleasesTab({ releases, onChanged }: { releases: ReleaseRow[]; onChange
               onClick={() => {
                 if (!confirm(`${r.tag} wirklich löschen? Nutzer bekommen diese Version dann nicht mehr angeboten.`)) return;
                 adminApi
-                  .deleteRelease(r.id, r.tag)
+                  .deleteRelease(r.repo, r.id, r.tag)
                   .then(() => {
                     toast(`${r.tag} gelöscht.`, "success");
                     onChanged();
@@ -516,7 +555,7 @@ function ReleasesTab({ releases, onChanged }: { releases: ReleaseRow[]; onChange
                   className="btn small primary"
                   onClick={() =>
                     adminApi
-                      .updateNotes(r.id, draft)
+                      .updateNotes(r.repo, r.id, draft)
                       .then(() => {
                         toast("Notizen gespeichert.", "success");
                         setEditing(null);
@@ -533,6 +572,96 @@ function ReleasesTab({ releases, onChanged }: { releases: ReleaseRow[]; onChange
         </div>
       ))}
     </div>
+  );
+}
+
+function TestersTab() {
+  const [list, setList] = useState<Tester[] | null>(null);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function load() {
+    try {
+      setList(await adminApi.testers());
+    } catch (e) {
+      toast(String(e), "error");
+      setList([]);
+    }
+  }
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
+    try {
+      await adminApi.addTester(name.trim());
+      toast(`${name.trim()} wurde eingeladen.`, "success");
+      setName("");
+      load();
+    } catch (err) {
+      toast(String(err), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="panel">
+        <div className="panel-title-lg">Tester für Dev-Versionen</div>
+        <p className="muted small" style={{ margin: "2px 0 14px" }}>
+          Tester bekommen Lesezugriff auf das private Repo <span className="mono">anvil-studio-dev</span> – dort liegen nur die Dev-Installer, nicht dein
+          Quellcode. GitHub schickt ihnen eine Einladung, die sie annehmen müssen.
+        </p>
+        <form className="row" onSubmit={add}>
+          <label htmlFor="tester" className="sr-only">
+            GitHub-Name
+          </label>
+          <input id="tester" className="input" style={{ maxWidth: 280 }} placeholder="GitHub-Name, z. B. octocat" value={name} onChange={(e) => setName(e.target.value)} />
+          <button className={busy ? "btn primary loading" : "btn primary"} disabled={busy || !name.trim()}>
+            <PlusIcon size={15} /> Einladen
+          </button>
+        </form>
+      </div>
+      {list === null ? (
+        <div className="skeleton" style={{ height: 60 }} />
+      ) : list.length === 0 ? (
+        <p className="muted">Noch keine Tester.</p>
+      ) : (
+        <div className="list">
+          {list.map((t, i) => (
+            <div key={t.login + (t.invitationId ?? "")} className="list-row" style={{ "--i": i } as React.CSSProperties}>
+              <img className="avatar small" src={t.avatarUrl} alt="" />
+              <div className="grow">
+                <div>{t.login}</div>
+                <div className="muted small">{t.pending ? "Einladung noch nicht angenommen" : "Hat Zugriff auf Dev-Versionen"}</div>
+              </div>
+              {t.pending ? <span className="tag warn">Eingeladen</span> : <span className="tag ch-dev">Tester</span>}
+              <button
+                className="icon-btn danger"
+                aria-label={`${t.login} entfernen`}
+                data-tip="Entfernen"
+                onClick={() => {
+                  if (!confirm(`${t.login} den Zugriff auf Dev-Versionen entziehen?`)) return;
+                  adminApi
+                    .removeTester(t.login, t.invitationId)
+                    .then(() => {
+                      toast(`${t.login} entfernt.`, "success");
+                      load();
+                    })
+                    .catch((e) => toast(String(e), "error"));
+                }}
+              >
+                <TrashIcon size={15} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 

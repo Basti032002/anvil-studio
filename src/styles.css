@@ -667,3 +667,40 @@ select.input option { background: var(--elevated); }
   .command-center span { display: none; }
   .command-center { width: auto; }
 }
+
+/* ---- Kanäle & Konto (0.4) ------------------------------------------------ */
+:root { --dev: #b892ff; --dev-soft: rgba(184, 146, 255, 0.12); }
+.build-badge {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.08em; padding: 1px 6px; border-radius: 4px;
+}
+.build-badge.beta { background: var(--warn-soft); color: var(--warn); }
+.build-badge.dev { background: var(--dev-soft); color: var(--dev); }
+.tag.ch-stable { background: var(--accent-soft); color: var(--accent); }
+.tag.ch-beta { background: var(--warn-soft); color: var(--warn); }
+.tag.ch-dev { background: var(--dev-soft); color: var(--dev); }
+.channel-note {
+  font-size: 12.5px; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border); color: var(--text-2);
+  transition: border-color var(--med), background var(--med), color var(--med);
+}
+.channel-note.stable { border-color: var(--accent-line); background: var(--accent-soft); }
+.channel-note.beta { border-color: rgba(242, 181, 74, 0.35); background: var(--warn-soft); }
+.channel-note.dev { border-color: rgba(184, 146, 255, 0.35); background: var(--dev-soft); }
+.segmented-item:disabled { opacity: 0.4; cursor: not-allowed; }
+.segmented-item:disabled:hover { color: var(--muted); }
+.setting-row.hint { background: var(--surface); padding-top: 12px; padding-bottom: 12px; }
+.avatar { width: 46px; height: 46px; border-radius: 12px; border: 1px solid var(--border-strong); flex: none; }
+.avatar.small { width: 32px; height: 32px; border-radius: 8px; }
+.login-icon.warn { color: var(--warn); background: var(--warn-soft); border-color: rgba(242, 181, 74, 0.35); animation: none; }
+.gh-login { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.gh-login.compact { width: auto; align-items: flex-end; }
+.account-login { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.account-login > div:first-child { max-width: 420px; }
+.account-login .gh-login.compact .device { align-items: flex-end; }
+.account-login .device-code { font-size: 20px; }
+.link {
+  align-self: flex-start; background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer;
+  text-align: left; font-size: inherit;
+}
+.link.small { font-size: 12.5px; }
+.link:hover { text-decoration: underline; }
+.avatar { background: var(--elevated); object-fit: cover; }
