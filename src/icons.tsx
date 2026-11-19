@@ -303,18 +303,17 @@ export const PaletteIcon = ({ size = 16 }: P) => (
 );
 export const SwordIcon = ({ size = 16 }: P) => (
   <Svg size={size}>
-    <path d="M20 4v4L10 18l-4-4L16 4zM5 15l4 4M4 20l2.5-2.5" />
+    <path d="M14.5 17.5L3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2" />
   </Svg>
 );
 export const PickaxeIcon = ({ size = 16 }: P) => (
   <Svg size={size}>
-    <path d="M4 7c4-4 11-4 15 1-4-2-8-2-11 1zM12 9l8 11" />
-    <path d="M10.5 7.5l3 3" />
+    <path d="M14.5 12.5l-7.9 7.9a1 1 0 0 1-3-3l7.9-7.9M15.7 4.3A12.5 12.5 0 0 0 5.5 3a1 1 0 0 0 .1 1.7 22 22 0 0 1 6.3 3.4M17.7 3.7a1 1 0 0 0-1.4 0l-4.6 4.6a1 1 0 0 0 0 1.4l2.6 2.6a1 1 0 0 0 1.4 0l4.6-4.6a1 1 0 0 0 0-1.4zM19.7 8.3A12.5 12.5 0 0 1 21 18.5a1 1 0 0 1-1.7-.1 22 22 0 0 0-3.4-6.3" />
   </Svg>
 );
 export const ChestplateIcon = ({ size = 16 }: P) => (
   <Svg size={size}>
-    <path d="M8 3l4 3 4-3 4 3-2 4v10H6V10L4 6z" />
+    <path d="M20.4 3.5L16 2a4 4 0 0 1-8 0L3.6 3.5a2 2 0 0 0-1.3 2.2l.6 3.5a1 1 0 0 0 1 .8H6v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V10h2.2a1 1 0 0 0 1-.8l.6-3.5a2 2 0 0 0-1.3-2.2z" />
   </Svg>
 );
 export const LayersIcon = ({ size = 16 }: P) => (
