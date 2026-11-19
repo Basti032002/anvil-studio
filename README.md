@@ -54,17 +54,22 @@ Tastenkürzel: `Strg K` Befehlspalette · `F5` Starten · `Umschalt F5` Stoppen 
 ## Arbeitsbereich
 
 - **Inhalte:** Blöcke und Items per Formular (Material, Härte, Leuchtkraft, Werkzeug, Seltenheit, Essbarkeit, Rezept). Beim Speichern entstehen `anvil/AnvilContent.java`, Blockstates, Modelle, Loot-Tabellen, Rezepte, Werkzeug-Tags und Übersetzungen (de/en), jeweils im Format der Minecraft-Version. Die Hauptklasse wird einmalig um `AnvilContent.register(modEventBus)` ergänzt. Grundlage ist `.anvil/content.json`.
-- **Pixel-Editor:** 16×16 mit Stift, Radierer, Füllen, Pipette, Spiegeln, Rückgängig und PNG-Import. Vorschau als drehender 3D-Block bzw. als Item. Speichert automatisch.
+  - **Formen:** zu jedem Block optional Treppe, Stufe, Mauer und Zaun – mit Blockstates, Modellen, Loot, Rezepten und Tags.
+  - **Erze:** Drop mit Glück-Bonus und Behutsamkeit, Erfahrung, optionale Tiefenschiefer-Variante, Weltgenerierung (Oberwelt/Nether/Ende, Adergröße, Häufigkeit, Höhe) über NeoForge-Biome-Modifier.
+  - **Werkzeuge & Rüstung:** Schwert, Spitzhacke, Axt, Schaufel, Hacke sowie Rüstungssets mit Vorlagen wie Vanilla, Reparatur-Item und Platzhalter-Texturen für die getragene Rüstung.
+- **Mod-Einstellungen:** Name, Version, Autor, Beschreibung, Lizenz, Logo und Kreativ-Tab (Name und Symbol).
+- **Symbole:** Vanilla-Blöcke werden aus den echten Blockmodellen als 3D-Symbole gezeichnet – wie im Inventar, inklusive Zäunen, Mauern, Treppen und Gras-Einfärbung.- **Pixel-Editor:** 16×16 mit Stift, Radierer, Füllen, Pipette, Spiegeln, Rückgängig und PNG-Import. Vorschau als drehender 3D-Block bzw. als Item. Speichert automatisch.
 - **Code:** eingebauter Monaco-Editor (offline) mit Dateibaum und Tabs, `Strg S` speichert.
 - **Mods:** Modrinth-Suche für NeoForge und die Projektversion. Abhängigkeiten kommen automatisch mit, Downloads werden per SHA-512 geprüft. Vor jedem Start wird nach `run/mods` kopiert (nur, was Anvil Studio selbst dort abgelegt hat, wird wieder entfernt).
 - **Konsole:** Gradle- und Spielausgabe, Probleme, Absturz-Report.
+- **Java:** Temurin 21 wird mit Prüfsumme geladen und nach dem Entpacken getestet; eine beschädigte Installation lässt sich mit „Java reparieren“ neu laden. Downloads werden bei Abbrüchen fortgesetzt und fallen notfalls auf IPv4, `curl.exe` und den Windows-Dienst BITS zurück.
 - **Import:** bestehende NeoForge-Projekte (ModDevGradle) per Ordnerauswahl übernehmen.
 
 ## Kompatibilität & Migration
 
 - Programmdaten (`projects.json`, `settings.json`) haben eine Datenversion (`state.json`). Bei einem Update wird vor jeder Migration nach `backups/` gesichert.
 - Projektdaten (`.anvil/content.json`, `.anvil/mods.json`) haben eine Schema-Version. Beim Öffnen werden ältere Formate migriert (Sicherung in `.anvil/backups/`). Haben sich die Vorlagen geändert, werden Blöcke und Items automatisch neu erzeugt.
-- Der Workflow **Generator-Test** kompiliert erzeugten Code bei jeder Änderung am Generator gegen NeoForge 1.21.1, 1.21.4 und 1.21.10.
+- Der Workflow **Generator-Test** kompiliert erzeugten Code bei jeder Änderung am Generator gegen NeoForge 1.21.1, 1.21.4, 1.21.8 und 1.21.10 und startet anschließend einen Server, damit auch Loot-Tabellen, Rezepte, Tags und Weltgenerierung geprüft werden.
 
 ## Geplant
 

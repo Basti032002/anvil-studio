@@ -577,7 +577,7 @@ fn generate_java(p: &Project, c: &Content) -> String {
                 let reg = if api.props_tools {
                     match i.tool_type.as_str() {
                         "sword" | "pickaxe" => {
-                            format!("ITEMS.registerItem(\"{id}\", Item::new, {})", lz(format!("{props}.{t}({mk}, {d}, {spd})", t = i.tool_type)), id = i.id)
+                            format!("ITEMS.registerItem(\"{id}\", p -> new Item(p.{t}({mk}, {d}, {spd})), {})", lz(props.clone()), t = i.tool_type, id = i.id)
                         }
                         _ => format!("ITEMS.registerItem(\"{id}\", p -> new {class}({mk}, {d}, {spd}, p), {})", lz(props.clone()), id = i.id),
                     }
@@ -598,7 +598,7 @@ fn generate_java(p: &Project, c: &Content) -> String {
                 let mk = format!("ARMOR_{}", up(&i.armor_material));
                 let at = armor_type(&i.armor_slot, &api);
                 let (ty, reg) = if api.props_tools {
-                    ("Item", format!("ITEMS.registerItem(\"{id}\", Item::new, {})", lz(format!("{props}.humanoidArmor({mk}, {at})")), id = i.id))
+                    ("Item", format!("ITEMS.registerItem(\"{id}\", p -> new Item(p.humanoidArmor({mk}, {at})), {})", lz(props.clone()), id = i.id))
                 } else if api.materials_v2 {
                     ("ArmorItem", format!("ITEMS.registerItem(\"{id}\", p -> new ArmorItem({mk}, {at}, p), {props})", id = i.id))
                 } else {
