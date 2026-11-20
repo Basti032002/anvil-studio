@@ -454,7 +454,7 @@ export default function BlueprintEditor({
           <button className="icon-btn" onClick={undo} disabled={!undoStack.current.length} aria-label={t("Rückgängig")} data-tip={t("Rückgängig (Strg Z)")}>
             <UndoIcon size={15} />
           </button>
-          <button className="icon-btn" onClick={redo} disabled={!redoStack.current.length} aria-label={t("Wiederholen")} data-tip={t("Wiederholen (Strg Y)")}>
+          <button className="icon-btn" onClick={redo} disabled={!redoStack.current.length} aria-label={t("Wiederherstellen")} data-tip={t("Wiederherstellen (Strg Y)")}>
             <RedoIcon size={15} />
           </button>
         </div>

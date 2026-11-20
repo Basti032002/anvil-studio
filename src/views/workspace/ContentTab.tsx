@@ -13,6 +13,7 @@ import PixelEditor from "./PixelEditor";
 import { ArmorForm, BlockExtras, Field, ItemKindSwitch, ToolForm } from "./ContentForms";
 import MobEditor from "./MobEditor";
 import BlueprintEditor from "./BlueprintEditor";
+import { ModelPreview } from "./ModelEditor";
 import DimensionEditor, { newDimension } from "./DimensionEditor";
 import CreateMenu, { CreateChoice, CreateGroup } from "./CreateMenu";
 import { TEMPLATES } from "./blueprints";
@@ -842,6 +843,17 @@ export default function ContentTab({ project }: { project: Project }) {
                   kind={block ? "block" : "item"}
                   id={current.id}
                   onSaved={(dataUrl) => setTextures((t) => ({ ...t, [current.id]: dataUrl }))}
+                  renderPreview={
+                    block && block.kind === "normal" && !block.ore.enabled && block.model.length
+                      ? (url) => (
+                          <ModelPreview
+                            cuboids={block.model}
+                            size={190}
+                            texFor={(tx) => (tx ? textures[tx.replace(`${project.modId}:`, "")] : url)}
+                          />
+                        )
+                      : undefined
+                  }
                 />
               ) : null}
               {savedIds.includes(current.id) && block?.ore.enabled && block.ore.deepslate && block.ore.dimension === "overworld" && savedIds.includes(`deepslate_${block.id}`) && (

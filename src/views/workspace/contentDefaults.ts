@@ -35,6 +35,8 @@ export const newBlock = (id: string): BlockDef => ({
   kind: "normal",
   rows: 3,
   names: {},
+  model: [],
+  rotate: false,
 });
 
 const itemBase = {

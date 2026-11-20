@@ -139,7 +139,10 @@ export type BlockDef = {
   kind: "normal" | "lamp" | "storage";
   rows: number;
   names: Record<string, string>;
+  model: Cuboid[];
+  rotate: boolean;
 };
+export type Cuboid = { from: [number, number, number]; to: [number, number, number]; tex: string };
 export type BlockShape = "stairs" | "slab" | "wall" | "fence" | "button" | "pressure_plate";
 export type OreDef = {
   enabled: boolean;

@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+import ModelEditor, { MODEL_PRESETS, ModelPreview, useTexFor } from "./ModelEditor";
 import { useState } from "react";
 import { ArmorSlot, BlockDef, ItemDef, OreDef, Project, ToolType } from "../../api";
 import { useCatalog } from "../../catalog";
@@ -86,6 +87,8 @@ export function BlockExtras({
   texture?: string;
   onChange: (patch: Partial<BlockDef>) => void;
 }) {
+  const [modelOpen, setModelOpen] = useState(false);
+  const texFor = useTexFor(project, block, own, texture);
   const ore = block.ore;
   const setOre = (patch: Partial<OreDef>) => onChange({ ore: { ...ore, ...patch } });
   const key = `own:${block.id}`;
@@ -124,6 +127,45 @@ export function BlockExtras({
           </Field>
         )}
       </div>
+
+      {block.kind === "normal" && !block.ore.enabled && (
+        <div className="sub-section">
+          <SectionHead icon={<CubeIcon size={16} />} title={t("3D-Form")} sub={t("Eigene Form aus Quadern statt eines vollen Würfels")} />
+          <div className="model-inline">
+            {block.model.length > 0 ? (
+              <>
+                <ModelPreview cuboids={block.model} texFor={texFor} size={120} interactive={false} />
+                <div className="grow">
+                  <div>{t("{n} Quader", { n: block.model.length })}{block.rotate ? ` · ${t("dreht sich zum Spieler")}` : ""}</div>
+                  <div className="row gap-6" style={{ marginTop: 8 }}>
+                    <button type="button" className="btn small primary" onClick={() => setModelOpen(true)}>
+                      {t("Modell bearbeiten")}
+                    </button>
+                    <button type="button" className="btn small" onClick={() => onChange({ model: [], rotate: false })}>
+                      {t("Zurück zum Würfel")}
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <span className="muted small grow">{t("Für Tische, Säulen, Laternen und alles, was kein voller Block ist.")}</span>
+                <button
+                  type="button"
+                  className="btn small"
+                  onClick={() => {
+                    onChange({ model: structuredClone(MODEL_PRESETS[2].cuboids) });
+                    setModelOpen(true);
+                  }}
+                >
+                  {t("3D-Modell erstellen")}
+                </button>
+              </>
+            )}
+          </div>
+          {modelOpen && <ModelEditor project={project} block={block} own={own} texture={texture} onChange={onChange} onClose={() => setModelOpen(false)} />}
+        </div>
+      )}
 
       <div className="sub-section">
         <SectionHead icon={<LayersIcon size={16} />} title={t("Weitere Formen")} sub={t("Aus demselben Material – mit Rezept, Tags und Modellen")} />

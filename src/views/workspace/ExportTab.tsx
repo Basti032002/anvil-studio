@@ -104,7 +104,7 @@ export default function ExportTab({
       <div className="export-main">
         <section className="panel export-hero">
           <div className="export-id">
-            {info?.logo ? <img className="export-logo" src={info.logo} alt="" /> : <span className="export-logo empty"><PackageIcon size={26} /></span>}
+            {info?.logo ? <img className="export-logo" src={info.logo} alt="" /> : <span className="export-logo export-logo-ph"><PackageIcon size={26} /></span>}
             <div className="grow">
               <div className="export-name">{info?.name || project.name}</div>
               <div className="muted small">

@@ -11,7 +11,7 @@ const PALETTE = [
 
 type Tool = "pencil" | "eraser" | "fill" | "picker";
 export type TexKind = "block" | "item" | "armor" | "armor_legs" | "entity";
-type Props = { projectId: string; kind: TexKind; id: string; onSaved?: (dataUrl: string) => void; reload?: number };
+type Props = { projectId: string; kind: TexKind; id: string; onSaved?: (dataUrl: string) => void; reload?: number; renderPreview?: (dataUrl: string) => React.ReactNode };
 
 function hexToRgba(hex: string): [number, number, number, number] {
   const n = parseInt(hex.slice(1), 16);
@@ -21,7 +21,7 @@ function rgbaToHex(r: number, g: number, b: number) {
   return "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
 
-export default function PixelEditor({ projectId, kind, id, onSaved, reload }: Props) {
+export default function PixelEditor({ projectId, kind, id, onSaved, reload, renderPreview }: Props) {
   const wide = kind === "armor" || kind === "armor_legs" || kind === "entity";
   const [dims, setDims] = useState(() => (wide ? { w: 64, h: 32 } : { w: 16, h: 16 }));
   const W = dims.w;
@@ -292,7 +292,9 @@ export default function PixelEditor({ projectId, kind, id, onSaved, reload }: Pr
         </div>
       </div>
       <div className="pixel-preview">
-        {wide ? (
+        {renderPreview ? (
+          renderPreview(preview)
+        ) : wide ? (
           <img className="armor-preview" src={preview} alt="" />
         ) : kind === "block" ? (
           <div className="cube-stage" aria-label={t("Vorschau als Block")}>
