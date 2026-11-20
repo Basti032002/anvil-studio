@@ -2604,17 +2604,33 @@ mod tests {
                 ("difficulty", vec![("difficulty", "hard")]),
                 ("clear_inventory", vec![]),
                 ("kill", vec![("who", "target")]),
+                ("title", vec![("text", "Alle"), ("subtitle", "Untertitel"), ("to", "all")]),
+                ("var_set", vec![("var", "Punkte"), ("op", "add"), ("value", "2")]),
+                ("var_set", vec![("var", "runde"), ("scope", "global"), ("op", "random"), ("value", "10")]),
+                ("var_show", vec![("var", "Punkte")]),
+                ("var_hide", vec![]),
+                ("message", vec![("text", "Du hast {var:punkte} Punkte, Runde {global:runde} {unbekannt}")]),
+                ("remove_item", vec![("item", "ruby"), ("count", "2")]),
+                ("drop_item", vec![("item", "minecraft:apple"), ("count", "3")]),
+                ("fill", vec![("block", "minecraft:glass"), ("radius", "2"), ("dy", "-1"), ("height", "1")]),
+                ("bossbar", vec![("text", "Boss \"X\""), ("color", "red"), ("progress", "40"), ("seconds", "5"), ("to", "all")]),
+                ("firework", vec![]),
+                ("spawnpoint", vec![]),
+                ("feed", vec![]),
+                ("enchant", vec![("enchant", "sharpness"), ("level", "2")]),
             ];
             let conds = [
                 ("chance", "30"), ("sneaking", ""), ("raining", ""), ("thundering", ""), ("day", ""), ("night", ""), ("creative", ""),
                 ("holding", "ruby"), ("health_below", "5"), ("dimension", "nether"), ("block_below", "stone"), ("message_contains", "hallo"),
+                ("var", "3"), ("has_item", "ruby"), ("level_at_least", "5"), ("in_water", ""), ("on_fire", ""), ("is_player_target", ""),
             ];
             let mut nodes = vec![];
             let mut links = vec![];
             for (ei, ev) in EVENT_KINDS.iter().enumerate() {
                 let target = match *ev {
-                    "ev_click_block" | "ev_break" | "ev_place" => "ruby_block",
-                    "ev_click_item" | "ev_use" | "ev_craft" => "ruby",
+                    "ev_click_block" | "ev_break" | "ev_place" | "ev_left_click_block" => "ruby_block",
+                    "ev_click_item" | "ev_use" | "ev_craft" | "ev_pickup" => "ruby",
+                    "ev_click_entity" => "minecraft:cow",
                     "ev_hurt" | "ev_kill" => "minecraft:zombie",
                     _ => "",
                 };
@@ -2622,7 +2638,7 @@ mod tests {
                 nodes.push(node(&e, ev, &[("target", target), ("seconds", "30")]));
                 let (cond, val) = conds[ei % conds.len()];
                 let iff = format!("if{ei}");
-                nodes.push(node(&iff, "if", &[("cond", cond), ("value", val)]));
+                nodes.push(node(&iff, "if", &[("cond", cond), ("value", val), ("var", "punkte"), ("cmp", "ge")]));
                 links.push(link(&e, "next", &iff));
                 let cancel = format!("c{ei}");
                 nodes.push(node(&cancel, "cancel", &[]));

@@ -975,3 +975,5 @@ select option { background: var(--panel); color: var(--text); }
 .create-card { font: inherit; color: var(--text); cursor: pointer; }
 .create-tab:hover, .bp-palette-item:hover { background: var(--hover); }
 .create-tab.active { background: var(--accent-soft); }
+.bp-box { position: absolute; border: 1px dashed var(--accent); background: var(--accent-soft); border-radius: 4px; pointer-events: none; z-index: 5; }
+.bp-zoom .icon-btn:disabled { opacity: 0.35; cursor: default; }

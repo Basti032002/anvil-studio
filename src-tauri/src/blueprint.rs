@@ -58,10 +58,44 @@ fn js(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "")
 }
 
-/// Text mit {player} als Java-Ausdruck
+/// Variablenname → Scoreboard-Ziel (nur a-z, 0-9, _)
+pub fn var_name(s: &str) -> String {
+    let n: String = s.trim().to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).take(24).collect();
+    if n.is_empty() { "wert".into() } else { n }
+}
+
+/// Text mit {player}, {var:name} und {global:name} als Java-Ausdruck
 fn text_expr(s: &str) -> String {
-    let parts: Vec<String> = s.split("{player}").map(|p| format!("\"{}\"", js(p))).collect();
-    parts.join(" + (player != null ? player.getName().getString() : \"\") + ")
+    let mut parts: Vec<String> = vec![];
+    let mut lit = String::new();
+    let mut rest = s;
+    while let Some(i) = rest.find('{') {
+        let after = &rest[i + 1..];
+        let Some(j) = after.find('}') else { break };
+        let token = &after[..j];
+        let expr = if token == "player" {
+            Some("(player != null ? player.getName().getString() : \"\")".to_string())
+        } else if let Some(v) = token.strip_prefix("var:") {
+            Some(format!("anvilGet(level, player, \"{}\")", var_name(v)))
+        } else if let Some(v) = token.strip_prefix("global:") {
+            Some(format!("anvilGet(level, null, \"{}\")", var_name(v)))
+        } else {
+            None
+        };
+        match expr {
+            Some(e) => {
+                lit.push_str(&rest[..i]);
+                parts.push(format!("\"{}\"", js(&lit)));
+                lit.clear();
+                parts.push(format!("String.valueOf({e})"));
+            }
+            None => lit.push_str(&rest[..i + 1 + j + 1]),
+        }
+        rest = &after[j + 1..];
+    }
+    lit.push_str(rest);
+    parts.push(format!("\"{}\"", js(&lit)));
+    parts.join(" + ")
 }
 
 /// Befehlsteil sicher machen (nur eine Zeile, kein führender Schrägstrich)
@@ -91,9 +125,9 @@ fn who(props: &BTreeMap<String, String>) -> &'static str {
     }
 }
 
-pub const EVENT_KINDS: [&str; 15] = [
+pub const EVENT_KINDS: [&str; 21] = [
     "ev_join", "ev_respawn", "ev_dimension", "ev_timer", "ev_click_block", "ev_click_item", "ev_break", "ev_place", "ev_use", "ev_hurt", "ev_kill",
-    "ev_jump", "ev_chat", "ev_craft", "ev_start",
+    "ev_jump", "ev_chat", "ev_craft", "ev_start", "ev_click_entity", "ev_player_death", "ev_leave", "ev_pickup", "ev_level_up", "ev_left_click_block",
 ];
 
 struct Gen<'a> {
@@ -174,7 +208,94 @@ impl<'a> Gen<'a> {
             }
             "title" => {
                 let t = serde_json::to_string(prop(p, "text")).unwrap_or_else(|_| "\"\"".into());
-                run(format!("title @s title {t}")) + &next(stack)
+                let sel = if prop(p, "to") == "all" { "@a" } else { "@s" };
+                let sub = prop(p, "subtitle");
+                let mut c = run(format!("title {sel} title {t}"));
+                if !sub.is_empty() {
+                    let st = serde_json::to_string(sub).unwrap_or_else(|_| "\"\"".into());
+                    c = run(format!("title {sel} subtitle {st}")) + &c;
+                }
+                c + &next(stack)
+            }
+            // ---- Variablen ----
+            "var_set" => {
+                let name = var_name(prop(p, "var"));
+                let holder = if prop(p, "scope") == "global" { "null" } else { "player" };
+                let v = num(p, "value", 1.0, -1_000_000_000.0, 1_000_000_000.0) as i64;
+                let expr = match prop(p, "op") {
+                    "add" => format!("anvilGet(level, {holder}, \"{name}\") + {v}"),
+                    "sub" => format!("anvilGet(level, {holder}, \"{name}\") - {v}"),
+                    "random" => format!("level.getRandom().nextInt({})", v.max(1)),
+                    _ => v.to_string(),
+                };
+                format!("{ind}anvilSet(level, {holder}, \"{name}\", {expr});\n") + &next(stack)
+            }
+            "var_show" => {
+                let name = var_name(prop(p, "var"));
+                let slot = if prop(p, "slot") == "list" { "list" } else { "sidebar" };
+                format!("{ind}anvilObj(level, \"{name}\");\n{ind}anvilRun(level, null, x, y, z, \"scoreboard objectives setdisplay {slot} anv_{name}\");\n") + &next(stack)
+            }
+            "var_hide" => format!("{ind}anvilRun(level, null, x, y, z, \"scoreboard objectives setdisplay sidebar\");\n") + &next(stack),
+            // ---- weitere Aktionen ----
+            "remove_item" => {
+                let item = prop(p, "item");
+                let count = num(p, "count", 1.0, 1.0, 2304.0) as i64;
+                (if id_ok(item) { run(format!("clear @s {} {count}", rid(self.api, item))) } else { String::new() }) + &next(stack)
+            }
+            "drop_item" => {
+                let item = prop(p, "item");
+                let count = num(p, "count", 1.0, 1.0, 64.0) as i64;
+                (if id_ok(item) {
+                    format!("{ind}anvilRun(level, null, x, y, z, \"summon item ~ ~1 ~ {{Item:{{id:\\\"{}\\\",count:{count}}}}}\");\n", rid(self.api, item))
+                } else {
+                    String::new()
+                }) + &next(stack)
+            }
+            "fill" => {
+                let b = prop(p, "block");
+                let r = num(p, "radius", 2.0, 0.0, 15.0) as i64;
+                let dy = num(p, "dy", 0.0, -64.0, 64.0) as i64;
+                (if id_ok(b) {
+                    format!("{ind}anvilRun(level, null, x, y, z, \"fill ~-{r} ~{dy} ~-{r} ~{r} ~{} ~{r} {}\");\n", dy + num(p, "height", 1.0, 1.0, 31.0) as i64 - 1, rid(self.api, b))
+                } else {
+                    String::new()
+                }) + &next(stack)
+            }
+            "bossbar" => {
+                let id = format!("anvil:bar_{}", n.id.to_lowercase().chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>());
+                let text = serde_json::to_string(prop(p, "text")).unwrap_or_else(|_| "\"\"".into());
+                let color = match prop(p, "color") {
+                    c @ ("blue" | "green" | "pink" | "purple" | "red" | "white" | "yellow") => c,
+                    _ => "purple",
+                };
+                let value = num(p, "progress", 100.0, 0.0, 100.0) as i64;
+                let secs = num(p, "seconds", 10.0, 0.0, 86400.0);
+                let sel = if prop(p, "to") == "all" { "@a" } else { "@s" };
+                let mut c = String::new();
+                for cmd in [
+                    format!("bossbar add {id} {text}"),
+                    format!("bossbar set {id} name {text}"),
+                    format!("bossbar set {id} color {color}"),
+                    format!("bossbar set {id} max 100"),
+                    format!("bossbar set {id} value {value}"),
+                    format!("bossbar set {id} visible true"),
+                    format!("bossbar set {id} players {sel}"),
+                ] {
+                    c.push_str(&run(cmd));
+                }
+                if secs > 0.0 {
+                    let ticks = (secs * 20.0).round() as i64;
+                    c.push_str(&format!("{ind}anvilLater(level, {ticks}, () -> anvilRun(level, null, x, y, z, \"bossbar remove {id}\"));\n"));
+                }
+                c + &next(stack)
+            }
+            "firework" => format!("{ind}anvilRun(level, null, x, y, z, \"summon firework_rocket ~ ~1 ~ {{LifeTime:20}}\");\n") + &next(stack),
+            "spawnpoint" => run("spawnpoint @s ~ ~ ~".into()) + &next(stack),
+            "feed" => run("effect give @s saturation 1 20 true".into()) + &next(stack),
+            "enchant" => {
+                let e = prop(p, "enchant");
+                let lvl = num(p, "level", 1.0, 1.0, 5.0) as i64;
+                (if id_ok(e) { run(format!("enchant @s {e} {lvl}")) } else { String::new() }) + &next(stack)
             }
             "command" => {
                 let c = cmd_part(prop(p, "command"));
@@ -313,6 +434,24 @@ impl<'a> Gen<'a> {
                 _ => "level.dimension() == Level.OVERWORLD".into(),
             },
             "block_below" if id_ok(v) => format!("level.getBlockState(BlockPos.containing(x, y - 0.5, z)).is(anvilBlock(\"{}\"))", rid(self.api, v)),
+            "var" => {
+                let name = var_name(prop(p, "var"));
+                let holder = if prop(p, "scope") == "global" { "null" } else { "player" };
+                let cmp = match prop(p, "cmp") {
+                    "lt" => "<",
+                    "eq" => "==",
+                    "le" => "<=",
+                    "ge" => ">=",
+                    "ne" => "!=",
+                    _ => ">",
+                };
+                format!("anvilGet(level, {holder}, \"{name}\") {cmp} {}", num(p, "value", 0.0, -1_000_000_000.0, 1_000_000_000.0) as i64)
+            }
+            "has_item" if id_ok(v) => format!("player != null && player.getInventory().countItem(anvilBpItem(\"{}\")) >= {}", rid(self.api, v), num(p, "count", 1.0, 1.0, 2304.0) as i64),
+            "level_at_least" => format!("player != null && player.experienceLevel >= {}", num(p, "value", 5.0, 0.0, 100000.0) as i64),
+            "in_water" => "target != null && target.isInWater()".into(),
+            "on_fire" => "target != null && target.isOnFire()".into(),
+            "is_player_target" => "target instanceof Player".into(),
             "message_contains" => format!("message.toLowerCase().contains(\"{}\".toLowerCase())", js(v)),
             // Zufall in Prozent (Standard)
             _ => format!("level.getRandom().nextFloat() < {:.3}f", num(p, "value", 50.0, 0.0, 100.0) / 100.0),
@@ -378,6 +517,32 @@ fn event_head(kind: &str) -> Option<(&'static str, &'static str, bool)> {
             "        final LivingEntity target = event.getEntity();\n        if (!(target.level() instanceof ServerLevel level)) return;\n        final Player player = event.getSource().getEntity() instanceof Player p0 ? p0 : null;\n        final double x = target.getX(), y = target.getY(), z = target.getZ();\n        final BlockState state = null;\n        final ItemStack stack = player != null ? player.getMainHandItem() : ItemStack.EMPTY;\n        final String message = \"\";\n",
             false,
         ),
+        "ev_click_entity" => (
+            "PlayerInteractEvent.EntityInteract",
+            "        if (event.getHand() != InteractionHand.MAIN_HAND || !(event.getLevel() instanceof ServerLevel level)) return;\n        final Player player = event.getEntity();\n        final LivingEntity target = event.getTarget() instanceof LivingEntity t0 ? t0 : null;\n        final double x = event.getTarget().getX(), y = event.getTarget().getY(), z = event.getTarget().getZ();\n        final BlockState state = null;\n        final ItemStack stack = event.getItemStack();\n        final String message = \"\";\n        final EntityType<?> targetType = event.getTarget().getType();\n",
+            true,
+        ),
+        "ev_left_click_block" => (
+            "PlayerInteractEvent.LeftClickBlock",
+            "        if (!(event.getLevel() instanceof ServerLevel level)) return;\n        final Player player = event.getEntity();\n        final LivingEntity target = player;\n        final BlockPos pos = event.getPos();\n        final double x = pos.getX() + 0.5, y = pos.getY() + 0.5, z = pos.getZ() + 0.5;\n        final BlockState state = level.getBlockState(pos);\n        final ItemStack stack = event.getItemStack();\n        final String message = \"\";\n",
+            true,
+        ),
+        "ev_player_death" => (
+            "LivingDeathEvent",
+            "        if (!(event.getEntity() instanceof Player player) || !(player.level() instanceof ServerLevel level)) return;\n        final LivingEntity target = player;\n        final double x = player.getX(), y = player.getY(), z = player.getZ();\n        final BlockState state = null;\n        final ItemStack stack = player.getMainHandItem();\n        final String message = \"\";\n",
+            false,
+        ),
+        "ev_leave" => ("PlayerEvent.PlayerLoggedOutEvent", PLAYER_CTX, false),
+        "ev_pickup" => (
+            "ItemEntityPickupEvent.Post",
+            "        final Player player = event.getPlayer();\n        if (!(player.level() instanceof ServerLevel level)) return;\n        final LivingEntity target = player;\n        final double x = player.getX(), y = player.getY(), z = player.getZ();\n        final BlockState state = null;\n        final ItemStack stack = event.getOriginalStack();\n        final String message = \"\";\n",
+            false,
+        ),
+        "ev_level_up" => (
+            "PlayerXpEvent.LevelChange",
+            "        final Player player = event.getEntity();\n        if (event.getLevels() <= 0 || !(player.level() instanceof ServerLevel level)) return;\n        final LivingEntity target = player;\n        final double x = player.getX(), y = player.getY(), z = player.getZ();\n        final BlockState state = null;\n        final ItemStack stack = player.getMainHandItem();\n        final String message = \"\";\n",
+            false,
+        ),
         _ => return None,
     })
 }
@@ -390,8 +555,9 @@ fn event_filter(api: &BpApi, n: &BpNode) -> Option<String> {
     }
     let t = rid(api, t);
     Some(match n.kind.as_str() {
-        "ev_click_block" | "ev_break" | "ev_place" => format!("state != null && state.is(anvilBlock(\"{t}\"))"),
-        "ev_click_item" | "ev_use" | "ev_craft" => format!("stack.is(anvilBpItem(\"{t}\"))"),
+        "ev_click_block" | "ev_break" | "ev_place" | "ev_left_click_block" => format!("state != null && state.is(anvilBlock(\"{t}\"))"),
+        "ev_click_item" | "ev_use" | "ev_craft" | "ev_pickup" => format!("stack.is(anvilBpItem(\"{t}\"))"),
+        "ev_click_entity" => format!("targetType == anvilEntity(\"{t}\")"),
         "ev_hurt" | "ev_kill" => format!("target.getType() == anvilEntity(\"{t}\")"),
         _ => return None,
     })
@@ -425,6 +591,12 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
         "net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent",
         "net.neoforged.neoforge.event.entity.player.PlayerEvent",
         "net.neoforged.neoforge.event.entity.player.PlayerInteractEvent",
+        "net.neoforged.neoforge.event.entity.player.ItemEntityPickupEvent",
+        "net.neoforged.neoforge.event.entity.player.PlayerXpEvent",
+        "net.minecraft.world.scores.Objective",
+        "net.minecraft.world.scores.ScoreHolder",
+        "net.minecraft.world.scores.Scoreboard",
+        "net.minecraft.world.scores.criteria.ObjectiveCriteria",
         "net.neoforged.neoforge.event.level.BlockEvent",
         "net.neoforged.neoforge.event.tick.ServerTickEvent",
         "net.neoforged.neoforge.event.server.ServerStartedEvent",
@@ -437,7 +609,7 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
 
     // Hilfsfunktionen
     methods.push_str(&format!(
-        r#"
+        r##"
     // ---- Blueprints ----
     private record AnvilTask(long at, Runnable run) {{}}
     private static final java.util.List<AnvilTask> ANVIL_TASKS = new java.util.ArrayList<>();
@@ -460,10 +632,30 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
         return BuiltInRegistries.ENTITY_TYPE.{get}(ResourceLocation.parse(id));
     }}
 
+    private static Objective anvilObj(ServerLevel level, String name) {{
+        Scoreboard board = level.getServer().getScoreboard();
+        Objective o = board.getObjective("anv_" + name);
+        if (o == null) o = board.addObjective("anv_" + name, ObjectiveCriteria.DUMMY, Component.literal(name), ObjectiveCriteria.RenderType.INTEGER, true, null);
+        return o;
+    }}
+
+    private static ScoreHolder anvilHolder(Entity who) {{
+        return who != null ? who : ScoreHolder.forNameOnly("#global");
+    }}
+
+    private static int anvilGet(ServerLevel level, Entity who, String name) {{
+        var info = level.getServer().getScoreboard().getPlayerScoreInfo(anvilHolder(who), anvilObj(level, name));
+        return info == null ? 0 : info.value();
+    }}
+
+    private static void anvilSet(ServerLevel level, Entity who, String name, int value) {{
+        level.getServer().getScoreboard().getOrCreatePlayerScore(anvilHolder(who), anvilObj(level, name)).set(value);
+    }}
+
     private static Item anvilBpItem(String id) {{
         return BuiltInRegistries.ITEM.{get}(ResourceLocation.parse(id));
     }}
-"#
+"##
     ));
 
     let mut counter = 0;

@@ -5,6 +5,9 @@ import { Toggle } from "../../components/Chrome";
 import { OwnEntry } from "../../components/ItemPicker";
 import { MenuItem, openMenu } from "../../components/Overlay";
 import {
+  ClipboardIcon,
+  RedoIcon,
+  UndoIcon,
   BlueprintIcon,
   BranchIcon,
   ChatIcon,
@@ -48,6 +51,8 @@ const KIND_ICON: Record<string, React.ReactNode> = {
 };
 
 const GRID = 20;
+/** Zwischenablage für Knoten (auch zwischen Blueprints) */
+let clipboard: { nodes: BpNode[]; links: BpLink[] } | null = null;
 const snap = (v: number) => Math.round(v / GRID) * GRID;
 
 export default function BlueprintEditor({
@@ -69,7 +74,16 @@ export default function BlueprintEditor({
 }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>({ x: 40, y: 40, zoom: 1 });
-  const [selected, setSelected] = useState<string | null>(null);
+  const [sel, setSel] = useState<string[]>([]);
+  const selRef = useRef(sel);
+  selRef.current = sel;
+  const [box, setBox] = useState<{ a: Pt; b: Pt } | null>(null);
+  const mouse = useRef<Pt | null>(null);
+  // Verlauf für Rückgängig/Wiederholen
+  const undoStack = useRef<Blueprint[]>([]);
+  const redoStack = useRef<Blueprint[]>([]);
+  const lastRecord = useRef<{ tag: string; at: number }>({ tag: "", at: 0 });
+  const [, forceHistory] = useState(0);
   const [pins, setPins] = useState<Record<string, Pt>>({});
   const [wire, setWire] = useState<{ from: string; out: string; to: Pt } | null>(null);
   const [palette, setPalette] = useState<Palette | null>(null);
@@ -97,41 +111,116 @@ export default function BlueprintEditor({
     if (round(next) !== round(pins)) setPins(next);
   });
 
-  const update = (patch: Partial<Blueprint>) => onChange({ ...bpRef.current, ...patch });
-  const setNode = (id: string, patch: Partial<BpNode>) => update({ nodes: bpRef.current.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) });
-  const removeNode = (id: string) => {
-    update({ nodes: bpRef.current.nodes.filter((n) => n.id !== id), links: bpRef.current.links.filter((l) => l.from !== id && l.to !== id) });
-    setSelected(null);
+  /** Zustand vor einer Änderung merken; gleiche Art kurz hintereinander zählt als ein Schritt */
+  const record = (tag = "") => {
+    const now = Date.now();
+    if (tag && tag === lastRecord.current.tag && now - lastRecord.current.at < 1000) {
+      lastRecord.current.at = now;
+      return;
+    }
+    lastRecord.current = { tag, at: now };
+    undoStack.current.push(structuredClone(bpRef.current));
+    if (undoStack.current.length > 100) undoStack.current.shift();
+    redoStack.current = [];
+    forceHistory((x) => x + 1);
   };
-  const duplicateNode = (id: string) => {
-    const n = bpRef.current.nodes.find((x) => x.id === id);
-    if (!n) return;
-    const copy = { ...structuredClone(n), id: nodeId(), x: n.x + 40, y: n.y + 40 };
-    update({ nodes: [...bpRef.current.nodes, copy] });
-    setSelected(copy.id);
+  const undo = () => {
+    const prev = undoStack.current.pop();
+    if (!prev) return;
+    redoStack.current.push(structuredClone(bpRef.current));
+    lastRecord.current = { tag: "", at: 0 };
+    onChange(prev);
+    setSel((s) => s.filter((id) => prev.nodes.some((n) => n.id === id)));
+    forceHistory((x) => x + 1);
+  };
+  const redo = () => {
+    const next = redoStack.current.pop();
+    if (!next) return;
+    undoStack.current.push(structuredClone(bpRef.current));
+    lastRecord.current = { tag: "", at: 0 };
+    onChange(next);
+    forceHistory((x) => x + 1);
+  };
+
+  const update = (patch: Partial<Blueprint>, tag = "") => {
+    record(tag);
+    onChange({ ...bpRef.current, ...patch });
+  };
+  /** ohne Verlaufseintrag (z. B. während des Ziehens) */
+  const updateRaw = (patch: Partial<Blueprint>) => onChange({ ...bpRef.current, ...patch });
+  const setNode = (id: string, patch: Partial<BpNode>, tag = "") => update({ nodes: bpRef.current.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) }, tag);
+  const removeNodes = (ids: string[]) => {
+    if (!ids.length) return;
+    update({ nodes: bpRef.current.nodes.filter((n) => !ids.includes(n.id)), links: bpRef.current.links.filter((l) => !ids.includes(l.from) && !ids.includes(l.to)) });
+    setSel([]);
+  };
+  /** Knoten samt Verbindungen untereinander einfügen */
+  const pasteNodes = (nodes: BpNode[], links: BpLink[], dx: number, dy: number) => {
+    if (!nodes.length) return;
+    const map = new Map(nodes.map((n) => [n.id, nodeId()]));
+    const copies = nodes.map((n) => ({ ...structuredClone(n), id: map.get(n.id)!, x: snap(n.x + dx), y: snap(n.y + dy) }));
+    const newLinks = links.filter((l) => map.has(l.from) && map.has(l.to)).map((l) => ({ ...l, from: map.get(l.from)!, to: map.get(l.to)! }));
+    update({ nodes: [...bpRef.current.nodes, ...copies], links: [...bpRef.current.links, ...newLinks] });
+    setSel(copies.map((c) => c.id));
+  };
+  const duplicateNodes = (ids: string[]) => pasteNodes(bpRef.current.nodes.filter((n) => ids.includes(n.id)), bpRef.current.links, 40, 40);
+  const copyNodes = (ids: string[]) => {
+    const nodes = bpRef.current.nodes.filter((n) => ids.includes(n.id));
+    if (!nodes.length) return;
+    clipboard = { nodes: structuredClone(nodes), links: bpRef.current.links.filter((l) => ids.includes(l.from) && ids.includes(l.to)) };
+  };
+  const paste = () => {
+    if (!clipboard) return;
+    const minX = Math.min(...clipboard.nodes.map((n) => n.x));
+    const minY = Math.min(...clipboard.nodes.map((n) => n.y));
+    const at = mouse.current ?? { x: minX + 40, y: minY + 40 };
+    pasteNodes(clipboard.nodes, clipboard.links, at.x - minX, at.y - minY);
   };
   const addNode = (kind: string, at: Pt, connect?: { from: string; out: string }) => {
     const n = makeNode(kind, snap(at.x), snap(at.y));
     const links = [...bpRef.current.links];
     if (connect && !isEvent(kind)) links.push({ from: connect.from, out: connect.out, to: n.id });
     update({ nodes: [...bpRef.current.nodes, n], links });
-    setSelected(n.id);
+    setSel([n.id]);
     setPalette(null);
   };
   const removeLink = (l: BpLink) => update({ links: bpRef.current.links.filter((x) => x !== l) });
 
-  // Tastatur: Entf löscht, Strg+D dupliziert
+  // Tastatur: Entf, Strg+Z/Y/C/V/D/A
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
-      if (!selected || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (e.key === "Delete" || e.key === "Backspace") {
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (!canvasRef.current?.isConnected) return;
+      const ctrl = e.ctrlKey || e.metaKey;
+      const k = e.key.toLowerCase();
+      const ids = selRef.current;
+      if (ctrl && k === "z" && !e.shiftKey) {
         e.preventDefault();
-        removeNode(selected);
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
+        undo();
+      } else if (ctrl && (k === "y" || (k === "z" && e.shiftKey))) {
         e.preventDefault();
-        duplicateNode(selected);
-      } else if (e.key === "Escape") setSelected(null);
+        redo();
+      } else if (ctrl && k === "a") {
+        e.preventDefault();
+        setSel(bpRef.current.nodes.map((n) => n.id));
+      } else if (ctrl && k === "c" && ids.length) {
+        e.preventDefault();
+        copyNodes(ids);
+      } else if (ctrl && k === "x" && ids.length) {
+        e.preventDefault();
+        copyNodes(ids);
+        removeNodes(ids);
+      } else if (ctrl && k === "v") {
+        e.preventDefault();
+        paste();
+      } else if (ctrl && k === "d" && ids.length) {
+        e.preventDefault();
+        duplicateNodes(ids);
+      } else if ((e.key === "Delete" || e.key === "Backspace") && ids.length) {
+        e.preventDefault();
+        removeNodes(ids);
+      } else if (e.key === "Escape") setSel([]);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -142,6 +231,8 @@ export default function BlueprintEditor({
     const el = canvasRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
+      // in der Knotenliste und in Auswahlfeldern normal scrollen statt zoomen
+      if ((e.target as HTMLElement).closest(".bp-palette, select, textarea")) return;
       e.preventDefault();
       const r = el.getBoundingClientRect();
       const v = viewRef.current;
@@ -189,8 +280,30 @@ export default function BlueprintEditor({
   function onCanvasDown(e: React.PointerEvent) {
     if (e.button !== 0 && e.button !== 1) return;
     if ((e.target as HTMLElement).closest(".bp-node, .bp-palette, .bp-wire-hit")) return;
-    setSelected(null);
     setPalette(null);
+    if (e.button === 0 && (e.shiftKey || e.ctrlKey)) {
+      // Rahmen aufziehen → Mehrfachauswahl
+      const a = toWorld(e.clientX, e.clientY);
+      const keep = e.ctrlKey ? [...selRef.current] : [];
+      setBox({ a, b: a });
+      const move = (ev: PointerEvent) => {
+        const b = toWorld(ev.clientX, ev.clientY);
+        setBox({ a, b });
+        const [x0, x1] = [Math.min(a.x, b.x), Math.max(a.x, b.x)];
+        const [y0, y1] = [Math.min(a.y, b.y), Math.max(a.y, b.y)];
+        const hit = bpRef.current.nodes.filter((n) => n.x + 230 > x0 && n.x < x1 && n.y + 60 > y0 && n.y < y1).map((n) => n.id);
+        setSel([...new Set([...keep, ...hit])]);
+      };
+      const up = () => {
+        setBox(null);
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      return;
+    }
+    setSel([]);
     const start = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y };
     const move = (ev: PointerEvent) => setView((v) => ({ ...v, x: start.vx + ev.clientX - start.x, y: start.vy + ev.clientY - start.y }));
     const up = () => {
@@ -207,16 +320,30 @@ export default function BlueprintEditor({
     const el = e.target as HTMLElement;
     if (el.closest("input, select, textarea, button, .bp-pin, .item-field")) return;
     e.stopPropagation();
-    setSelected(n.id);
     setPalette(null);
+    let ids = selRef.current;
+    if (e.shiftKey || e.ctrlKey) {
+      ids = ids.includes(n.id) ? ids.filter((x) => x !== n.id) : [...ids, n.id];
+      setSel(ids);
+      return;
+    }
+    if (!ids.includes(n.id)) {
+      ids = [n.id];
+      setSel(ids);
+    }
     const start = toWorld(e.clientX, e.clientY);
-    const origin = { x: n.x, y: n.y };
+    const origins = new Map(bpRef.current.nodes.filter((x) => ids.includes(x.id)).map((x) => [x.id, { x: x.x, y: x.y }]));
+    let moved = false;
     const move = (ev: PointerEvent) => {
       const p = toWorld(ev.clientX, ev.clientY);
-      const nx = snap(origin.x + p.x - start.x);
-      const ny = snap(origin.y + p.y - start.y);
-      const cur = bpRef.current.nodes.find((x) => x.id === n.id);
-      if (cur && (cur.x !== nx || cur.y !== ny)) setNode(n.id, { x: nx, y: ny });
+      const dx = snap(p.x - start.x);
+      const dy = snap(p.y - start.y);
+      if (!moved && (dx || dy)) {
+        record();
+        moved = true;
+      }
+      if (!moved) return;
+      updateRaw({ nodes: bpRef.current.nodes.map((x) => (origins.has(x.id) ? { ...x, x: origins.get(x.id)!.x + dx, y: origins.get(x.id)!.y + dy } : x)) });
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
@@ -267,16 +394,19 @@ export default function BlueprintEditor({
   }
 
   function nodeMenu(n: BpNode): MenuItem[] {
+    const ids = selRef.current.includes(n.id) ? selRef.current : [n.id];
+    const many = ids.length > 1;
     return [
-      { label: t("Duplizieren"), icon: <CopyIcon size={15} />, hint: t("Strg D"), onClick: () => duplicateNode(n.id) },
+      { label: many ? t("{n} Knoten duplizieren", { n: ids.length }) : t("Duplizieren"), icon: <CopyIcon size={15} />, hint: t("Strg D"), onClick: () => duplicateNodes(ids) },
+      { label: t("Kopieren"), icon: <ClipboardIcon size={15} />, hint: t("Strg C"), onClick: () => copyNodes(ids) },
       {
         label: t("Verbindungen lösen"),
         icon: <BranchIcon size={15} />,
-        disabled: !bp.links.some((l) => l.from === n.id || l.to === n.id),
-        onClick: () => update({ links: bpRef.current.links.filter((l) => l.from !== n.id && l.to !== n.id) }),
+        disabled: !bp.links.some((l) => ids.includes(l.from) || ids.includes(l.to)),
+        onClick: () => update({ links: bpRef.current.links.filter((l) => !ids.includes(l.from) && !ids.includes(l.to)) }),
       },
       "separator",
-      { label: t("Entfernen"), icon: <TrashIcon size={15} />, danger: true, hint: t("Entf"), onClick: () => removeNode(n.id) },
+      { label: many ? t("{n} Knoten entfernen", { n: ids.length }) : t("Entfernen"), icon: <TrashIcon size={15} />, danger: true, hint: t("Entf"), onClick: () => removeNodes(ids) },
     ];
   }
 
@@ -303,7 +433,7 @@ export default function BlueprintEditor({
         <span className="sub-icon">
           <BlueprintIcon size={16} />
         </span>
-        <input className="input bp-name" value={bp.name} onChange={(e) => update({ name: e.target.value })} aria-label={t("Name")} placeholder={t("Name")} />
+        <input className="input bp-name" value={bp.name} onChange={(e) => update({ name: e.target.value }, "name")} aria-label={t("Name")} placeholder={t("Name")} />
         <span className="row gap-6 bp-enabled">
           <Toggle label={t("Aktiv")} checked={bp.enabled} onChange={(v) => update({ enabled: v })} />
           <span className="small">{bp.enabled ? t("Aktiv") : t("Aus")}</span>
@@ -318,6 +448,14 @@ export default function BlueprintEditor({
         >
           <PlusIcon size={13} /> {t("Knoten")}
         </button>
+        <div className="bp-zoom">
+          <button className="icon-btn" onClick={undo} disabled={!undoStack.current.length} aria-label={t("Rückgängig")} data-tip={t("Rückgängig (Strg Z)")}>
+            <UndoIcon size={15} />
+          </button>
+          <button className="icon-btn" onClick={redo} disabled={!redoStack.current.length} aria-label={t("Wiederholen")} data-tip={t("Wiederholen (Strg Y)")}>
+            <RedoIcon size={15} />
+          </button>
+        </div>
         <div className="bp-zoom">
           <button className="icon-btn" onClick={() => zoomBy(1 / 1.2)} aria-label={t("Verkleinern")} data-tip={t("Verkleinern")}>
             <ZoomOutIcon size={15} />
@@ -342,6 +480,8 @@ export default function BlueprintEditor({
         ref={canvasRef}
         className="bp-canvas"
         onPointerDown={onCanvasDown}
+        onPointerMove={(e) => (mouse.current = toWorld(e.clientX, e.clientY))}
+        onPointerLeave={() => (mouse.current = null)}
         onContextMenu={(e) => {
           if ((e.target as HTMLElement).closest(".bp-node, .bp-palette, .bp-wire-hit")) return;
           e.preventDefault();
@@ -375,6 +515,12 @@ export default function BlueprintEditor({
             })}
             {wire && pins[`out:${wire.from}:${wire.out}`] && <path d={curve(pins[`out:${wire.from}:${wire.out}`], wire.to)} className="bp-wire drawing" />}
           </svg>
+          {box && (
+            <div
+              className="bp-box"
+              style={{ left: Math.min(box.a.x, box.b.x), top: Math.min(box.a.y, box.b.y), width: Math.abs(box.b.x - box.a.x), height: Math.abs(box.b.y - box.a.y) }}
+            />
+          )}
           {bp.nodes.map((n) => {
             const spec = nodeSpec(n.kind);
             if (!spec) return null;
@@ -382,11 +528,11 @@ export default function BlueprintEditor({
               <div
                 key={n.id}
                 data-node={n.id}
-                className={`bp-node cat-${spec.cat} ${selected === n.id ? "selected" : ""}`}
+                className={`bp-node cat-${spec.cat} ${sel.includes(n.id) ? "selected" : ""}`}
                 style={{ left: n.x, top: n.y }}
                 onPointerDown={(e) => onNodeDown(e, n)}
                 onContextMenu={(e) => {
-                  setSelected(n.id);
+                  if (!selRef.current.includes(n.id)) setSel([n.id]);
                   openMenu(e, nodeMenu(n));
                 }}
               >
@@ -397,7 +543,7 @@ export default function BlueprintEditor({
                   {spec.outs.length === 1 && <OutPin node={n.id} out={spec.outs[0].id} onDown={onPinDown} />}
                 </div>
                 {spec.desc && <div className="bp-node-desc">{spec.desc}</div>}
-                <NodeFields project={project} content={content} own={own} spec={spec} node={n} onChange={(props) => setNode(n.id, { props })} />
+                <NodeFields project={project} content={content} own={own} spec={spec} node={n} onChange={(props) => setNode(n.id, { props }, `props:${n.id}`)} />
                 {spec.outs.length > 1 && (
                   <div className="bp-outs">
                     {spec.outs.map((o) => (
@@ -428,7 +574,9 @@ export default function BlueprintEditor({
           ) : unreachable > 0 ? (
             <span className="bp-warn">{t("{n} Knoten sind mit keinem Ereignis verbunden und werden nicht ausgeführt.", { n: unreachable })}</span>
           ) : (
-            <span className="muted">{t("Ziehen: verschieben · Mausrad: zoomen · Punkt rechts ziehen: verbinden · Linie klicken: lösen")}</span>
+            <span className="muted">{sel.length > 1
+                ? t("{n} Knoten ausgewählt · Strg C kopieren · Strg D duplizieren · Entf löschen", { n: sel.length })
+                : t("Ziehen: verschieben · Umschalt + Ziehen: auswählen · Mausrad: zoomen · Punkt rechts ziehen: verbinden · Linie klicken: lösen")}</span>
           )}
         </div>
       </div>
