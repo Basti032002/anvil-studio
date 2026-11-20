@@ -66,7 +66,7 @@ pub struct BlockDef {
     pub shapes: Vec<String>,
     /// Erz mit Weltgenerierung
     pub ore: OreDef,
-    /// normal | lamp (Redstone-Lampe) | storage (Lager-Truhe)
+    /// normal | lamp (Redstone-Lampe) | storage (Lager-Truhe) | workbench (Werkbank) | machine (Maschine)
     pub kind: String,
     /// Lager-Truhe: Reihen à 9 Slots (1–6)
     pub rows: u32,
@@ -76,6 +76,58 @@ pub struct BlockDef {
     pub model: Vec<Cuboid>,
     /// Modell beim Platzieren zum Spieler drehen
     pub rotate: bool,
+    /// Werkbank: Rezepte, die nur an diesem Block funktionieren (3×3)
+    pub workbench_recipes: Vec<WorkbenchRecipe>,
+    /// Maschine: Brennstoff und Rezepte
+    pub machine: MachineDef,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WorkbenchRecipe {
+    pub shaped: bool,
+    /// 9 Felder (3×3), Einträge wie "minecraft:diamond" oder "#minecraft:planks"
+    pub grid: Vec<String>,
+    pub result: String,
+    pub count: u32,
+}
+
+impl Default for WorkbenchRecipe {
+    fn default() -> Self {
+        Self { shaped: true, grid: vec![String::new(); 9], result: String::new(), count: 1 }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MachineDef {
+    /// braucht Brennstoff wie ein Ofen (sonst läuft sie von selbst)
+    pub fuel: bool,
+    pub recipes: Vec<MachineRecipe>,
+}
+
+impl Default for MachineDef {
+    fn default() -> Self {
+        Self { fuel: true, recipes: vec![] }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MachineRecipe {
+    /// Item-ID oder Tag (#…)
+    pub input: String,
+    pub input_count: u32,
+    pub output: String,
+    pub output_count: u32,
+    /// Dauer in Ticks (20 = 1 Sekunde)
+    pub time: u32,
+}
+
+impl Default for MachineRecipe {
+    fn default() -> Self {
+        Self { input: String::new(), input_count: 1, output: String::new(), output_count: 1, time: 200 }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -148,6 +200,8 @@ impl Default for BlockDef {
             names: Default::default(),
             model: vec![],
             rotate: false,
+            workbench_recipes: vec![],
+            machine: MachineDef::default(),
         }
     }
 }
@@ -969,8 +1023,29 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
         }
     }
 
-    // ---- Lager-Truhen ----
+    // ---- Block-Entities (Lager, Maschinen) teilen sich ein Register ----
     let storage: Vec<&BlockDef> = c.blocks.iter().filter(|b| b.kind == "storage").collect();
+    let machines: Vec<&BlockDef> = c.blocks.iter().filter(|b| b.kind == "machine").collect();
+    if !storage.is_empty() || !machines.is_empty() {
+        fields.push_str("    public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITIES = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, MODID);\n");
+        calls.push_str("        BLOCK_ENTITIES.register(modEventBus);\n");
+        imports.extend(["net.minecraft.world.level.block.entity.BlockEntityType"]);
+    }
+    let be_type = |cls: &str, blocks: &[&BlockDef]| -> String {
+        let list: Vec<String> = blocks.iter().map(|b| format!("{}.get()", b.id.to_uppercase())).collect();
+        if api.materials_v2 {
+            format!("new BlockEntityType<>({cls}::new, {})", list.join(", "))
+        } else {
+            format!("BlockEntityType.Builder.of({cls}::new, {}).build(null)", list.join(", "))
+        }
+    };
+    let on_remove_drop = if api.props_tools {
+        String::new() // ab 1.21.5 lässt der Container seinen Inhalt selbst fallen
+    } else {
+        "        @Override\n        protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean moved) {\n            if (!state.is(newState.getBlock()) && level.getBlockEntity(pos) instanceof Container container) Containers.dropContents(level, pos, container);\n            super.onRemove(state, level, pos, newState, moved);\n        }\n".to_string()
+    };
+
+    // ---- Lager-Truhen ----
     if !storage.is_empty() {
         imports.extend([
             "com.mojang.serialization.MapCodec",
@@ -992,21 +1067,11 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
             "net.minecraft.world.level.block.state.BlockState",
             "net.minecraft.world.phys.BlockHitResult",
         ]);
-        let blocks: Vec<String> = storage.iter().map(|b| format!("{}.get()", up(&b.id))).collect();
-        let ctor = if api.materials_v2 {
-            format!("new BlockEntityType<>(AnvilStorageBlockEntity::new, {})", blocks.join(", "))
-        } else {
-            format!("BlockEntityType.Builder.of(AnvilStorageBlockEntity::new, {}).build(null)", blocks.join(", "))
-        };
+        let ctor = be_type("AnvilStorageBlockEntity", &storage);
         fields.push_str(&format!(
-            "    public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITIES = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, MODID);\n    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<AnvilStorageBlockEntity>> STORAGE_BE = BLOCK_ENTITIES.register(\"storage\", () -> {ctor});\n\n"
+            "    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<AnvilStorageBlockEntity>> STORAGE_BE = BLOCK_ENTITIES.register(\"storage\", () -> {ctor});\n\n"
         ));
-        calls.push_str("        BLOCK_ENTITIES.register(modEventBus);\n");
-        let on_remove = if api.props_tools {
-            String::new() // ab 1.21.5 lässt der Container seinen Inhalt selbst fallen
-        } else {
-            "        @Override\n        protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean moved) {\n            if (!state.is(newState.getBlock()) && level.getBlockEntity(pos) instanceof Container container) Containers.dropContents(level, pos, container);\n            super.onRemove(state, level, pos, newState, moved);\n        }\n".to_string()
-        };
+        let on_remove = on_remove_drop.clone();
         let save_load = if api.value_io {
             imports.extend(["net.minecraft.world.level.storage.ValueInput", "net.minecraft.world.level.storage.ValueOutput"]);
             "        @Override\n        protected void loadAdditional(ValueInput input) {\n            super.loadAdditional(input);\n            items = NonNullList.withSize(getContainerSize(), ItemStack.EMPTY);\n            if (!tryLoadLootTable(input)) ContainerHelper.loadAllItems(input, items);\n        }\n\n        @Override\n        protected void saveAdditional(ValueOutput output) {\n            super.saveAdditional(output);\n            if (!trySaveLootTable(output)) ContainerHelper.saveAllItems(output, items);\n        }\n"
@@ -1099,6 +1164,436 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
 
 {save_load}    }}
 "#));
+    }
+
+    let jq = |x: &str| format!("\"{}\"", java_str(x));
+    // ---- Gemeinsame Helfer für eigene Rezepte (Werkbank, Maschine) ----
+    let workbenches: Vec<&BlockDef> = c.blocks.iter().filter(|b| b.kind == "workbench").collect();
+    if !workbenches.is_empty() || !machines.is_empty() {
+        let get_item = if api.materials_v2 { "getValue" } else { "get" };
+        methods.push_str(&format!(r##"
+    /** Passt der Stapel zu "ns:id" oder "#ns:tag"? Leer passt nur zu leer. */
+    static boolean anvilMatches(ItemStack stack, String ingredient) {{
+        if (ingredient == null || ingredient.isEmpty()) return stack.isEmpty();
+        if (stack.isEmpty()) return false;
+        if (ingredient.startsWith("#")) {{
+            return stack.is(net.minecraft.tags.TagKey.create(net.minecraft.core.registries.Registries.ITEM, net.minecraft.resources.ResourceLocation.parse(ingredient.substring(1))));
+        }}
+        return net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem()).toString().equals(ingredient);
+    }}
+
+    static ItemStack anvilStack(String id, int count) {{
+        net.minecraft.world.item.Item item = net.minecraft.core.registries.BuiltInRegistries.ITEM.{get_item}(net.minecraft.resources.ResourceLocation.parse(id));
+        return item == net.minecraft.world.item.Items.AIR ? ItemStack.EMPTY : new ItemStack(item, Math.max(1, count));
+    }}
+
+    static String anvilBlockKey(net.minecraft.world.level.block.Block block) {{
+        return net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(block).getPath();
+    }}
+"##));
+    }
+
+    // ---- Werkbänke: Crafting-Oberfläche mit eigenen Rezepten ----
+    if !workbenches.is_empty() {
+        let mut recipes = String::new();
+        for b in &workbenches {
+            for r in &b.workbench_recipes {
+                if !valid_ref(&r.result) || r.grid.iter().all(|g| g.trim().is_empty()) {
+                    continue;
+                }
+                let mut grid: Vec<String> = r.grid.iter().take(9).map(|g| if valid_ref(g.trim()) { g.trim().to_string() } else { String::new() }).collect();
+                grid.resize(9, String::new());
+                let cells: Vec<String> = grid.iter().map(|g| jq(g)).collect();
+                recipes.push_str(&format!(
+                    "        new AnvilWorkbenchRecipe({}, {}, new String[]{{{}}}, {}, {}),\n",
+                    jq(&b.id),
+                    r.shaped,
+                    cells.join(", "),
+                    jq(&r.result),
+                    r.count.clamp(1, 64)
+                ));
+            }
+        }
+        imports.extend([
+            "com.mojang.serialization.MapCodec",
+            "net.minecraft.core.BlockPos",
+            "net.minecraft.world.InteractionResult",
+            "net.minecraft.world.entity.player.Inventory",
+            "net.minecraft.world.entity.player.Player",
+            "net.minecraft.world.level.Level",
+            "net.minecraft.world.level.block.state.BlockState",
+            "net.minecraft.world.phys.BlockHitResult",
+        ]);
+        methods.push_str(&format!(r##"
+    record AnvilWorkbenchRecipe(String block, boolean shaped, String[] grid, String result, int count) {{}}
+
+    static final AnvilWorkbenchRecipe[] ANVIL_WORKBENCH_RECIPES = {{
+{recipes}    }};
+
+    /** Werkbank: öffnet ein 3×3-Raster. Neben den normalen Rezepten gelten hier eigene. */
+    public static class AnvilWorkbenchBlock extends net.minecraft.world.level.block.Block {{
+        public static final MapCodec<AnvilWorkbenchBlock> CODEC = simpleCodec(AnvilWorkbenchBlock::new);
+
+        public AnvilWorkbenchBlock(BlockBehaviour.Properties properties) {{
+            super(properties);
+        }}
+
+        @Override
+        public MapCodec<AnvilWorkbenchBlock> codec() {{
+            return CODEC;
+        }}
+
+        @Override
+        protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hit) {{
+            if (!level.isClientSide()) {{
+                String key = anvilBlockKey(this);
+                player.openMenu(new net.minecraft.world.SimpleMenuProvider(
+                        (id, inventory, p) -> new AnvilWorkbenchMenu(id, inventory, net.minecraft.world.inventory.ContainerLevelAccess.create(level, pos), p, key),
+                        getName()));
+            }}
+            return InteractionResult.SUCCESS;
+        }}
+    }}
+
+    public static class AnvilWorkbenchMenu extends net.minecraft.world.inventory.CraftingMenu {{
+        private final Player anvilPlayer;
+        private final net.minecraft.world.inventory.ContainerLevelAccess anvilAccess;
+        private final String anvilKey;
+        private AnvilWorkbenchRecipe anvilMatch;
+
+        public AnvilWorkbenchMenu(int id, Inventory inventory, net.minecraft.world.inventory.ContainerLevelAccess access, Player player, String key) {{
+            super(id, inventory, access);
+            this.anvilPlayer = player;
+            this.anvilAccess = access;
+            this.anvilKey = key;
+            // Ergebnis-Feld: eigene Rezepte selbst abrechnen, sonst wie gewohnt
+            net.minecraft.world.inventory.Slot original = this.slots.get(0);
+            net.minecraft.world.inventory.Slot result = new net.minecraft.world.inventory.Slot(original.container, original.getContainerSlot(), original.x, original.y) {{
+                @Override
+                public boolean mayPlace(ItemStack stack) {{
+                    return false;
+                }}
+
+                @Override
+                public ItemStack remove(int amount) {{
+                    return anvilMatch != null ? super.remove(amount) : original.remove(amount);
+                }}
+
+                @Override
+                public void onQuickCraft(ItemStack a, ItemStack b) {{
+                    if (anvilMatch == null) original.onQuickCraft(a, b);
+                }}
+
+                @Override
+                public void onTake(Player p, ItemStack stack) {{
+                    if (anvilMatch != null) {{
+                        for (int i = 1; i <= 9; i++) {{
+                            if (!slots.get(i).getItem().isEmpty()) slots.get(i).remove(1);
+                        }}
+                        setChanged();
+                    }} else {{
+                        original.onTake(p, stack);
+                    }}
+                }}
+            }};
+            result.index = 0;
+            this.slots.set(0, result);
+        }}
+
+        @Override
+        public boolean stillValid(Player player) {{
+            return anvilAccess.evaluate((level, pos) -> level.getBlockState(pos).getBlock() instanceof AnvilWorkbenchBlock
+                    && player.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= 64.0, true);
+        }}
+
+        @Override
+        public void slotsChanged(net.minecraft.world.Container container) {{
+            super.slotsChanged(container);
+            if (!(anvilPlayer instanceof net.minecraft.server.level.ServerPlayer serverPlayer)) return;
+            anvilMatch = anvilFind();
+            if (anvilMatch != null) {{
+                ItemStack out = anvilStack(anvilMatch.result(), anvilMatch.count());
+                slots.get(0).container.setItem(0, out);
+                setRemoteSlot(0, out);
+                serverPlayer.connection.send(new net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket(containerId, incrementStateId(), 0, out));
+            }}
+        }}
+
+        private AnvilWorkbenchRecipe anvilFind() {{
+            ItemStack[] grid = new ItemStack[9];
+            for (int i = 0; i < 9; i++) grid[i] = slots.get(1 + i).getItem();
+            for (AnvilWorkbenchRecipe r : ANVIL_WORKBENCH_RECIPES) {{
+                if (!r.block().equals(anvilKey)) continue;
+                if (r.shaped() ? anvilShaped(r.grid(), grid) : anvilShapeless(r.grid(), grid)) return r;
+            }}
+            return null;
+        }}
+
+        /** Form zählt, Lage im Raster nicht (verschiebbar). */
+        private static boolean anvilShaped(String[] pattern, ItemStack[] grid) {{
+            int minX = 3, minY = 3, maxX = -1, maxY = -1;
+            for (int i = 0; i < 9; i++) {{
+                if (!pattern[i].isEmpty()) {{
+                    minX = Math.min(minX, i % 3); maxX = Math.max(maxX, i % 3);
+                    minY = Math.min(minY, i / 3); maxY = Math.max(maxY, i / 3);
+                }}
+            }}
+            if (maxX < 0) return false;
+            int w = maxX - minX + 1, h = maxY - minY + 1;
+            for (int dy = 0; dy + h <= 3; dy++) {{
+                for (int dx = 0; dx + w <= 3; dx++) {{
+                    boolean ok = true;
+                    for (int y = 0; y < 3 && ok; y++) {{
+                        for (int x = 0; x < 3 && ok; x++) {{
+                            int px = x - dx + minX, py = y - dy + minY;
+                            boolean inside = x >= dx && x < dx + w && y >= dy && y < dy + h;
+                            String want = inside ? pattern[py * 3 + px] : "";
+                            ok = anvilMatches(grid[y * 3 + x], want);
+                        }}
+                    }}
+                    if (ok) return true;
+                }}
+            }}
+            return false;
+        }}
+
+        private static boolean anvilShapeless(String[] ingredients, ItemStack[] grid) {{
+            java.util.List<String> need = new java.util.ArrayList<>();
+            for (String s : ingredients) if (!s.isEmpty()) need.add(s);
+            java.util.List<ItemStack> have = new java.util.ArrayList<>();
+            for (ItemStack s : grid) if (!s.isEmpty()) have.add(s);
+            if (need.size() != have.size() || need.isEmpty()) return false;
+            return anvilAssign(need, have, 0, new boolean[have.size()]);
+        }}
+
+        private static boolean anvilAssign(java.util.List<String> need, java.util.List<ItemStack> have, int i, boolean[] used) {{
+            if (i == need.size()) return true;
+            for (int j = 0; j < have.size(); j++) {{
+                if (!used[j] && anvilMatches(have.get(j), need.get(i))) {{
+                    used[j] = true;
+                    if (anvilAssign(need, have, i + 1, used)) return true;
+                    used[j] = false;
+                }}
+            }}
+            return false;
+        }}
+    }}
+"##));
+    }
+
+    // ---- Maschinen: Ofen-Oberfläche mit eigenen Rezepten ----
+    if !machines.is_empty() {
+        let ctor = be_type("AnvilMachineBlockEntity", &machines);
+        fields.push_str(&format!(
+            "    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<AnvilMachineBlockEntity>> MACHINE_BE = BLOCK_ENTITIES.register(\"machine\", () -> {ctor});\n\n"
+        ));
+        let mut recipes = String::new();
+        let mut fuel = String::new();
+        for b in &machines {
+            if b.machine.fuel {
+                fuel.push_str(&format!("{}, ", jq(&b.id)));
+            }
+            for r in &b.machine.recipes {
+                if !valid_ref(r.input.trim()) || !valid_ref(r.output.trim()) || r.output.starts_with('#') {
+                    continue;
+                }
+                recipes.push_str(&format!(
+                    "        new AnvilMachineRecipe({}, {}, {}, {}, {}, {}),\n",
+                    jq(&b.id),
+                    jq(r.input.trim()),
+                    r.input_count.clamp(1, 64),
+                    jq(r.output.trim()),
+                    r.output_count.clamp(1, 64),
+                    r.time.clamp(1, 72000)
+                ));
+            }
+        }
+        imports.extend([
+            "com.mojang.serialization.MapCodec",
+            "net.minecraft.core.BlockPos",
+            "net.minecraft.core.NonNullList",
+            "net.minecraft.world.Container",
+            "net.minecraft.world.Containers",
+            "net.minecraft.world.ContainerHelper",
+            "net.minecraft.world.InteractionResult",
+            "net.minecraft.world.entity.player.Inventory",
+            "net.minecraft.world.entity.player.Player",
+            "net.minecraft.world.inventory.AbstractContainerMenu",
+            "net.minecraft.world.level.Level",
+            "net.minecraft.world.level.block.entity.BlockEntity",
+            "net.minecraft.world.level.block.state.BlockState",
+            "net.minecraft.world.phys.BlockHitResult",
+        ]);
+        let burn = if api.materials_v2 { "level.fuelValues().burnDuration(stack)" } else { "stack.getBurnTime(net.minecraft.world.item.crafting.RecipeType.SMELTING)" };
+        let save_load = if api.value_io {
+            "        @Override\n        protected void loadAdditional(net.minecraft.world.level.storage.ValueInput input) {\n            super.loadAdditional(input);\n            items = NonNullList.withSize(3, ItemStack.EMPTY);\n            ContainerHelper.loadAllItems(input, items);\n            litTime = input.getIntOr(\"AnvilLit\", 0);\n            litDuration = input.getIntOr(\"AnvilLitTotal\", 0);\n            progress = input.getIntOr(\"AnvilProgress\", 0);\n            total = input.getIntOr(\"AnvilTotal\", 0);\n        }\n\n        @Override\n        protected void saveAdditional(net.minecraft.world.level.storage.ValueOutput output) {\n            super.saveAdditional(output);\n            ContainerHelper.saveAllItems(output, items);\n            output.putInt(\"AnvilLit\", litTime);\n            output.putInt(\"AnvilLitTotal\", litDuration);\n            output.putInt(\"AnvilProgress\", progress);\n            output.putInt(\"AnvilTotal\", total);\n        }\n".to_string()
+        } else {
+            let get = |k: &str| if api.props_tools { format!("tag.getIntOr(\"{k}\", 0)") } else { format!("tag.getInt(\"{k}\")") };
+            format!(
+                "        @Override\n        protected void loadAdditional(net.minecraft.nbt.CompoundTag tag, net.minecraft.core.HolderLookup.Provider registries) {{\n            super.loadAdditional(tag, registries);\n            items = NonNullList.withSize(3, ItemStack.EMPTY);\n            ContainerHelper.loadAllItems(tag, items, registries);\n            litTime = {};\n            litDuration = {};\n            progress = {};\n            total = {};\n        }}\n\n        @Override\n        protected void saveAdditional(net.minecraft.nbt.CompoundTag tag, net.minecraft.core.HolderLookup.Provider registries) {{\n            super.saveAdditional(tag, registries);\n            ContainerHelper.saveAllItems(tag, items, registries);\n            tag.putInt(\"AnvilLit\", litTime);\n            tag.putInt(\"AnvilLitTotal\", litDuration);\n            tag.putInt(\"AnvilProgress\", progress);\n            tag.putInt(\"AnvilTotal\", total);\n        }}\n",
+                get("AnvilLit"), get("AnvilLitTotal"), get("AnvilProgress"), get("AnvilTotal")
+            )
+        };
+        let on_remove = on_remove_drop.clone();
+        methods.push_str(&format!(r##"
+    record AnvilMachineRecipe(String block, String input, int inputCount, String output, int outputCount, int time) {{}}
+
+    static final AnvilMachineRecipe[] ANVIL_MACHINE_RECIPES = {{
+{recipes}    }};
+
+    static final java.util.Set<String> ANVIL_MACHINE_FUEL = java.util.Set.of({fuel_list});
+
+    /** Maschine: verarbeitet Eingabe → Ausgabe über die Zeit (Ofen-Oberfläche). */
+    public static class AnvilMachineBlock extends BaseEntityBlock {{
+        public static final MapCodec<AnvilMachineBlock> CODEC = simpleCodec(AnvilMachineBlock::new);
+
+        public AnvilMachineBlock(BlockBehaviour.Properties properties) {{
+            super(properties);
+        }}
+
+        @Override
+        protected MapCodec<? extends BaseEntityBlock> codec() {{
+            return CODEC;
+        }}
+
+        @Override
+        protected RenderShape getRenderShape(BlockState state) {{
+            return RenderShape.MODEL;
+        }}
+
+        @Override
+        public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {{
+            return new AnvilMachineBlockEntity(pos, state);
+        }}
+
+        @Override
+        public <T extends BlockEntity> net.minecraft.world.level.block.entity.BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type) {{
+            return level.isClientSide() ? null : createTickerHelper(type, MACHINE_BE.get(), AnvilMachineBlockEntity::serverTick);
+        }}
+
+        @Override
+        protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hit) {{
+            if (!level.isClientSide() && level.getBlockEntity(pos) instanceof AnvilMachineBlockEntity machine) player.openMenu(machine);
+            return InteractionResult.SUCCESS;
+        }}
+{on_remove}    }}
+
+    public static class AnvilMachineBlockEntity extends net.minecraft.world.level.block.entity.BaseContainerBlockEntity {{
+        private NonNullList<ItemStack> items = NonNullList.withSize(3, ItemStack.EMPTY);
+        private int litTime, litDuration, progress, total;
+        private final net.minecraft.world.inventory.ContainerData data = new net.minecraft.world.inventory.ContainerData() {{
+            @Override
+            public int get(int index) {{
+                return switch (index) {{
+                    case 0 -> litTime;
+                    case 1 -> litDuration;
+                    case 2 -> progress;
+                    default -> total;
+                }};
+            }}
+
+            @Override
+            public void set(int index, int value) {{
+                switch (index) {{
+                    case 0 -> litTime = value;
+                    case 1 -> litDuration = value;
+                    case 2 -> progress = value;
+                    default -> total = value;
+                }}
+            }}
+
+            @Override
+            public int getCount() {{
+                return 4;
+            }}
+        }};
+
+        public AnvilMachineBlockEntity(BlockPos pos, BlockState state) {{
+            super(MACHINE_BE.get(), pos, state);
+        }}
+
+        @Override
+        public int getContainerSize() {{
+            return 3;
+        }}
+
+        @Override
+        protected NonNullList<ItemStack> getItems() {{
+            return items;
+        }}
+
+        @Override
+        protected void setItems(NonNullList<ItemStack> items) {{
+            this.items = items;
+        }}
+
+        @Override
+        protected Component getDefaultName() {{
+            return getBlockState().getBlock().getName();
+        }}
+
+        @Override
+        protected AbstractContainerMenu createMenu(int id, Inventory inventory) {{
+            return new net.minecraft.world.inventory.FurnaceMenu(id, inventory, this, data);
+        }}
+
+        private static AnvilMachineRecipe find(String key, ItemStack input) {{
+            for (AnvilMachineRecipe r : ANVIL_MACHINE_RECIPES) {{
+                if (r.block().equals(key) && anvilMatches(input, r.input()) && input.getCount() >= r.inputCount()) return r;
+            }}
+            return null;
+        }}
+
+        private static int burnTime(Level level, ItemStack stack) {{
+            return stack.isEmpty() ? 0 : {burn};
+        }}
+
+        public static void serverTick(Level level, BlockPos pos, BlockState state, AnvilMachineBlockEntity be) {{
+            String key = anvilBlockKey(state.getBlock());
+            boolean needsFuel = ANVIL_MACHINE_FUEL.contains(key);
+            boolean changed = false;
+            if (be.litTime > 0) be.litTime--;
+            AnvilMachineRecipe r = find(key, be.items.get(0));
+            ItemStack out = be.items.get(2);
+            ItemStack result = r == null ? ItemStack.EMPTY : anvilStack(r.output(), r.outputCount());
+            boolean fits = !result.isEmpty() && (out.isEmpty() || (ItemStack.isSameItemSameComponents(out, result) && out.getCount() + result.getCount() <= out.getMaxStackSize()));
+            if (fits) {{
+                if (!needsFuel) {{
+                    be.litTime = be.litDuration = 1;
+                }} else if (be.litTime <= 0) {{
+                    ItemStack fuel = be.items.get(1);
+                    int burn = burnTime(level, fuel);
+                    if (burn > 0) {{
+                        be.litTime = be.litDuration = burn;
+                        boolean bucket = fuel.is(net.minecraft.world.item.Items.LAVA_BUCKET);
+                        fuel.shrink(1);
+                        if (bucket) be.items.set(1, new ItemStack(net.minecraft.world.item.Items.BUCKET));
+                        changed = true;
+                    }}
+                }}
+                if (be.litTime > 0) {{
+                    be.total = r.time();
+                    be.progress++;
+                    if (be.progress >= be.total) {{
+                        be.progress = 0;
+                        be.items.get(0).shrink(r.inputCount());
+                        if (out.isEmpty()) be.items.set(2, result);
+                        else out.grow(result.getCount());
+                    }}
+                    changed = true;
+                }} else if (be.progress > 0) {{
+                    be.progress = Math.max(0, be.progress - 2);
+                    changed = true;
+                }}
+            }} else if (be.progress > 0) {{
+                be.progress = 0;
+                changed = true;
+            }}
+            if (changed) be.setChanged();
+        }}
+
+{save_load}    }}
+"##, fuel_list = fuel.trim_end_matches(", ")));
     }
 
     // ---- Nachschlagen per ID (Registries sind zur Laufzeit fertig) ----
@@ -1279,6 +1774,8 @@ fn generate_java(p: &Project, c: &Content) -> String {
         let (ty, reg) = match v.shape {
             "block" if is_model(b) => (model_class(b), format!("BLOCKS.registerBlock(\"{}\", {}::new, {props})", v.id, model_class(b))),
             "block" if b.kind == "lamp" => ("RedstoneLampBlock".to_string(), format!("BLOCKS.registerBlock(\"{}\", RedstoneLampBlock::new, {props})", v.id)),
+            "block" if b.kind == "workbench" => ("AnvilWorkbenchBlock".to_string(), format!("BLOCKS.registerBlock(\"{}\", AnvilWorkbenchBlock::new, {props})", v.id)),
+            "block" if b.kind == "machine" => ("AnvilMachineBlock".to_string(), format!("BLOCKS.registerBlock(\"{}\", AnvilMachineBlock::new, {props})", v.id)),
             "block" if b.kind == "storage" => (
                 "AnvilStorageBlock".to_string(),
                 format!("BLOCKS.registerBlock(\"{}\", p -> new AnvilStorageBlock({}, p), {props})", v.id, b.rows.clamp(1, 6)),
@@ -2960,6 +3457,38 @@ mod tests {
         });
         c.blocks.push(BlockDef { id: "ruby_pillar".into(), model: vec![cub([12.0, 0.0, 4.0], [4.0, 16.0, 12.0], "")], ..Default::default() });
         c.blocks.push(BlockDef { id: "crystal_chest".into(), kind: "storage".into(), rows: 6, material: "wood".into(), tool: "axe".into(), ..Default::default() });
+        // Werkbank und Maschine mit eigenen Rezepten
+        let m = p.mod_id.clone();
+        let mut wb_grid = vec![String::new(); 9];
+        wb_grid[0] = format!("{m}:ruby");
+        wb_grid[4] = "#minecraft:planks".into();
+        c.blocks.push(BlockDef {
+            id: "ruby_workbench".into(),
+            kind: "workbench".into(),
+            material: "wood".into(),
+            tool: "axe".into(),
+            workbench_recipes: vec![
+                WorkbenchRecipe { shaped: true, grid: wb_grid.clone(), result: format!("{m}:dream_glass"), count: 2 },
+                WorkbenchRecipe { shaped: false, grid: wb_grid, result: "minecraft:diamond".into(), count: 1 },
+            ],
+            ..Default::default()
+        });
+        c.blocks.push(BlockDef {
+            id: "ruby_press".into(),
+            kind: "machine".into(),
+            material: "metal".into(),
+            machine: MachineDef {
+                fuel: true,
+                recipes: vec![MachineRecipe { input: format!("{m}:ruby"), input_count: 2, output: format!("{m}:ruby_block"), output_count: 1, time: 100 }],
+            },
+            ..Default::default()
+        });
+        c.blocks.push(BlockDef {
+            id: "ruby_grinder".into(),
+            kind: "machine".into(),
+            machine: MachineDef { fuel: false, recipes: vec![MachineRecipe { input: "#minecraft:logs".into(), output: "minecraft:stick".into(), output_count: 8, ..Default::default() }] },
+            ..Default::default()
+        });
         for (kind, id) in [("blasting", "blast_gem"), ("smoking", "smoked_gem"), ("campfire", "camp_gem"), ("stonecutting", "cut_gem"), ("smithing", "smith_gem")] {
             let mut r = Recipe { enabled: true, kind: kind.into(), grid: vec![String::new(); 9], ..Default::default() };
             r.grid[0] = "minecraft:netherite_upgrade_smithing_template".into();
