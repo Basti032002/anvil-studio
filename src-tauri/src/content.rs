@@ -28,7 +28,8 @@ const PLACEHOLDER_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAL
 #[serde(rename_all = "camelCase", default)]
 pub struct Recipe {
     pub enabled: bool,
-    /// "crafting" | "smelting"
+    /// crafting | smelting | blasting | smoking | campfire | stonecutting | smithing
+    /// (Steinsäge: Feld 1; Schmiedetisch: Feld 1 Vorlage, 2 Basis, 3 Zusatz)
     pub kind: String,
     pub shaped: bool,
     /// 9 Felder (3×3), leer = nichts. Einträge wie "minecraft:diamond" oder "#minecraft:planks"
@@ -65,6 +66,12 @@ pub struct BlockDef {
     pub shapes: Vec<String>,
     /// Erz mit Weltgenerierung
     pub ore: OreDef,
+    /// normal | lamp (Redstone-Lampe) | storage (Lager-Truhe)
+    pub kind: String,
+    /// Lager-Truhe: Reihen à 9 Slots (1–6)
+    pub rows: u32,
+    /// Weitere Sprachen: fr | es | pl | nl | tr | ru → Name
+    pub names: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -123,6 +130,9 @@ impl Default for BlockDef {
             recipe: Recipe::default(),
             shapes: vec![],
             ore: OreDef::default(),
+            kind: "normal".into(),
+            rows: 3,
+            names: Default::default(),
         }
     }
 }
@@ -133,6 +143,8 @@ pub struct ItemDef {
     pub id: String,
     pub name_de: String,
     pub name_en: String,
+    /// Weitere Sprachen: fr | es | pl | nl | tr | ru → Name
+    pub names: std::collections::BTreeMap<String, String>,
     pub stack_size: u32,
     /// common | uncommon | rare | epic
     pub rarity: String,
@@ -171,6 +183,7 @@ impl Default for ItemDef {
             id: String::new(),
             name_de: String::new(),
             name_en: String::new(),
+            names: Default::default(),
             stack_size: 64,
             rarity: "common".into(),
             food: false,
@@ -201,6 +214,8 @@ pub struct MobDef {
     pub id: String,
     pub name_de: String,
     pub name_en: String,
+    /// Weitere Sprachen: fr | es | pl | nl | tr | ru → Name
+    pub names: std::collections::BTreeMap<String, String>,
     /// Körper & Verhalten wie: cow | pig | chicken | zombie | spider | creeper
     pub model: String,
     pub health: f32,
@@ -227,6 +242,7 @@ impl Default for MobDef {
             id: String::new(),
             name_de: String::new(),
             name_en: String::new(),
+            names: Default::default(),
             model: "cow".into(),
             health: 10.0,
             speed: 0.2,
@@ -265,6 +281,48 @@ pub struct Content {
     pub tab_icon: String,
     /// Name des Kreativ-Tabs (leer = Projektname)
     pub tab_name: String,
+    /// Brau-Rezepte: Trank + Zutat → Trank
+    pub brewing: Vec<BrewDef>,
+    /// Ereignisse ohne Code: Auslöser → Aktionen
+    pub events: Vec<EventDef>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BrewDef {
+    /// Vanilla-Trank, z. B. "awkward"
+    pub input: String,
+    /// Zutat (Item-ID)
+    pub ingredient: String,
+    /// Ergebnis-Trank, z. B. "swiftness"
+    pub output: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct EventDef {
+    /// right_click_block | right_click_item | break_block | place_block | use_item | entity_hurt | entity_killed
+    pub trigger: String,
+    /// Eigene ID (Block, Item oder Kreatur)
+    pub target: String,
+    /// Eigentliche Handlung verhindern (z. B. Abbauen)
+    pub cancel: bool,
+    pub actions: Vec<ActionDef>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ActionDef {
+    /// effect | give_item | message | sound | explode | fire | xp | heal | launch
+    pub kind: String,
+    /// Effekt-, Item- oder Sound-ID bzw. Nachrichtentext
+    pub value: String,
+    /// Stufe, Anzahl, Stärke …
+    pub amount: f32,
+    /// Sekunden
+    pub duration: u32,
+    /// player | target
+    pub to: String,
 }
 
 impl Default for Content {
@@ -280,6 +338,8 @@ impl Default for Content {
             generated_mobs: vec![],
             tab_icon: String::new(),
             tab_name: String::new(),
+            brewing: vec![],
+            events: vec![],
         }
     }
 }
@@ -435,7 +495,7 @@ pub struct Variant<'a> {
     pub base: &'a BlockDef,
 }
 
-pub const SHAPES: [&str; 4] = ["stairs", "slab", "wall", "fence"];
+pub const SHAPES: [&str; 6] = ["stairs", "slab", "wall", "fence", "button", "pressure_plate"];
 
 pub fn variants(b: &BlockDef) -> Vec<Variant<'_>> {
     let mut v = vec![Variant { id: b.id.clone(), shape: "block", base: b }];
@@ -462,6 +522,8 @@ struct Api {
     props_tools: bool,
     /// ab 1.21.9: Properties nur noch als Supplier (werden erst beim Registrieren gebaut)
     lazy_props: bool,
+    /// ab 1.21.6: Block-Entities speichern über ValueInput/ValueOutput
+    value_io: bool,
 }
 
 fn api(p: &Project) -> Api {
@@ -469,6 +531,7 @@ fn api(p: &Project) -> Api {
         materials_v2: mc_at_least(&p.mc_version, (1, 21, 2)),
         props_tools: mc_at_least(&p.mc_version, (1, 21, 5)),
         lazy_props: mc_at_least(&p.mc_version, (1, 21, 9)),
+        value_io: mc_at_least(&p.mc_version, (1, 21, 6)),
     }
 }
 
@@ -501,7 +564,10 @@ fn block_props(b: &BlockDef, deepslate: bool) -> String {
         java_float(hardness.max(0.0)),
         java_float(b.resistance.max(0.0))
     );
-    if b.light > 0 {
+    if b.kind == "lamp" {
+        let lit = if b.light == 0 { 15 } else { b.light.min(15) };
+        props.push_str(&format!(".lightLevel(state -> state.getValue(RedstoneLampBlock.LIT) ? {lit} : 0)"));
+    } else if b.light > 0 {
         props.push_str(&format!(".lightLevel(state -> {})", b.light.min(15)));
     }
     if b.tool != "none" {
@@ -667,6 +733,296 @@ public final class AnvilClient {{
     )
 }
 
+
+fn java_str(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "")
+}
+
+/// Zusätzlicher Java-Code: Lager-Truhen, Brau-Rezepte und Ereignisse.
+/// Rückgabe: (Felder, Importe, Aufrufe in register(), Methoden und Klassen)
+fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static str>, String, String) {
+    let modid = &p.mod_id;
+    let mut fields = String::new();
+    let mut imports: Vec<&'static str> = vec![];
+    let mut calls = String::new();
+    let mut methods = String::new();
+    let up = |s: &str| s.to_uppercase();
+
+    // ---- Lager-Truhen ----
+    let storage: Vec<&BlockDef> = c.blocks.iter().filter(|b| b.kind == "storage").collect();
+    if !storage.is_empty() {
+        imports.extend([
+            "com.mojang.serialization.MapCodec",
+            "net.minecraft.core.BlockPos",
+            "net.minecraft.core.NonNullList",
+            "net.minecraft.world.Container",
+            "net.minecraft.world.Containers",
+            "net.minecraft.world.ContainerHelper",
+            "net.minecraft.world.InteractionResult",
+            "net.minecraft.world.entity.player.Inventory",
+            "net.minecraft.world.entity.player.Player",
+            "net.minecraft.world.inventory.AbstractContainerMenu",
+            "net.minecraft.world.inventory.ChestMenu",
+            "net.minecraft.world.inventory.MenuType",
+            "net.minecraft.world.level.Level",
+            "net.minecraft.world.level.block.entity.BlockEntity",
+            "net.minecraft.world.level.block.entity.BlockEntityType",
+            "net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity",
+            "net.minecraft.world.level.block.state.BlockState",
+            "net.minecraft.world.phys.BlockHitResult",
+        ]);
+        let blocks: Vec<String> = storage.iter().map(|b| format!("{}.get()", up(&b.id))).collect();
+        let ctor = if api.materials_v2 {
+            format!("new BlockEntityType<>(AnvilStorageBlockEntity::new, {})", blocks.join(", "))
+        } else {
+            format!("BlockEntityType.Builder.of(AnvilStorageBlockEntity::new, {}).build(null)", blocks.join(", "))
+        };
+        fields.push_str(&format!(
+            "    public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITIES = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, MODID);\n    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<AnvilStorageBlockEntity>> STORAGE_BE = BLOCK_ENTITIES.register(\"storage\", () -> {ctor});\n\n"
+        ));
+        calls.push_str("        BLOCK_ENTITIES.register(modEventBus);\n");
+        let on_remove = if api.props_tools {
+            String::new() // ab 1.21.5 lässt der Container seinen Inhalt selbst fallen
+        } else {
+            "        @Override\n        protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean moved) {\n            if (!state.is(newState.getBlock()) && level.getBlockEntity(pos) instanceof Container container) Containers.dropContents(level, pos, container);\n            super.onRemove(state, level, pos, newState, moved);\n        }\n".to_string()
+        };
+        let save_load = if api.value_io {
+            imports.extend(["net.minecraft.world.level.storage.ValueInput", "net.minecraft.world.level.storage.ValueOutput"]);
+            "        @Override\n        protected void loadAdditional(ValueInput input) {\n            super.loadAdditional(input);\n            items = NonNullList.withSize(getContainerSize(), ItemStack.EMPTY);\n            if (!tryLoadLootTable(input)) ContainerHelper.loadAllItems(input, items);\n        }\n\n        @Override\n        protected void saveAdditional(ValueOutput output) {\n            super.saveAdditional(output);\n            if (!trySaveLootTable(output)) ContainerHelper.saveAllItems(output, items);\n        }\n"
+        } else {
+            imports.extend(["net.minecraft.core.HolderLookup", "net.minecraft.nbt.CompoundTag"]);
+            "        @Override\n        protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {\n            super.loadAdditional(tag, registries);\n            items = NonNullList.withSize(getContainerSize(), ItemStack.EMPTY);\n            if (!tryLoadLootTable(tag)) ContainerHelper.loadAllItems(tag, items, registries);\n        }\n\n        @Override\n        protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {\n            super.saveAdditional(tag, registries);\n            if (!trySaveLootTable(tag)) ContainerHelper.saveAllItems(tag, items, registries);\n        }\n"
+        };
+        methods.push_str(&format!(r#"
+    /** Lager-Block: öffnet beim Rechtsklick eine Truhen-Oberfläche. */
+    public static class AnvilStorageBlock extends BaseEntityBlock {{
+        public static final MapCodec<AnvilStorageBlock> CODEC = simpleCodec(p -> new AnvilStorageBlock(3, p));
+        private final int rows;
+
+        public AnvilStorageBlock(int rows, BlockBehaviour.Properties properties) {{
+            super(properties);
+            this.rows = rows;
+        }}
+
+        public int rows() {{
+            return rows;
+        }}
+
+        @Override
+        protected MapCodec<? extends BaseEntityBlock> codec() {{
+            return CODEC;
+        }}
+
+        @Override
+        protected RenderShape getRenderShape(BlockState state) {{
+            return RenderShape.MODEL;
+        }}
+
+        @Override
+        public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {{
+            return new AnvilStorageBlockEntity(pos, state);
+        }}
+
+        @Override
+        protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hit) {{
+            if (!level.isClientSide() && level.getBlockEntity(pos) instanceof AnvilStorageBlockEntity storage) player.openMenu(storage);
+            return InteractionResult.SUCCESS;
+        }}
+{on_remove}    }}
+
+    public static class AnvilStorageBlockEntity extends RandomizableContainerBlockEntity {{
+        private NonNullList<ItemStack> items;
+
+        public AnvilStorageBlockEntity(BlockPos pos, BlockState state) {{
+            super(STORAGE_BE.get(), pos, state);
+            int rows = state.getBlock() instanceof AnvilStorageBlock block ? block.rows() : 3;
+            this.items = NonNullList.withSize(rows * 9, ItemStack.EMPTY);
+        }}
+
+        private int rows() {{
+            return Math.max(1, Math.min(6, items.size() / 9));
+        }}
+
+        @Override
+        public int getContainerSize() {{
+            return items.size();
+        }}
+
+        @Override
+        protected NonNullList<ItemStack> getItems() {{
+            return items;
+        }}
+
+        @Override
+        protected void setItems(NonNullList<ItemStack> items) {{
+            this.items = items;
+        }}
+
+        @Override
+        protected Component getDefaultName() {{
+            return getBlockState().getBlock().getName();
+        }}
+
+        @Override
+        protected AbstractContainerMenu createMenu(int id, Inventory inventory) {{
+            MenuType<ChestMenu> type = switch (rows()) {{
+                case 1 -> MenuType.GENERIC_9x1;
+                case 2 -> MenuType.GENERIC_9x2;
+                case 4 -> MenuType.GENERIC_9x4;
+                case 5 -> MenuType.GENERIC_9x5;
+                case 6 -> MenuType.GENERIC_9x6;
+                default -> MenuType.GENERIC_9x3;
+            }};
+            return new ChestMenu(type, id, inventory, this, rows());
+        }}
+
+{save_load}    }}
+"#));
+    }
+
+    // ---- Nachschlagen per ID (Registries sind zur Laufzeit fertig) ----
+    let needs_lookup = !c.brewing.is_empty() || !c.events.is_empty();
+    if needs_lookup {
+        imports.extend([
+            "net.minecraft.core.Holder",
+            "net.minecraft.core.registries.BuiltInRegistries",
+            "net.minecraft.sounds.SoundEvent",
+            "net.minecraft.world.effect.MobEffect",
+            "net.neoforged.neoforge.common.NeoForge",
+        ]);
+        let (eff, item, sound) = if api.materials_v2 {
+            (
+                "BuiltInRegistries.MOB_EFFECT.get(ResourceLocation.parse(id)).orElseThrow()",
+                "BuiltInRegistries.ITEM.getValue(ResourceLocation.parse(id))",
+                "BuiltInRegistries.SOUND_EVENT.getValue(ResourceLocation.parse(id))",
+            )
+        } else {
+            (
+                "BuiltInRegistries.MOB_EFFECT.getHolder(ResourceLocation.parse(id)).orElseThrow()",
+                "BuiltInRegistries.ITEM.get(ResourceLocation.parse(id))",
+                "BuiltInRegistries.SOUND_EVENT.get(ResourceLocation.parse(id))",
+            )
+        };
+        methods.push_str(&format!(
+            "\n    private static Holder<MobEffect> anvilEffect(String id) {{\n        return {eff};\n    }}\n\n    private static Item anvilItem(String id) {{\n        return {item};\n    }}\n\n    private static SoundEvent anvilSound(String id) {{\n        return {sound};\n    }}\n"
+        ));
+    }
+
+    // ---- Brau-Rezepte ----
+    if !c.brewing.is_empty() {
+        imports.extend(["net.minecraft.world.item.alchemy.Potions", "net.neoforged.neoforge.event.brewing.RegisterBrewingRecipesEvent"]);
+        calls.push_str("        NeoForge.EVENT_BUS.addListener(AnvilContent::registerBrewing);\n");
+        let mut lines = String::new();
+        for b in &c.brewing {
+            let (i, o) = (b.input.trim().trim_start_matches("minecraft:"), b.output.trim().trim_start_matches("minecraft:"));
+            if !valid_id(i) || !valid_id(o) || !valid_ref(b.ingredient.trim()) {
+                continue;
+            }
+            lines.push_str(&format!(
+                "        event.getBuilder().addMix(Potions.{}, anvilItem(\"{}\"), Potions.{});\n",
+                up(i),
+                java_str(b.ingredient.trim()),
+                up(o)
+            ));
+        }
+        methods.push_str(&format!("\n    private static void registerBrewing(RegisterBrewingRecipesEvent event) {{\n{lines}    }}\n"));
+    }
+
+    // ---- Ereignisse ----
+    if !c.events.is_empty() {
+        imports.extend([
+            "net.minecraft.core.BlockPos",
+            "net.minecraft.sounds.SoundSource",
+            "net.minecraft.world.InteractionHand",
+            "net.minecraft.world.effect.MobEffectInstance",
+            "net.minecraft.world.entity.Entity",
+            "net.minecraft.world.entity.LivingEntity",
+            "net.minecraft.world.entity.player.Player",
+            "net.minecraft.world.level.Level",
+            "net.neoforged.neoforge.event.entity.living.LivingDeathEvent",
+            "net.neoforged.neoforge.event.entity.living.LivingEntityUseItemEvent",
+            "net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent",
+            "net.neoforged.neoforge.event.entity.player.PlayerInteractEvent",
+            "net.neoforged.neoforge.event.level.BlockEvent",
+            "net.minecraft.world.level.block.state.BlockState",
+        ]);
+        let is_block = |id: &str| all_variants(c).iter().any(|v| v.id == id);
+        let is_item = |id: &str| c.items.iter().any(|i| i.id == id);
+        let is_mob = |id: &str| c.mobs.iter().any(|m| m.id == id);
+        // Aktionen als Java-Code; Variablen: level, player (evtl. null), target (evtl. null), x, y, z
+        let action_code = |a: &ActionDef| -> String {
+            let who = if a.to == "target" { "target" } else { "player" };
+            let v = java_str(a.value.trim());
+            let amt = a.amount;
+            match a.kind.as_str() {
+                "effect" if valid_ref(a.value.trim()) => format!(
+                    "            if ({who} != null) {who}.addEffect(new MobEffectInstance(anvilEffect(\"{v}\"), {}, {}));\n",
+                    a.duration.clamp(1, 3600) * 20,
+                    (amt.round() as i32 - 1).clamp(0, 9)
+                ),
+                "give_item" if valid_ref(a.value.trim()) => format!(
+                    "            if (player != null) {{ ItemStack stack = new ItemStack(anvilItem(\"{v}\"), {}); if (!player.getInventory().add(stack)) player.drop(stack, false); }}\n",
+                    (amt.round() as i32).clamp(1, 64)
+                ),
+                "message" => format!("            if (player != null) player.displayClientMessage(Component.literal(\"{v}\"), false);\n"),
+                "sound" if valid_ref(a.value.trim()) => format!("            level.playSound(null, x, y, z, anvilSound(\"{v}\"), SoundSource.PLAYERS, 1.0f, 1.0f);\n"),
+                "explode" => format!("            level.explode(null, x, y, z, {}, Level.ExplosionInteraction.TNT);\n", java_float(amt.clamp(0.5, 10.0))),
+                "fire" => format!("            if ({who} != null) {who}.igniteForSeconds({}f);\n", a.duration.clamp(1, 60)),
+                "xp" => format!("            if (player != null) player.giveExperiencePoints({});\n", (amt.round() as i32).clamp(1, 10000)),
+                "heal" => format!("            if ({who} != null) {who}.heal({});\n", java_float(amt.clamp(0.5, 1000.0))),
+                "launch" => format!(
+                    "            if ({who} != null) {{ {who}.setDeltaMovement({who}.getDeltaMovement().add(0, {}, 0)); {who}.hurtMarked = true; }}\n",
+                    java_float((amt * 0.5).clamp(0.1, 10.0))
+                ),
+                _ => String::new(),
+            }
+        };
+        let body = |e: &EventDef| -> String { e.actions.iter().map(action_code).collect::<String>() };
+        let mut handlers: Vec<(&str, &str, String, String)> = vec![];
+        // (Methodenname, Ereignisklasse, Vorspann, Bedingungen)
+        for (trigger, method, class, head) in [
+            ("right_click_block", "onRightClickBlock", "PlayerInteractEvent.RightClickBlock",
+             "        if (event.getHand() != InteractionHand.MAIN_HAND) return;\n        Level level = event.getLevel();\n        if (level.isClientSide()) return;\n        Player player = event.getEntity();\n        LivingEntity target = player;\n        BlockPos pos = event.getPos();\n        double x = pos.getX() + 0.5, y = pos.getY() + 0.5, z = pos.getZ() + 0.5;\n        BlockState state = level.getBlockState(pos);\n"),
+            ("right_click_item", "onRightClickItem", "PlayerInteractEvent.RightClickItem",
+             "        Level level = event.getLevel();\n        if (level.isClientSide()) return;\n        Player player = event.getEntity();\n        LivingEntity target = player;\n        double x = player.getX(), y = player.getY(), z = player.getZ();\n        ItemStack stack0 = event.getItemStack();\n"),
+            ("break_block", "onBreakBlock", "BlockEvent.BreakEvent",
+             "        if (!(event.getLevel() instanceof Level level) || level.isClientSide()) return;\n        Player player = event.getPlayer();\n        LivingEntity target = player;\n        BlockPos pos = event.getPos();\n        double x = pos.getX() + 0.5, y = pos.getY() + 0.5, z = pos.getZ() + 0.5;\n        BlockState state = event.getState();\n"),
+            ("place_block", "onPlaceBlock", "BlockEvent.EntityPlaceEvent",
+             "        if (!(event.getLevel() instanceof Level level) || level.isClientSide()) return;\n        Player player = event.getEntity() instanceof Player p0 ? p0 : null;\n        LivingEntity target = player;\n        BlockPos pos = event.getPos();\n        double x = pos.getX() + 0.5, y = pos.getY() + 0.5, z = pos.getZ() + 0.5;\n        BlockState state = event.getPlacedBlock();\n"),
+            ("use_item", "onUseItem", "LivingEntityUseItemEvent.Finish",
+             "        Level level = event.getEntity().level();\n        if (level.isClientSide()) return;\n        Player player = event.getEntity() instanceof Player p0 ? p0 : null;\n        LivingEntity target = event.getEntity();\n        double x = target.getX(), y = target.getY(), z = target.getZ();\n        ItemStack stack0 = event.getItem();\n"),
+            ("entity_hurt", "onEntityHurt", "LivingIncomingDamageEvent",
+             "        LivingEntity target = event.getEntity();\n        Level level = target.level();\n        if (level.isClientSide()) return;\n        Player player = event.getSource().getEntity() instanceof Player p0 ? p0 : null;\n        double x = target.getX(), y = target.getY(), z = target.getZ();\n        ItemStack stack0 = player != null ? player.getMainHandItem() : ItemStack.EMPTY;\n"),
+            ("entity_killed", "onEntityKilled", "LivingDeathEvent",
+             "        LivingEntity target = event.getEntity();\n        Level level = target.level();\n        if (level.isClientSide()) return;\n        Player player = event.getSource().getEntity() instanceof Player p0 ? p0 : null;\n        double x = target.getX(), y = target.getY(), z = target.getZ();\n        ItemStack stack0 = player != null ? player.getMainHandItem() : ItemStack.EMPTY;\n"),
+        ] {
+            let mut conds = String::new();
+            for e in c.events.iter().filter(|e| e.trigger == trigger) {
+                let t = e.target.trim();
+                let k = up(t);
+                let check = match trigger {
+                    "right_click_block" | "break_block" | "place_block" if is_block(t) => format!("state.is({k}.get())"),
+                    "right_click_item" | "use_item" if is_item(t) => format!("stack0.is({k}.get())"),
+                    "entity_hurt" | "entity_killed" if is_mob(t) => format!("target.getType() == {k}.get()"),
+                    "entity_hurt" | "entity_killed" if is_item(t) => format!("stack0.is({k}.get())"),
+                    _ => continue,
+                };
+                let cancel = if e.cancel && trigger != "use_item" && trigger != "entity_killed" { "            event.setCanceled(true);\n" } else { "" };
+                conds.push_str(&format!("        if ({check}) {{\n{}{cancel}        }}\n", body(e)));
+            }
+            if !conds.is_empty() {
+                handlers.push((method, class, head.to_string(), conds));
+            }
+        }
+        for (method, class, head, conds) in handlers {
+            calls.push_str(&format!("        NeoForge.EVENT_BUS.addListener(AnvilContent::{method});\n"));
+            methods.push_str(&format!("\n    private static void {method}({class} event) {{\n{head}{conds}    }}\n"));
+        }
+        let _ = modid;
+    }
+    (fields, imports, calls, methods)
+}
+
 fn generate_java(p: &Project, c: &Content) -> String {
     let modid = &p.mod_id;
     let api = api(p);
@@ -680,9 +1036,23 @@ fn generate_java(p: &Project, c: &Content) -> String {
         let b = v.base;
         let k = up(&v.id);
         let base_k = up(&b.id);
-        let props = block_props(b, v.shape == "deepslate");
+        let mut props = block_props(b, v.shape == "deepslate");
+        if matches!(v.shape, "button" | "pressure_plate") {
+            props.push_str(if api.materials_v2 { ".noCollision()" } else { ".noCollission()" });
+        }
         let props = if api.lazy_props { format!("() -> {props}") } else { props };
+        let set_type = if b.material == "wood" { "OAK" } else if b.material == "metal" { "IRON" } else { "STONE" };
         let (ty, reg) = match v.shape {
+            "block" if b.kind == "lamp" => ("RedstoneLampBlock".to_string(), format!("BLOCKS.registerBlock(\"{}\", RedstoneLampBlock::new, {props})", v.id)),
+            "block" if b.kind == "storage" => (
+                "AnvilStorageBlock".to_string(),
+                format!("BLOCKS.registerBlock(\"{}\", p -> new AnvilStorageBlock({}, p), {props})", v.id, b.rows.clamp(1, 6)),
+            ),
+            "button" => (
+                "ButtonBlock".into(),
+                format!("BLOCKS.registerBlock(\"{}\", p -> new ButtonBlock(BlockSetType.{set_type}, {}, p), {props})", v.id, if b.material == "wood" { 30 } else { 20 }),
+            ),
+            "pressure_plate" => ("PressurePlateBlock".into(), format!("BLOCKS.registerBlock(\"{}\", p -> new PressurePlateBlock(BlockSetType.{set_type}, p), {props})", v.id)),
             "block" if b.ore.enabled => (
                 "DropExperienceBlock".to_string(),
                 format!("BLOCKS.registerBlock(\"{}\", p -> new DropExperienceBlock(UniformInt.of({}, {}), p), {props})", v.id, b.ore.xp_min, b.ore.xp_max.max(b.ore.xp_min)),
@@ -950,6 +1320,12 @@ fn generate_java(p: &Project, c: &Content) -> String {
             imports.push("net.neoforged.neoforge.common.DeferredSpawnEggItem");
         }
     }
+    let (extra_fields, extra_imports, extra_calls, extra_methods) = generate_extras(p, c, &api);
+    for i in extra_imports {
+        if !imports.contains(&i) {
+            imports.push(i);
+        }
+    }
     let imports: String = imports.iter().map(|i| format!("import {i};\n")).collect();
     let (mob_reg_field, mob_reg_call, mob_methods) = if c.mobs.is_empty() {
         (String::new(), String::new(), String::new())
@@ -988,15 +1364,15 @@ public final class AnvilContent {{
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(MODID);
     public static final DeferredRegister<CreativeModeTab> TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
 {armor_reg_field}{mob_reg_field}
-{fields}{tab_def}    private AnvilContent() {{}}
+{fields}{extra_fields}{tab_def}    private AnvilContent() {{}}
 
     /** Wird aus der Hauptklasse der Mod aufgerufen. */
     public static void register(IEventBus modEventBus) {{
 {armor_reg_call}        BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);
         TABS.register(modEventBus);
-{mob_reg_call}    }}
-{mob_methods}}}
+{mob_reg_call}{extra_calls}    }}
+{mob_methods}{extra_methods}}}
 "#,
         pkg = p.package
     )
@@ -1078,10 +1454,31 @@ fn recipe_json(p: &Project, id: &str, r: &Recipe) -> Value {
     };
     let result = json!({ "id": format!("{}:{id}", p.mod_id), "count": r.count.clamp(1, 64) });
     let grid: Vec<String> = (0..9).map(|i| r.grid.get(i).map(|s| s.trim().to_string()).unwrap_or_default()).collect();
-    if r.kind == "smelting" {
-        let input = grid.iter().find(|g| !g.is_empty()).cloned().unwrap_or_default();
+    let first = grid.iter().find(|g| !g.is_empty()).cloned().unwrap_or_default();
+    if r.kind == "stonecutting" {
+        return json!({ "type": "minecraft:stonecutting", "ingredient": ingredient(&first), "result": result });
+    }
+    if r.kind == "smithing" {
+        let item = |i: usize| ingredient(&grid[i]);
         return json!({
-            "type": "minecraft:smelting",
+            "type": "minecraft:smithing_transform",
+            "template": item(0),
+            "base": item(1),
+            "addition": item(2),
+            "result": { "id": format!("{}:{id}", p.mod_id), "count": r.count.clamp(1, 64) }
+        });
+    }
+    if matches!(r.kind.as_str(), "smelting" | "blasting" | "smoking" | "campfire") {
+        let input = first;
+        let (kind, factor) = match r.kind.as_str() {
+            "blasting" => ("minecraft:blasting", 1),
+            "smoking" => ("minecraft:smoking", 1),
+            "campfire" => ("minecraft:campfire_cooking", 3),
+            _ => ("minecraft:smelting", 1),
+        };
+        let _ = factor;
+        return json!({
+            "type": kind,
             "category": "misc",
             "ingredient": ingredient(&input),
             "result": { "id": format!("{}:{id}", p.mod_id) },
@@ -1160,7 +1557,65 @@ fn remove_if_exists(path: PathBuf) {
     let _ = std::fs::remove_file(path);
 }
 
-const MODEL_SUFFIXES: [&str; 8] = ["", "_inner", "_outer", "_top", "_post", "_side", "_side_tall", "_inventory"];
+const MODEL_SUFFIXES: [&str; 11] = ["", "_inner", "_outer", "_top", "_post", "_side", "_side_tall", "_inventory", "_pressed", "_down", "_on"];
+
+/// Weitere Sprachen für Mod-Namen: Kürzel → Minecraft-Sprachdatei
+const EXTRA_LANGS: [(&str, &str); 6] = [("fr", "fr_fr"), ("es", "es_es"), ("pl", "pl_pl"), ("nl", "nl_nl"), ("tr", "tr_tr"), ("ru", "ru_ru")];
+
+/// Namensmuster für Varianten in weiteren Sprachen ({n} = Name des Grundblocks)
+fn variant_pattern(lang: &str, shape: &str) -> &'static str {
+    match (lang, shape) {
+        ("fr", "deepslate") => "{n} des abîmes",
+        ("fr", "stairs") => "Escalier en {n}",
+        ("fr", "slab") => "Dalle en {n}",
+        ("fr", "wall") => "Muret en {n}",
+        ("fr", "fence") => "Barrière en {n}",
+        ("fr", "button") => "Bouton en {n}",
+        ("fr", "pressure_plate") => "Plaque de pression en {n}",
+        ("fr", "egg") => "Œuf d'apparition de {n}",
+        ("es", "deepslate") => "{n} de pizarra profunda",
+        ("es", "stairs") => "Escaleras de {n}",
+        ("es", "slab") => "Losa de {n}",
+        ("es", "wall") => "Muro de {n}",
+        ("es", "fence") => "Valla de {n}",
+        ("es", "button") => "Botón de {n}",
+        ("es", "pressure_plate") => "Placa de presión de {n}",
+        ("es", "egg") => "Huevo generador de {n}",
+        ("pl", "deepslate") => "{n} (łupek)",
+        ("pl", "stairs") => "{n} – schody",
+        ("pl", "slab") => "{n} – płyta",
+        ("pl", "wall") => "{n} – murek",
+        ("pl", "fence") => "{n} – płot",
+        ("pl", "button") => "{n} – przycisk",
+        ("pl", "pressure_plate") => "{n} – płyta naciskowa",
+        ("pl", "egg") => "{n} – jajo spawnu",
+        ("nl", "deepslate") => "Diepleisteen-{n}",
+        ("nl", "stairs") => "{n} – trap",
+        ("nl", "slab") => "{n} – plaat",
+        ("nl", "wall") => "{n} – muur",
+        ("nl", "fence") => "{n} – hek",
+        ("nl", "button") => "{n} – knop",
+        ("nl", "pressure_plate") => "{n} – drukplaat",
+        ("nl", "egg") => "{n} – spawn-ei",
+        ("tr", "deepslate") => "Derin Kayrak {n}",
+        ("tr", "stairs") => "{n} Merdiven",
+        ("tr", "slab") => "{n} Basamak",
+        ("tr", "wall") => "{n} Duvar",
+        ("tr", "fence") => "{n} Çit",
+        ("tr", "button") => "{n} Düğme",
+        ("tr", "pressure_plate") => "{n} Baskı Plakası",
+        ("tr", "egg") => "{n} Çağırma Yumurtası",
+        ("ru", "deepslate") => "{n} (глубинный сланец)",
+        ("ru", "stairs") => "{n}: ступеньки",
+        ("ru", "slab") => "{n}: плита",
+        ("ru", "wall") => "{n}: ограда",
+        ("ru", "fence") => "{n}: забор",
+        ("ru", "button") => "{n}: кнопка",
+        ("ru", "pressure_plate") => "{n}: нажимная плита",
+        ("ru", "egg") => "Яйцо призыва: {n}",
+        _ => "{n}",
+    }
+}
 
 fn ingredient_json(p: &Project, s: &str) -> Value {
     if mc_at_least(&p.mc_version, (1, 21, 2)) {
@@ -1462,6 +1917,14 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
     let tab_name = if c.tab_name.trim().is_empty() { p.name.clone() } else { c.tab_name.trim().to_string() };
     let mut lang_de = vec![(format!("itemGroup.{modid}.anvil"), tab_name.clone())];
     let mut lang_en = vec![(format!("itemGroup.{modid}.anvil"), tab_name)];
+    let mut lang_x: std::collections::BTreeMap<&str, Vec<(String, String)>> = Default::default();
+    let mut add_x = |names: &std::collections::BTreeMap<String, String>, key: String, shape: &str| {
+        for (code, _) in EXTRA_LANGS {
+            if let Some(n) = names.get(code).map(|n| n.trim()).filter(|n| !n.is_empty()) {
+                lang_x.entry(code).or_default().push((key.clone(), variant_pattern(code, shape).replace("{n}", n)));
+            }
+        }
+    };
 
     for v in &variants {
         let b = v.base;
@@ -1525,6 +1988,53 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
                 write_json(&mb("_inventory"), &model("minecraft:block/fence_inventory", &["texture"]))?;
                 item_model = format!("{m}_inventory");
             }
+            "button" => {
+                let mut variants = Map::new();
+                for (face, x) in [("floor", 0), ("wall", 90), ("ceiling", 180)] {
+                    for (facing, y) in [("east", 90), ("north", 0), ("south", 180), ("west", 270)] {
+                        let y = if face == "ceiling" { (y + 180) % 360 } else { y };
+                        for powered in [false, true] {
+                            let model_id = if powered { format!("{m}_pressed") } else { m.clone() };
+                            let mut v = json!({ "model": model_id });
+                            if x != 0 {
+                                v["x"] = json!(x);
+                            }
+                            if y != 0 {
+                                v["y"] = json!(y);
+                            }
+                            if face == "wall" {
+                                v["uvlock"] = json!(true);
+                            }
+                            variants.insert(format!("face={face},facing={facing},powered={powered}"), v);
+                        }
+                    }
+                }
+                write_json(&assets.join(format!("blockstates/{id}.json")), &json!({ "variants": variants }))?;
+                write_json(&mb(""), &model("minecraft:block/button", &["texture"]))?;
+                write_json(&mb("_pressed"), &model("minecraft:block/button_pressed", &["texture"]))?;
+                write_json(&mb("_inventory"), &model("minecraft:block/button_inventory", &["texture"]))?;
+                item_model = format!("{m}_inventory");
+            }
+            "pressure_plate" => {
+                write_json(
+                    &assets.join(format!("blockstates/{id}.json")),
+                    &json!({ "variants": { "powered=false": { "model": m }, "powered=true": { "model": format!("{m}_down") } } }),
+                )?;
+                write_json(&mb(""), &model("minecraft:block/pressure_plate_up", &["texture"]))?;
+                write_json(&mb("_down"), &model("minecraft:block/pressure_plate_down", &["texture"]))?;
+                item_model = m.clone();
+            }
+            "block" if b.kind == "lamp" => {
+                // Leuchtende Textur: <id>_on.png, sonst die normale
+                let on_tex = if texture_path(p, "block", &format!("{}_on", b.id)).exists() { format!("{modid}:block/{}_on", b.id) } else { tex.clone() };
+                write_json(
+                    &assets.join(format!("blockstates/{id}.json")),
+                    &json!({ "variants": { "lit=false": { "model": m }, "lit=true": { "model": format!("{m}_on") } } }),
+                )?;
+                write_json(&mb(""), &model("minecraft:block/cube_all", &["all"]))?;
+                write_json(&mb("_on"), &json!({ "parent": "minecraft:block/cube_all", "textures": { "all": on_tex } }))?;
+                item_model = m.clone();
+            }
             _ => {
                 write_json(&assets.join(format!("blockstates/{id}.json")), &json!({ "variants": { "": { "model": m } } }))?;
                 write_json(&mb(""), &model("minecraft:block/cube_all", &["all"]))?;
@@ -1553,6 +2063,8 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
             "slab" => write_json(&recipe, &shaped_json(p, &full, &["AAA"], &[("A", &src)], 6))?,
             "wall" => write_json(&recipe, &shaped_json(p, &full, &["AAA", "AAA"], &[("A", &src)], 6))?,
             "fence" => write_json(&recipe, &shaped_json(p, &full, &["ABA", "ABA"], &[("A", &src), ("B", "minecraft:stick")], 3))?,
+            "button" => write_json(&recipe, &json!({ "type": "minecraft:crafting_shapeless", "category": "redstone", "ingredients": [ingredient_json(p, &src)], "result": { "id": full, "count": 1 } }))?,
+            "pressure_plate" => write_json(&recipe, &shaped_json(p, &full, &["AA"], &[("A", &src)], 1))?,
             _ => remove_if_exists(recipe),
         }
 
@@ -1564,10 +2076,13 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
             "slab" => (format!("{de}-Stufe"), format!("{en} Slab")),
             "wall" => (format!("{de}-Mauer"), format!("{en} Wall")),
             "fence" => (format!("{de}-Zaun"), format!("{en} Fence")),
+            "button" => (format!("{de}-Knopf"), format!("{en} Button")),
+            "pressure_plate" => (format!("{de}-Druckplatte"), format!("{en} Pressure Plate")),
             _ => (de, en),
         };
         lang_de.push((format!("block.{modid}.{id}"), de));
         lang_en.push((format!("block.{modid}.{id}"), en));
+        add_x(&b.names, format!("block.{modid}.{id}"), v.shape);
     }
 
     for b in &c.blocks {
@@ -1640,6 +2155,7 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
         }
         lang_de.push((format!("item.{modid}.{id}"), name_of(&i.name_de, &i.name_en, true)));
         lang_en.push((format!("item.{modid}.{id}"), name_of(&i.name_de, &i.name_en, false)));
+        add_x(&i.names, format!("item.{modid}.{id}"), "item");
     }
 
     // Reparatur-Tags (Werkzeuge je Item, Rüstung je Material); alte entfernen
@@ -1750,10 +2266,19 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
         lang_en.push((format!("entity.{modid}.{id}"), en.clone()));
         lang_de.push((format!("item.{modid}.{egg}"), format!("{de}-Spawn-Ei")));
         lang_en.push((format!("item.{modid}.{egg}"), format!("{en} Spawn Egg")));
+        add_x(&m.names, format!("entity.{modid}.{id}"), "entity");
+        add_x(&m.names, format!("item.{modid}.{egg}"), "egg");
     }
 
     merge_lang(&assets.join("lang/de_de.json"), &lang_de, &removed_keys)?;
     merge_lang(&assets.join("lang/en_us.json"), &lang_en, &removed_keys)?;
+    for (code, file) in EXTRA_LANGS {
+        let set = lang_x.remove(code).unwrap_or_default();
+        let path = assets.join(format!("lang/{file}.json"));
+        if !set.is_empty() || path.exists() {
+            merge_lang(&path, &set, &removed_keys)?;
+        }
+    }
 
     // Tags (Namensraum minecraft, Minecraft führt sie zusammen)
     let all_ours: Vec<String> = block_ids.iter().chain(c.generated_blocks.iter()).chain(item_ids.iter()).chain(c.generated_items.iter()).map(|id| format!("{modid}:{id}")).collect();
@@ -1766,7 +2291,7 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
     for tier in ["stone", "iron", "diamond"] {
         merge_tag(&btags.join(format!("needs_{tier}_tool.json")), &ids_where(&|v| v.base.tool != "none" && v.base.tier == tier), &all_ours)?;
     }
-    for (shape, tag) in [("stairs", "stairs"), ("slab", "slabs"), ("wall", "walls")] {
+    for (shape, tag) in [("stairs", "stairs"), ("slab", "slabs"), ("wall", "walls"), ("button", "buttons")] {
         let ours = ids_where(&|v| v.shape == shape);
         merge_tag(&btags.join(format!("{tag}.json")), &ours, &all_ours)?;
         merge_tag(&itags.join(format!("{tag}.json")), &ours, &all_ours)?;
@@ -1987,6 +2512,45 @@ mod tests {
             });
         }
         c.tab_icon = "ruby_sword".into();
+        // Redstone, Lager, Rezeptarten, Brauen, Ereignisse, weitere Sprachen
+        c.blocks[0].shapes.extend(["button".to_string(), "pressure_plate".to_string()]);
+        c.blocks[0].names.insert("fr".into(), "Cristal".into());
+        c.blocks.push(BlockDef { id: "crystal_lamp".into(), kind: "lamp".into(), ..Default::default() });
+        c.blocks.push(BlockDef { id: "crystal_chest".into(), kind: "storage".into(), rows: 6, material: "wood".into(), tool: "axe".into(), ..Default::default() });
+        for (kind, id) in [("blasting", "blast_gem"), ("smoking", "smoked_gem"), ("campfire", "camp_gem"), ("stonecutting", "cut_gem"), ("smithing", "smith_gem")] {
+            let mut r = Recipe { enabled: true, kind: kind.into(), grid: vec![String::new(); 9], ..Default::default() };
+            r.grid[0] = "minecraft:netherite_upgrade_smithing_template".into();
+            r.grid[1] = "minecraft:diamond".into();
+            r.grid[2] = "minecraft:netherite_ingot".into();
+            if kind != "smithing" {
+                r.grid[0] = "minecraft:cobblestone".into();
+            }
+            c.items.push(ItemDef { id: id.into(), recipe: r, ..Default::default() });
+        }
+        c.brewing.push(BrewDef { input: "awkward".into(), ingredient: format!("{}:ruby", p.mod_id), output: "swiftness".into() });
+        let act = |kind: &str, value: &str, amount: f32| ActionDef { kind: kind.into(), value: value.into(), amount, duration: 5, to: "player".into() };
+        let all = vec![
+            act("effect", "minecraft:speed", 2.0),
+            act("give_item", "minecraft:diamond", 1.0),
+            act("message", "Hallo \"Welt\"", 0.0),
+            act("sound", "minecraft:entity.experience_orb.pickup", 0.0),
+            act("explode", "", 1.0),
+            act("fire", "", 0.0),
+            act("xp", "", 5.0),
+            act("heal", "", 4.0),
+            act("launch", "", 2.0),
+        ];
+        for (trigger, target) in [
+            ("right_click_block", "crystal_lamp"),
+            ("right_click_item", "ruby"),
+            ("break_block", "ruby_block"),
+            ("place_block", "ruby_block"),
+            ("use_item", "dream_berry"),
+            ("entity_hurt", "crystal_cow"),
+            ("entity_killed", "crystal_zombie"),
+        ] {
+            c.events.push(EventDef { trigger: trigger.into(), target: target.into(), cancel: trigger == "break_block", actions: all.clone() });
+        }
         for (i, model) in ["cow", "pig", "chicken", "zombie", "spider", "creeper"].iter().enumerate() {
             c.mobs.push(MobDef {
                 id: format!("crystal_{model}"),
