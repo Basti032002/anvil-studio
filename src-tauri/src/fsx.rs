@@ -14,7 +14,7 @@ fn resolve(app: &AppHandle, project_id: &str, rel: &str) -> Result<(PathBuf, Pat
     let root = PathBuf::from(&p.path);
     let rel_path = Path::new(rel);
     if rel_path.is_absolute() || rel_path.components().any(|c| matches!(c, Component::ParentDir | Component::Prefix(_) | Component::RootDir)) {
-        return Err("Ungültiger Pfad".into());
+        return Err(crate::i18n::tr("Ungültiger Pfad"));
     }
     Ok((root.clone(), root.join(rel_path)))
 }
@@ -79,4 +79,43 @@ pub fn files_create(app: AppHandle, project_id: String, rel: String, is_dir: boo
         }
         std::fs::write(path, "").map_err(err)
     }
+}
+
+/// Datei oder Ordner in den Papierkorb verschieben.
+#[tauri::command]
+pub fn files_delete(app: AppHandle, project_id: String, rel: String) -> Result<(), String> {
+    if rel.trim().is_empty() {
+        return Err(crate::i18n::tr("Ungültiger Pfad"));
+    }
+    let (_, path) = resolve(&app, &project_id, &rel)?;
+    trash::delete(&path).or_else(|_| if path.is_dir() { std::fs::remove_dir_all(&path) } else { std::fs::remove_file(&path) }.map_err(err))
+}
+
+#[tauri::command]
+pub fn files_rename(app: AppHandle, project_id: String, rel: String, new_rel: String) -> Result<(), String> {
+    let (_, from) = resolve(&app, &project_id, &rel)?;
+    let (_, to) = resolve(&app, &project_id, &new_rel)?;
+    if to.exists() {
+        return Err(crate::i18n::tr("Ziel existiert bereits."));
+    }
+    if let Some(parent) = to.parent() {
+        std::fs::create_dir_all(parent).map_err(err)?;
+    }
+    std::fs::rename(from, to).map_err(err)
+}
+
+/// Datei/Ordner im Windows-Explorer markieren.
+#[tauri::command]
+pub fn files_reveal(app: AppHandle, project_id: String, rel: String) -> Result<(), String> {
+    let (_, path) = resolve(&app, &project_id, &rel)?;
+    let mut cmd = if cfg!(windows) {
+        let mut c = std::process::Command::new("explorer");
+        c.arg(format!("/select,{}", path.display()));
+        c
+    } else {
+        let mut c = std::process::Command::new(if cfg!(target_os = "macos") { "open" } else { "xdg-open" });
+        c.arg(path.parent().unwrap_or(&path));
+        c
+    };
+    cmd.spawn().map(|_| ()).map_err(err)
 }

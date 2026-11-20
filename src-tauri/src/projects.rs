@@ -81,11 +81,29 @@ pub fn list_projects(app: AppHandle) -> Result<Vec<Project>, String> {
     Ok(list)
 }
 
-/// Entfernt das Projekt nur aus der Liste – die Dateien auf der Festplatte bleiben erhalten.
+/// Entfernt ein Projekt. mode: "list" (nur aus der Liste), "trash" (Ordner in den
+/// Papierkorb) oder "delete" (Ordner endgültig löschen).
 #[tauri::command]
-pub fn remove_project(app: AppHandle, project_id: String) -> Result<(), String> {
+pub fn remove_project(app: AppHandle, project_id: String, mode: Option<String>) -> Result<(), String> {
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut list = load(&app)?;
+    let project = list.iter().find(|p| p.id == project_id).cloned().ok_or_else(|| crate::i18n::tr("Projekt nicht gefunden."))?;
+    let mode = mode.unwrap_or_else(|| "list".into());
+    if mode != "list" {
+        let dir = std::path::PathBuf::from(&project.path);
+        if dir.exists() {
+            // Sicherheitsnetz: nur echte Gradle-Projektordner löschen
+            let is_project = dir.join("build.gradle").exists() || dir.join("settings.gradle").exists() || dir.join("gradle.properties").exists();
+            if !is_project || dir.parent().is_none() || dir.components().count() < 3 {
+                return Err(crate::i18n::tr("Der Ordner sieht nicht wie ein Mod-Projekt aus und wird zur Sicherheit nicht gelöscht."));
+            }
+            if mode == "trash" {
+                trash::delete(&dir).map_err(|e| format!("{}: {e}", crate::i18n::tr("Konnte nicht in den Papierkorb verschieben")))?;
+            } else {
+                std::fs::remove_dir_all(&dir).map_err(|e| format!("{}: {e}", crate::i18n::tr("Konnte den Ordner nicht löschen")))?;
+            }
+        }
+    }
     list.retain(|p| p.id != project_id);
     save(&app, &list)
 }

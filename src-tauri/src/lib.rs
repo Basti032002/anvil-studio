@@ -1,6 +1,7 @@
 mod admin;
 mod content;
 mod fsx;
+mod i18n;
 mod java;
 mod mcassets;
 mod migrate;
@@ -29,6 +30,7 @@ pub fn run() {
             projects::remove_project,
             projects::import_project,
             content::content_load,
+            i18n::set_language_cmd,
             modsettings::mod_settings_get,
             modsettings::mod_settings_save,
             content::content_save,
@@ -46,6 +48,9 @@ pub fn run() {
             fsx::files_read,
             fsx::files_write,
             fsx::files_create,
+            fsx::files_delete,
+            fsx::files_rename,
+            fsx::files_reveal,
             java::java_status,
             java::install_java,
             template::supported_versions,

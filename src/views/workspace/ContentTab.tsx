@@ -1,10 +1,11 @@
+import { confirmDialog, contextMenu, MenuItem } from "../../components/Overlay";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArmorSlot, BlockDef, Content, contentApi, ItemDef, Project, Recipe } from "../../api";
 import { useCatalog } from "../../catalog";
 import { Segmented, Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
 import McIcon from "../../components/McIcon";
-import { BoxIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TrashIcon } from "../../icons";
+import { BoxIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TrashIcon, PencilIcon, TagIcon } from "../../icons";
 import { toast } from "../../state";
 import PixelEditor from "./PixelEditor";
 import { ArmorForm, BlockExtras, Field, ItemKindSwitch, ToolForm } from "./ContentForms";
@@ -156,12 +157,29 @@ export default function ContentTab({ project }: { project: Project }) {
     toast(`${added.length} Rüstungsteile hinzugefügt.`, "success");
   }
 
-  function remove() {
-    if (!content || !sel) return;
-    const name = sel.kind === "block" ? content.blocks[sel.index].id : content.items[sel.index].id;
-    if (!confirm(`„${name}“ entfernen? Die erzeugten Dateien werden beim Speichern gelöscht, die Textur bleibt erhalten.`)) return;
-    if (sel.kind === "block") setContent({ ...content, blocks: content.blocks.filter((_, i) => i !== sel.index) });
-    else setContent({ ...content, items: content.items.filter((_, i) => i !== sel.index) });
+  function entryMenu(kind: "block" | "item", index: number): MenuItem[] {
+    const def = kind === "block" ? content!.blocks[index] : content!.items[index];
+    return [
+      { label: "Bearbeiten", icon: <PencilIcon size={15} />, onClick: () => setSel({ kind, index }) },
+      { label: "Duplizieren", icon: <CopyIcon size={15} />, onClick: () => (kind === "block" ? addBlock(def as BlockDef) : addItem(def as ItemDef)) },
+      {
+        label: "ID kopieren",
+        icon: <TagIcon size={15} />,
+        hint: `${project.modId}:${def.id}`,
+        onClick: () => navigator.clipboard.writeText(`${project.modId}:${def.id}`).then(() => toast("ID kopiert.", "success")),
+      },
+      "separator",
+      { label: "Entfernen", icon: <TrashIcon size={15} />, danger: true, onClick: () => remove({ kind, index }) },
+    ];
+  }
+
+  async function remove(target: Sel = sel) {
+    if (!content || !target) return;
+    const name = target.kind === "block" ? content.blocks[target.index].id : content.items[target.index].id;
+    if (!(await confirmDialog(`„${name}“ entfernen?`, "Die erzeugten Dateien werden beim Speichern gelöscht, die Textur bleibt erhalten.", "Entfernen", "Abbrechen", true))) return;
+    setContent((c) =>
+      !c ? c : target.kind === "block" ? { ...c, blocks: c.blocks.filter((_, i) => i !== target.index) } : { ...c, items: c.items.filter((_, i) => i !== target.index) },
+    );
     setSel(null);
   }
 
@@ -209,7 +227,12 @@ export default function ContentTab({ project }: { project: Project }) {
           </div>
           {content.blocks.map((b, i) =>
             matches(b) ? (
-              <button key={`b${i}`} className={sel?.kind === "block" && sel.index === i ? "entry active" : "entry"} onClick={() => setSel({ kind: "block", index: i })}>
+              <button
+                key={`b${i}`}
+                className={sel?.kind === "block" && sel.index === i ? "entry active" : "entry"}
+                onClick={() => setSel({ kind: "block", index: i })}
+                {...contextMenu(() => entryMenu("block", i))}
+              >
                 {entryIcon("block", b.id, b.nameDe || b.id)}
                 <span className="entry-text">
                   <span className="entry-name">{b.nameDe || b.id}</span>
@@ -241,7 +264,12 @@ export default function ContentTab({ project }: { project: Project }) {
           </div>
           {content.items.map((it, i) =>
             matches(it) ? (
-              <button key={`i${i}`} className={sel?.kind === "item" && sel.index === i ? "entry active" : "entry"} onClick={() => setSel({ kind: "item", index: i })}>
+              <button
+                key={`i${i}`}
+                className={sel?.kind === "item" && sel.index === i ? "entry active" : "entry"}
+                onClick={() => setSel({ kind: "item", index: i })}
+                {...contextMenu(() => entryMenu("item", i))}
+              >
                 {entryIcon("item", it.id, it.nameDe || it.id)}
                 <span className="entry-text">
                   <span className="entry-name">{it.nameDe || it.id}</span>
@@ -309,7 +337,7 @@ export default function ContentTab({ project }: { project: Project }) {
                   <button className="icon-btn" onClick={() => (block ? addBlock(block) : addItem(item))} aria-label="Duplizieren" data-tip="Duplizieren">
                     <CopyIcon size={15} />
                   </button>
-                  <button className="icon-btn danger" onClick={remove} aria-label="Entfernen" data-tip="Entfernen">
+                  <button className="icon-btn danger" onClick={() => remove()} aria-label="Entfernen" data-tip="Entfernen">
                     <TrashIcon size={15} />
                   </button>
                 </div>
@@ -525,6 +553,12 @@ function RecipeEditor({
                   title={id ? `${info.name}\n${id}` : "Item wählen"}
                   aria-label={id ? `Feld ${i + 1}: ${info.name}` : `Feld ${i + 1}: leer`}
                   onClick={() => setPicking(i)}
+                  {...contextMenu(() => [
+                    { label: "Item wählen …", icon: <SearchIcon size={15} />, onClick: () => setPicking(i) },
+                    { label: "Leeren", icon: <TrashIcon size={15} />, disabled: !id, onClick: () => setCell(i, "") },
+                    "separator",
+                    { label: "Alle Felder leeren", icon: <TrashIcon size={15} />, danger: true, onClick: () => onChange({ ...recipe, grid: Array(9).fill("") }) },
+                  ])}
                 >
                   {id ? (
                     <McIcon icon={info.icon} textures={info.textures} size={34} fallback={info.name} />

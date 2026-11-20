@@ -430,8 +430,8 @@ pub fn sha256_file(path: &Path) -> Result<String, String> {
 /// Öffnet eine GitHub-Seite im Standardbrowser (nur github.com-Adressen).
 #[tauri::command]
 pub fn open_url(url: String) -> Result<(), String> {
-    if !url.starts_with("https://github.com/") {
-        return Err("Nur GitHub-Links werden geöffnet.".into());
+    if !(url.starts_with("https://github.com/") || url.starts_with("https://modrinth.com/")) {
+        return Err(crate::i18n::tr("Nur GitHub- und Modrinth-Links werden geöffnet."));
     }
     let mut cmd = if cfg!(windows) {
         let mut c = Command::new("rundll32");

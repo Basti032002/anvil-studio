@@ -1,3 +1,4 @@
+import { ContextMenuHost, DialogHost } from "./components/Overlay";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { restoreSession, useAccount } from "./admin";
@@ -16,6 +17,8 @@ import Workspace from "./views/Workspace";
 export function workspaceCommand(cmd: "run" | "stop" | "build") {
   window.dispatchEvent(new CustomEvent("anvil:workspace", { detail: cmd }));
 }
+
+const EDIT_LABELS = { cut: "Ausschneiden", copy: "Kopieren", paste: "Einfügen", selectAll: "Alles markieren" };
 
 export default function App() {
   const [nav, setNav] = useState<NavKey>("projects");
@@ -171,8 +174,13 @@ export default function App() {
                 onOpen={(id) => openWorkspace(id)}
                 onTest={(id) => openWorkspace(id, true)}
                 onNew={() => setNav("new")}
-                onRemove={async (id) => {
-                  await api.removeProject(id);
+                onRemove={async (id, mode) => {
+                  try {
+                    await api.removeProject(id, mode);
+                    toast(mode === "list" ? "Projekt aus der Liste entfernt." : mode === "trash" ? "Projekt in den Papierkorb verschoben." : "Projekt endgültig gelöscht.", "success");
+                  } catch (e) {
+                    toast(String(e), "error");
+                  }
                   if (id === workspaceId) setWorkspaceId(null);
                   reload();
                 }}
@@ -205,6 +213,8 @@ export default function App() {
       <StatusBar java={java} javaProgress={javaProgress} onInstallJava={installJava} onOpenSettings={() => setNav("settings")} />
       <CommandPalette open={palette} onClose={() => setPalette(false)} commands={commands} />
       <Toasts />
+      <DialogHost />
+      <ContextMenuHost editLabels={EDIT_LABELS} />
     </div>
   );
 }

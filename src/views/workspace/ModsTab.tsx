@@ -1,7 +1,8 @@
+import { contextMenu } from "../../components/Overlay";
 import { useEffect, useRef, useState } from "react";
-import { ModEntry, ModHit, modsApi, Project } from "../../api";
+import { api, ModEntry, ModHit, modsApi, Project } from "../../api";
 import { Toggle } from "../../components/Chrome";
-import { DownloadIcon, PlusIcon, RefreshIcon, SearchIcon, TrashIcon } from "../../icons";
+import { DownloadIcon, ExternalIcon, PlusIcon, RefreshIcon, SearchIcon, ToggleIcon, TrashIcon } from "../../icons";
 import { toast } from "../../state";
 
 function fmt(n: number) {
@@ -86,7 +87,37 @@ export default function ModsTab({ project }: { project: Project }) {
         ) : (
           <div className="list">
             {mods.map((m, i) => (
-              <div key={m.projectId} className={m.enabled ? "list-row mod" : "list-row mod off"} style={{ "--i": i } as React.CSSProperties}>
+              <div
+                key={m.projectId}
+                className={m.enabled ? "list-row mod" : "list-row mod off"}
+                style={{ "--i": i } as React.CSSProperties}
+                {...contextMenu(() => [
+                  {
+                    label: m.enabled ? "Deaktivieren" : "Aktivieren",
+                    icon: <ToggleIcon size={15} />,
+                    onClick: () =>
+                      modsApi
+                        .toggle(project.id, m.projectId, !m.enabled)
+                        .then(setMods)
+                        .catch((e) => toast(String(e), "error")),
+                  },
+                  { label: "Auf Modrinth ansehen", icon: <ExternalIcon size={15} />, onClick: () => api.openUrl(`https://modrinth.com/mod/${m.slug}`).catch((e) => toast(String(e), "error")) },
+                  "separator",
+                  {
+                    label: "Entfernen",
+                    icon: <TrashIcon size={15} />,
+                    danger: true,
+                    onClick: () =>
+                      modsApi
+                        .remove(project.id, m.projectId)
+                        .then((l) => {
+                          setMods(l);
+                          toast(`${m.title} entfernt.`, "success");
+                        })
+                        .catch((e) => toast(String(e), "error")),
+                  },
+                ])}
+              >
                 {m.iconUrl ? <img className="mod-icon" src={m.iconUrl} alt="" /> : <span className="mod-icon" />}
                 <div className="grow min0">
                   <div className="ellipsis">{m.title}</div>
@@ -149,7 +180,15 @@ export default function ModsTab({ project }: { project: Project }) {
         <div className="hits">
           {hits?.length === 0 && <p className="muted small">Keine passenden Mods für NeoForge {project.mcVersion} gefunden.</p>}
           {hits?.map((h, i) => (
-            <div key={h.projectId} className="hit" style={{ "--i": i } as React.CSSProperties}>
+            <div
+              key={h.projectId}
+              className="hit"
+              style={{ "--i": i } as React.CSSProperties}
+              {...contextMenu(() => [
+                { label: "Hinzufügen", icon: <PlusIcon size={15} />, disabled: installed.has(h.projectId) || !!adding, onClick: () => add(h) },
+                { label: "Auf Modrinth ansehen", icon: <ExternalIcon size={15} />, onClick: () => api.openUrl(`https://modrinth.com/mod/${h.slug}`).catch((e) => toast(String(e), "error")) },
+              ])}
+            >
               {h.iconUrl ? <img className="mod-icon" src={h.iconUrl} alt="" /> : <span className="mod-icon" />}
               <div className="grow min0">
                 <div className="hit-title">

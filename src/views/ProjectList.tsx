@@ -1,6 +1,10 @@
+import { confirmDialog, contextMenu, showDialog } from "../components/Overlay";
 import { useEffect, useState } from "react";
-import { contentApi, JavaStatus, Project, TASK_LABELS, Task, timeAgo } from "../api";
-import { AlertIcon, ArrowRightIcon, CoffeeIcon, CubeIcon, FolderIcon, PlayIcon, PlusIcon, SearchIcon, TrashIcon } from "../icons";
+import { api, contentApi, JavaStatus, Project, TASK_LABELS, Task, timeAgo } from "../api";
+import { toast } from "../state";
+
+type RemoveMode = "list" | "trash" | "delete";
+import { AlertIcon, ArrowRightIcon, CodeIcon, CoffeeIcon, CopyIcon, CubeIcon, FolderIcon, FolderOpenIcon, PlayIcon, PlusIcon, SearchIcon, TrashIcon } from "../icons";
 import { useAllRunning } from "../store";
 
 /** Erste Textur eines Projekts als Symbol (Block bevorzugt). */
@@ -32,7 +36,7 @@ type Props = {
   onOpen: (id: string) => void;
   onTest: (id: string) => void;
   onNew: () => void;
-  onRemove: (id: string) => void;
+  onRemove: (id: string, mode: RemoveMode) => void;
   onImport: () => void;
 };
 
@@ -136,11 +140,52 @@ function ProjectCard({
   running?: Task;
   onOpen: (id: string) => void;
   onTest: (id: string) => void;
-  onRemove: (id: string) => void;
+  onRemove: (id: string, mode: RemoveMode) => void;
 }) {
   const icon = useProjectIcon(p.id);
+  const askRemove = async () => {
+    const mode = await showDialog<RemoveMode>({
+      title: `„${p.name}“ entfernen?`,
+      icon: <TrashIcon size={20} />,
+      danger: true,
+      message: (
+        <>
+          Du kannst das Projekt nur aus der Liste nehmen (die Dateien bleiben) oder den Projektordner löschen:
+          <br />
+          <code>{p.path}</code>
+        </>
+      ),
+      actions: [
+        { label: "Nur aus Liste", value: "list", kind: "ghost" },
+        { label: "In den Papierkorb", value: "trash" },
+        { label: "Endgültig löschen", value: "delete", kind: "danger" },
+      ],
+    });
+    if (!mode) return;
+    if (mode === "delete") {
+      const sure = await confirmDialog(
+        "Wirklich endgültig löschen?",
+        <>Der Ordner wird mit allen Dateien unwiderruflich gelöscht.</>,
+        "Endgültig löschen",
+        "Abbrechen",
+        true,
+      );
+      if (!sure) return;
+    }
+    onRemove(p.id, mode);
+  };
+  const menu = contextMenu(() => [
+    { label: "Öffnen", icon: <ArrowRightIcon size={15} />, onClick: () => onOpen(p.id) },
+    { label: "Testen", icon: <PlayIcon size={15} />, onClick: () => onTest(p.id), disabled: !!running },
+    "separator",
+    { label: "Im Explorer zeigen", icon: <FolderOpenIcon size={15} />, onClick: () => api.openIn(p.id, "folder").catch((e) => toast(String(e), "error")) },
+    { label: "In VS Code öffnen", icon: <CodeIcon size={15} />, onClick: () => api.openIn(p.id, "code").catch((e) => toast(String(e), "error")) },
+    { label: "Pfad kopieren", icon: <CopyIcon size={15} />, onClick: () => navigator.clipboard.writeText(p.path).then(() => toast("Pfad kopiert.", "success")) },
+    "separator",
+    { label: "Entfernen …", icon: <TrashIcon size={15} />, danger: true, onClick: askRemove, disabled: !!running },
+  ]);
   return (
-    <article className="card" style={{ "--i": index } as React.CSSProperties}>
+    <article className="card" style={{ "--i": index } as React.CSSProperties} {...menu}>
       {running && <span className="card-live">läuft</span>}
       <button className="card-top" onClick={() => onOpen(p.id)} aria-label={`${p.name} öffnen`}>
         <span className="card-icon">{icon ? <img src={icon} alt="" /> : p.name.slice(0, 1).toUpperCase()}</span>
@@ -164,11 +209,10 @@ function ProjectCard({
         <button
           className="icon-btn"
           style={{ flex: "none" }}
-          aria-label="Aus Liste entfernen"
-          data-tip="Aus Liste entfernen"
-          onClick={() => {
-            if (confirm(`„${p.name}“ aus der Liste entfernen? Die Dateien bleiben erhalten.`)) onRemove(p.id);
-          }}
+          aria-label="Entfernen"
+          data-tip="Entfernen"
+          disabled={!!running}
+          onClick={askRemove}
         >
           <TrashIcon size={15} />
         </button>

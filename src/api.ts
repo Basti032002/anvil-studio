@@ -32,7 +32,7 @@ export type Task = "runClient" | "runServer" | "runData" | "build" | "clean";
 
 export const api = {
   listProjects: () => invoke<Project[]>("list_projects"),
-  removeProject: (projectId: string) => invoke<void>("remove_project", { projectId }),
+  removeProject: (projectId: string, mode: "list" | "trash" | "delete" = "list") => invoke<void>("remove_project", { projectId, mode }),
   javaStatus: () => invoke<JavaStatus>("java_status"),
   installJava: () => invoke<JavaStatus>("install_java"),
   supportedVersions: () => invoke<{ versions: string[]; defaultDir: string }>("supported_versions"),
@@ -44,6 +44,7 @@ export const api = {
   openIn: (projectId: string, target: "code" | "idea" | "folder") =>
     invoke<void>("open_in", { projectId, target }),
   openPath: (path: string) => invoke<void>("open_path", { path }),
+  openUrl: (url: string) => invoke<void>("open_url", { url }),
   listJars: (projectId: string) => invoke<string[]>("list_jars", { projectId }),
   latestCrashReport: (projectId: string) =>
     invoke<CrashReport | null>("latest_crash_report", { projectId }),
@@ -221,6 +222,9 @@ export const filesApi = {
   read: (projectId: string, rel: string) => invoke<string>("files_read", { projectId, rel }),
   write: (projectId: string, rel: string, content: string) => invoke<void>("files_write", { projectId, rel, content }),
   create: (projectId: string, rel: string, isDir: boolean) => invoke<void>("files_create", { projectId, rel, isDir }),
+  remove: (projectId: string, rel: string) => invoke<void>("files_delete", { projectId, rel }),
+  rename: (projectId: string, rel: string, newRel: string) => invoke<void>("files_rename", { projectId, rel, newRel }),
+  reveal: (projectId: string, rel: string) => invoke<void>("files_reveal", { projectId, rel }),
 };
 
 export type ModSettings = {

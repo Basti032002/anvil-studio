@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/Overlay";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -400,7 +401,7 @@ function PublishTab({
 
   async function publish() {
     const who = { stable: "Alle Nutzer", beta: "Alle Beta-Nutzer", dev: "Alle Tester" }[channelOf(version)];
-    if (!confirm(`Version ${version} jetzt veröffentlichen? ${who} bekommen das Update.`)) return;
+    if (!(await confirmDialog(`Version ${version} jetzt veröffentlichen?`, `${who} bekommen das Update.`, "Veröffentlichen", "Abbrechen"))) return;
     setBusy(true);
     try {
       const r = await adminApi.publish(version, notes);
@@ -530,8 +531,8 @@ function ReleasesTab({ releases, onChanged }: { releases: ReleaseRow[]; onChange
               className="icon-btn danger"
               aria-label="Release löschen"
               data-tip="Löschen"
-              onClick={() => {
-                if (!confirm(`${r.tag} wirklich löschen? Nutzer bekommen diese Version dann nicht mehr angeboten.`)) return;
+              onClick={async () => {
+                if (!(await confirmDialog(`${r.tag} wirklich löschen?`, "Nutzer bekommen diese Version dann nicht mehr angeboten.", "Löschen", "Abbrechen", true))) return;
                 adminApi
                   .deleteRelease(r.repo, r.id, r.tag)
                   .then(() => {
@@ -644,8 +645,8 @@ function TestersTab() {
                 className="icon-btn danger"
                 aria-label={`${t.login} entfernen`}
                 data-tip="Entfernen"
-                onClick={() => {
-                  if (!confirm(`${t.login} den Zugriff auf Dev-Versionen entziehen?`)) return;
+                onClick={async () => {
+                  if (!(await confirmDialog(`${t.login} den Zugriff entziehen?`, "Die Person kann danach keine Dev-Versionen mehr laden.", "Zugriff entziehen", "Abbrechen", true))) return;
                   adminApi
                     .removeTester(t.login, t.invitationId)
                     .then(() => {

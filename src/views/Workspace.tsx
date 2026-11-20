@@ -1,3 +1,4 @@
+import { MenuItem, openMenu } from "../components/Overlay";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { api, contentApi, CrashReport, Project, Task, TASK_LABELS } from "../api";
 import ContentTab from "./workspace/ContentTab";
@@ -6,7 +7,7 @@ import ModSettingsTab from "./workspace/ModSettingsTab";
 
 const CodeTab = lazy(() => import("./workspace/CodeTab"));
 type MainTab = "content" | "code" | "mods" | "settings" | "console";
-import { AlertIcon, CheckIcon, ChevronIcon, CloseIcon, CodeIcon, CubeIcon, GearIcon, DownloadIcon, FileIcon, FolderIcon, HammerIcon, PackageIcon, PlayIcon, SearchIcon, SparkIcon, StopIcon, TerminalIcon, TrashIcon } from "../icons";
+import { AlertIcon, CheckIcon, CopyIcon, ChevronIcon, CloseIcon, CodeIcon, CubeIcon, GearIcon, DownloadIcon, FileIcon, FolderIcon, HammerIcon, PackageIcon, PlayIcon, SearchIcon, SparkIcon, StopIcon, TerminalIcon, TrashIcon } from "../icons";
 import { toast, useSettings } from "../state";
 import { clearLogs, markNotRunning, markStarted, pushLog, useLastExit, useLogs, useRunning } from "../store";
 
@@ -382,6 +383,17 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
             <div
               className="console"
               ref={consoleRef}
+              onContextMenu={(e) => {
+                const line = (e.target as HTMLElement).closest(".log")?.textContent ?? "";
+                const sel = window.getSelection()?.toString() ?? "";
+                openMenu(e, [
+                  ...(sel ? [{ label: "Auswahl kopieren", icon: <CopyIcon size={15} />, onClick: () => navigator.clipboard.writeText(sel) } as MenuItem] : []),
+                  ...(line ? [{ label: "Zeile kopieren", icon: <CopyIcon size={15} />, onClick: () => navigator.clipboard.writeText(line) } as MenuItem] : []),
+                  { label: "Alles kopieren", icon: <CopyIcon size={15} />, onClick: () => navigator.clipboard.writeText(shown.map((l) => l.line).join("\n")) },
+                  "separator",
+                  { label: "Ausgabe leeren", icon: <TrashIcon size={15} />, onClick: () => clearLogs(project.id) },
+                ]);
+              }}
               style={{ fontSize: settings?.consoleFontSize ?? 12 }}
               onScroll={(e) => {
                 const el = e.currentTarget;
