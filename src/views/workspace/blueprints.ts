@@ -4,7 +4,7 @@ import { Blueprint, BpNode } from "../../api";
 // Katalog der Blueprint-Knoten. Muss zu src-tauri/src/blueprint.rs passen.
 
 export type BpCat = "event" | "flow" | "vars" | "world" | "player" | "other";
-export type PropType = "text" | "number" | "select" | "item" | "block" | "entity" | "effect" | "sound" | "particle" | "who" | "var";
+export type PropType = "text" | "number" | "select" | "item" | "block" | "entity" | "effect" | "sound" | "particle" | "who" | "var" | "dim";
 export interface PropSpec {
   key: string;
   label: string;
@@ -199,6 +199,14 @@ export const NODES: NodeSpec[] = [
     desc: t("Quadrat um die Position, Radius bis 15"),
     outs: NEXT,
     props: [{ key: "block", label: t("Block"), type: "block", def: "minecraft:glass" }, numP("radius", t("Radius"), "2"), numP("height", t("Höhe"), "1"), numP("dy", t("Versatz Y"), "-1")],
+  },
+  {
+    kind: "travel",
+    cat: "world",
+    label: t("In Dimension reisen"),
+    desc: t("„Hin und zurück“: wer schon dort ist, kommt in die Oberwelt"),
+    outs: NEXT,
+    props: [{ key: "dim", label: t("Dimension"), type: "dim", def: "minecraft:overworld" }, sel("mode", t("Art"), "toggle", [["toggle", t("Hin und zurück")], ["go", t("Nur hin")]])],
   },
   { kind: "firework", cat: "world", label: t("Feuerwerk"), desc: "", outs: NEXT, props: [] },
   { kind: "particle", cat: "world", label: t("Partikel"), desc: "", outs: NEXT, props: [{ key: "particle", label: t("Partikel"), type: "particle", def: "minecraft:heart" }, numP("count", t("Anzahl"), "20")] },

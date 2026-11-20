@@ -220,6 +220,7 @@ export type Content = {
   brewing: BrewDef[];
   events: EventDef[];
   blueprints: Blueprint[];
+  dimensions: DimDef[];
 };
 export type BrewDef = { input: string; ingredient: string; output: string };
 export type EventTrigger = "right_click_block" | "right_click_item" | "break_block" | "place_block" | "use_item" | "entity_hurt" | "entity_killed";
@@ -337,4 +338,20 @@ export interface Blueprint {
   enabled: boolean;
   nodes: BpNode[];
   links: BpLink[];
+}
+
+// ---- Dimensionen -----------------------------------------------------------
+export interface DimDef {
+  id: string;
+  nameDe: string;
+  nameEn: string;
+  topBlock: string;
+  fillBlock: string;
+  stoneBlock: string;
+  fluid: "water" | "lava" | "none";
+  biome: string;
+  time: "normal" | "day" | "night";
+  sky: "overworld" | "nether" | "end";
+  ambientLight: number;
+  seaLevel: number;
 }

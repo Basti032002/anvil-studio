@@ -712,6 +712,18 @@ function PropInput({ project, content, own, spec, value, onChange }: { project: 
         </>
       );
     }
+    case "dim":
+      return (
+        <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+          {content.dimensions.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.nameDe || d.id} ({t("eigene")})
+            </option>
+          ))}
+          <option value="minecraft:overworld">{t("Oberwelt")}</option>
+          <option value="minecraft:the_end">{t("End")}</option>
+        </select>
+      );
     case "number":
       return <input className="input" type="number" step="any" value={value} onChange={(e) => onChange(e.target.value)} />;
     case "item":

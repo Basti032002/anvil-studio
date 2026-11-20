@@ -72,6 +72,19 @@ pub struct BlockDef {
     pub rows: u32,
     /// Weitere Sprachen: fr | es | pl | nl | tr | ru → Name
     pub names: std::collections::BTreeMap<String, String>,
+    /// Eigenes 3D-Modell aus Quadern (leer = voller Würfel)
+    pub model: Vec<Cuboid>,
+    /// Modell beim Platzieren zum Spieler drehen
+    pub rotate: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Cuboid {
+    pub from: [f32; 3],
+    pub to: [f32; 3],
+    /// leer = Textur des Blocks, sonst Block-ID (eigene oder Vanilla)
+    pub tex: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -133,6 +146,8 @@ impl Default for BlockDef {
             kind: "normal".into(),
             rows: 3,
             names: Default::default(),
+            model: vec![],
+            rotate: false,
         }
     }
 }
@@ -579,7 +594,7 @@ fn block_props(b: &BlockDef, deepslate: bool) -> String {
     if b.tool != "none" {
         props.push_str(".requiresCorrectToolForDrops()");
     }
-    if b.material == "glass" {
+    if b.material == "glass" || is_model(b) {
         props.push_str(".noOcclusion()");
     }
     props
@@ -740,6 +755,114 @@ public final class AnvilClient {{
 }
 
 
+/// Block mit eigenem 3D-Modell?
+fn is_model(b: &BlockDef) -> bool {
+    b.kind == "normal" && !b.ore.enabled && !b.model.is_empty()
+}
+
+/// Quader geordnet (from ≤ to) und auf 0–16 begrenzt
+fn cuboid_box(c: &Cuboid) -> [f32; 6] {
+    let mut r = [0.0; 6];
+    for i in 0..3 {
+        let (a, b) = (c.from[i].clamp(0.0, 16.0), c.to[i].clamp(0.0, 16.0));
+        r[i] = a.min(b);
+        r[i + 3] = a.max(b).max(a.min(b) + 0.01);
+    }
+    r
+}
+
+/// Quader um die Y-Achse drehen (Blickrichtung Norden = 0)
+fn rotate_box(b: [f32; 6], facing: &str) -> [f32; 6] {
+    let [x0, y0, z0, x1, y1, z1] = b;
+    match facing {
+        "east" => [16.0 - z1, y0, x0, 16.0 - z0, y1, x1],
+        "south" => [16.0 - x1, y0, 16.0 - z1, 16.0 - x0, y1, 16.0 - z0],
+        "west" => [z0, y0, 16.0 - x1, z1, y1, 16.0 - x0],
+        _ => b,
+    }
+}
+
+fn shape_expr(b: &BlockDef, facing: &str) -> String {
+    let boxes: Vec<String> = b
+        .model
+        .iter()
+        .map(|c| {
+            let r = rotate_box(cuboid_box(c), facing);
+            format!("Block.box({})", r.iter().map(|v| java_float(*v)).collect::<Vec<_>>().join(", "))
+        })
+        .collect();
+    if boxes.len() == 1 {
+        boxes[0].clone()
+    } else {
+        format!("Shapes.or({}, {})", boxes[0], boxes[1..].join(", "))
+    }
+}
+
+fn model_class(b: &BlockDef) -> String {
+    let name: String = b
+        .id
+        .split('_')
+        .map(|w| {
+            let mut c = w.chars();
+            c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+        })
+        .collect();
+    format!("AnvilModel{name}")
+}
+
+/// Block-Modell aus Quadern; jede Textur bekommt eine eigene Variable
+fn cuboid_model(b: &BlockDef, own_tex: &str, modid: &str, own_blocks: &[String]) -> Value {
+    let mut textures = serde_json::Map::new();
+    textures.insert("particle".into(), json!(own_tex));
+    textures.insert("t0".into(), json!(own_tex));
+    let mut keys: Vec<String> = vec![String::new()];
+    let mut elements = vec![];
+    for c in &b.model {
+        let tex = c.tex.trim().to_string();
+        let idx = match keys.iter().position(|k| *k == tex) {
+            Some(i) => i,
+            None => {
+                let path = if let Some((ns, name)) = tex.split_once(':') {
+                    if ns == modid || own_blocks.iter().any(|x| x == name) && ns == modid {
+                        format!("{ns}:block/{name}")
+                    } else {
+                        format!("{ns}:block/{name}")
+                    }
+                } else if own_blocks.iter().any(|x| *x == tex) {
+                    format!("{modid}:block/{tex}")
+                } else {
+                    format!("minecraft:block/{tex}")
+                };
+                keys.push(tex.clone());
+                textures.insert(format!("t{}", keys.len() - 1), json!(path));
+                keys.len() - 1
+            }
+        };
+        let [x0, y0, z0, x1, y1, z1] = cuboid_box(c);
+        let t = format!("#t{idx}");
+        let face = |cull: Option<&str>, uv: [f32; 4]| {
+            let mut f = json!({ "texture": t, "uv": uv });
+            if let Some(cf) = cull {
+                f["cullface"] = json!(cf);
+            }
+            f
+        };
+        elements.push(json!({
+            "from": [x0, y0, z0],
+            "to": [x1, y1, z1],
+            "faces": {
+                "down": face((y0 <= 0.0).then_some("down"), [x0, 16.0 - z1, x1, 16.0 - z0]),
+                "up": face((y1 >= 16.0).then_some("up"), [x0, z0, x1, z1]),
+                "north": face((z0 <= 0.0).then_some("north"), [16.0 - x1, 16.0 - y1, 16.0 - x0, 16.0 - y0]),
+                "south": face((z1 >= 16.0).then_some("south"), [x0, 16.0 - y1, x1, 16.0 - y0]),
+                "west": face((x0 <= 0.0).then_some("west"), [z0, 16.0 - y1, z1, 16.0 - y0]),
+                "east": face((x1 >= 16.0).then_some("east"), [16.0 - z1, 16.0 - y1, 16.0 - z0, 16.0 - y0])
+            }
+        }));
+    }
+    json!({ "parent": "minecraft:block/block", "textures": textures, "elements": elements })
+}
+
 fn java_str(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "")
 }
@@ -753,6 +876,98 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
     let mut calls = String::new();
     let mut methods = String::new();
     let up = |s: &str| s.to_uppercase();
+
+    // ---- Blöcke mit eigenem 3D-Modell ----
+    let models: Vec<&BlockDef> = c.blocks.iter().filter(|b| is_model(b)).collect();
+    if !models.is_empty() {
+        imports.extend([
+            "com.mojang.serialization.MapCodec",
+            "net.minecraft.core.BlockPos",
+            "net.minecraft.core.Direction",
+            "net.minecraft.world.item.context.BlockPlaceContext",
+            "net.minecraft.world.level.BlockGetter",
+            "net.minecraft.world.level.block.HorizontalDirectionalBlock",
+            "net.minecraft.world.level.block.state.BlockState",
+            "net.minecraft.world.level.block.state.StateDefinition",
+            "net.minecraft.world.phys.shapes.CollisionContext",
+            "net.minecraft.world.phys.shapes.Shapes",
+            "net.minecraft.world.phys.shapes.VoxelShape",
+        ]);
+        for b in models {
+            let cls = model_class(b);
+            if b.rotate {
+                methods.push_str(&format!(
+                    r#"
+    public static class {cls} extends HorizontalDirectionalBlock {{
+        public static final MapCodec<{cls}> CODEC = simpleCodec({cls}::new);
+        private static final VoxelShape NORTH = {n};
+        private static final VoxelShape EAST = {e};
+        private static final VoxelShape SOUTH = {s};
+        private static final VoxelShape WEST = {w};
+
+        public {cls}(BlockBehaviour.Properties properties) {{
+            super(properties);
+            registerDefaultState(stateDefinition.any().setValue(FACING, Direction.NORTH));
+        }}
+
+        @Override
+        public MapCodec<{cls}> codec() {{
+            return CODEC;
+        }}
+
+        @Override
+        protected void createBlockStateDefinition(StateDefinition.Builder<net.minecraft.world.level.block.Block, BlockState> builder) {{
+            builder.add(FACING);
+        }}
+
+        @Override
+        public BlockState getStateForPlacement(BlockPlaceContext context) {{
+            return defaultBlockState().setValue(FACING, context.getHorizontalDirection().getOpposite());
+        }}
+
+        @Override
+        protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {{
+            return switch (state.getValue(FACING)) {{
+                case EAST -> EAST;
+                case SOUTH -> SOUTH;
+                case WEST -> WEST;
+                default -> NORTH;
+            }};
+        }}
+    }}
+"#,
+                    n = shape_expr(b, "north"),
+                    e = shape_expr(b, "east"),
+                    s = shape_expr(b, "south"),
+                    w = shape_expr(b, "west"),
+                ));
+            } else {
+                methods.push_str(&format!(
+                    r#"
+    public static class {cls} extends net.minecraft.world.level.block.Block {{
+        public static final MapCodec<{cls}> CODEC = simpleCodec({cls}::new);
+        private static final VoxelShape SHAPE = {shape};
+
+        public {cls}(BlockBehaviour.Properties properties) {{
+            super(properties);
+        }}
+
+        @Override
+        public MapCodec<{cls}> codec() {{
+            return CODEC;
+        }}
+
+        @Override
+        protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {{
+            return SHAPE;
+        }}
+    }}
+"#,
+                    shape = shape_expr(b, "north"),
+                ));
+            }
+        }
+    }
 
     // ---- Lager-Truhen ----
     let storage: Vec<&BlockDef> = c.blocks.iter().filter(|b| b.kind == "storage").collect();
@@ -1062,6 +1277,7 @@ fn generate_java(p: &Project, c: &Content) -> String {
         let props = if api.lazy_props { format!("() -> {props}") } else { props };
         let set_type = if b.material == "wood" { "OAK" } else if b.material == "metal" { "IRON" } else { "STONE" };
         let (ty, reg) = match v.shape {
+            "block" if is_model(b) => (model_class(b), format!("BLOCKS.registerBlock(\"{}\", {}::new, {props})", v.id, model_class(b))),
             "block" if b.kind == "lamp" => ("RedstoneLampBlock".to_string(), format!("BLOCKS.registerBlock(\"{}\", RedstoneLampBlock::new, {props})", v.id)),
             "block" if b.kind == "storage" => (
                 "AnvilStorageBlock".to_string(),
@@ -2059,6 +2275,22 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
                 write_json(&mb("_on"), &json!({ "parent": "minecraft:block/cube_all", "textures": { "all": on_tex } }))?;
                 item_model = m.clone();
             }
+            "block" if is_model(b) => {
+                let blockstate = if b.rotate {
+                    json!({ "variants": {
+                        "facing=north": { "model": m },
+                        "facing=east": { "model": m, "y": 90 },
+                        "facing=south": { "model": m, "y": 180 },
+                        "facing=west": { "model": m, "y": 270 }
+                    } })
+                } else {
+                    json!({ "variants": { "": { "model": m } } })
+                };
+                write_json(&assets.join(format!("blockstates/{id}.json")), &blockstate)?;
+                let own_blocks: Vec<String> = c.blocks.iter().map(|x| x.id.clone()).collect();
+                write_json(&mb(""), &cuboid_model(b, &tex, modid, &own_blocks))?;
+                item_model = m.clone();
+            }
             _ => {
                 write_json(&assets.join(format!("blockstates/{id}.json")), &json!({ "variants": { "": { "model": m } } }))?;
                 write_json(&mb(""), &model("minecraft:block/cube_all", &["all"]))?;
@@ -2718,6 +2950,15 @@ mod tests {
         c.blocks[0].shapes.extend(["button".to_string(), "pressure_plate".to_string()]);
         c.blocks[0].names.insert("fr".into(), "Cristal".into());
         c.blocks.push(BlockDef { id: "crystal_lamp".into(), kind: "lamp".into(), ..Default::default() });
+        let cub = |f: [f32; 3], t: [f32; 3], tex: &str| Cuboid { from: f, to: t, tex: tex.into() };
+        c.blocks.push(BlockDef {
+            id: "ruby_table".into(),
+            material: "wood".into(),
+            model: vec![cub([0.0, 13.0, 0.0], [16.0, 16.0, 16.0], ""), cub([1.0, 0.0, 1.0], [3.0, 13.0, 3.0], "minecraft:oak_planks"), cub([13.0, 0.0, 13.0], [15.0, 13.0, 15.0], "ruby_block")],
+            rotate: true,
+            ..Default::default()
+        });
+        c.blocks.push(BlockDef { id: "ruby_pillar".into(), model: vec![cub([12.0, 0.0, 4.0], [4.0, 16.0, 12.0], "")], ..Default::default() });
         c.blocks.push(BlockDef { id: "crystal_chest".into(), kind: "storage".into(), rows: 6, material: "wood".into(), tool: "axe".into(), ..Default::default() });
         for (kind, id) in [("blasting", "blast_gem"), ("smoking", "smoked_gem"), ("campfire", "camp_gem"), ("stonecutting", "cut_gem"), ("smithing", "smith_gem")] {
             let mut r = Recipe { enabled: true, kind: kind.into(), grid: vec![String::new(); 9], ..Default::default() };

@@ -8,6 +8,7 @@ import {
   CloseIcon,
   CubeIcon,
   FlaskIcon,
+  GlobeIcon,
   FoodIcon,
   GemIcon,
   LampIcon,
@@ -23,14 +24,15 @@ import {
 import { MOB_MODELS } from "./contentDefaults";
 import { TEMPLATES } from "./blueprints";
 
-export type CreateGroup = "block" | "item" | "mob" | "logic";
+export type CreateGroup = "block" | "item" | "mob" | "world" | "logic";
 export type CreateChoice =
   | { kind: "block"; variant: "normal" | "ore" | "lamp" | "storage" | "shapes" }
   | { kind: "item"; variant: "basic" | "food" | "sword" | "pickaxe" | "axe" | "shovel" | "hoe" | "toolset" | "armor" | "armorset" }
   | { kind: "mob"; model: MobModel }
   | { kind: "blueprint"; template: string }
   | { kind: "event" }
-  | { kind: "brew" };
+  | { kind: "brew" }
+  | { kind: "dimension"; preset: "overworld" | "lava" | "night" };
 
 interface Card {
   choice: CreateChoice;
@@ -43,6 +45,7 @@ const GROUPS: { id: CreateGroup; label: string; icon: React.ReactNode }[] = [
   { id: "block", label: t("Blöcke"), icon: <CubeIcon size={15} /> },
   { id: "item", label: t("Items"), icon: <GemIcon size={15} /> },
   { id: "mob", label: t("Kreaturen"), icon: <PawIcon size={15} /> },
+  { id: "world", label: t("Welten"), icon: <GlobeIcon size={15} /> },
   { id: "logic", label: t("Logik"), icon: <BlueprintIcon size={15} /> },
 ];
 
@@ -104,6 +107,17 @@ function cards(group: CreateGroup): { title: string; cards: Card[] }[] {
             title: m.label,
             desc: m.hostile ? t("Feindlich · {hp} Leben", { hp: m.health }) : t("Friedlich · {hp} Leben", { hp: m.health }),
           })),
+        },
+      ];
+    case "world":
+      return [
+        {
+          title: t("Dimension"),
+          cards: [
+            { choice: { kind: "dimension", preset: "overworld" }, icon: <GlobeIcon size={20} />, title: t("Wie Oberwelt"), desc: t("Berge, Wälder, Meere – mit deinen eigenen Blöcken") },
+            { choice: { kind: "dimension", preset: "lava" }, icon: <GlobeIcon size={20} />, title: t("Lava-Welt"), desc: t("Dunkles Gestein, Lavaseen und Nether-Himmel") },
+            { choice: { kind: "dimension", preset: "night" }, icon: <GlobeIcon size={20} />, title: t("Schattenwelt"), desc: t("Ewige Nacht über Pilzboden") },
+          ],
         },
       ];
     case "logic":

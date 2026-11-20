@@ -6,21 +6,22 @@ import { useCatalog } from "../../catalog";
 import { Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
 import McIcon from "../../components/McIcon";
-import { BlueprintIcon, BoxIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, FlaskIcon, GemIcon, LampIcon, LightningIcon, PencilIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TagIcon, TrashIcon } from "../../icons";
+import { GlobeIcon, BlueprintIcon, BoxIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, FlaskIcon, GemIcon, LampIcon, LightningIcon, PencilIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TagIcon, TrashIcon } from "../../icons";
 import { toast } from "../../state";
 import { useRunning } from "../../store";
 import PixelEditor from "./PixelEditor";
 import { ArmorForm, BlockExtras, Field, ItemKindSwitch, ToolForm } from "./ContentForms";
 import MobEditor from "./MobEditor";
 import BlueprintEditor from "./BlueprintEditor";
+import DimensionEditor, { newDimension } from "./DimensionEditor";
 import CreateMenu, { CreateChoice, CreateGroup } from "./CreateMenu";
 import { TEMPLATES } from "./blueprints";
 import { BrewEditor, brewLabel, EventEditor, eventLabel, NamesField, newBrew, newEvent } from "./LogicEditors";
 import { armorPreset, toolPreset, eggDataUrl, newMob, normalizeMob, newBlock, newItem, normalizeBlock, normalizeItem, SLOT_DE, SLOT_EN, variantIds } from "./contentDefaults";
 
-const normalize = (c: Content): Content => ({ ...c, blocks: c.blocks.map(normalizeBlock), items: c.items.map(normalizeItem), mobs: (c.mobs ?? []).map(normalizeMob), brewing: c.brewing ?? [], events: (c.events ?? []).map((e) => ({ ...e, actions: e.actions ?? [] })), blueprints: c.blueprints ?? [], generatedMobs: c.generatedMobs ?? [], tabIcon: c.tabIcon ?? "", tabName: c.tabName ?? "" });
+const normalize = (c: Content): Content => ({ ...c, blocks: c.blocks.map(normalizeBlock), items: c.items.map(normalizeItem), mobs: (c.mobs ?? []).map(normalizeMob), brewing: c.brewing ?? [], events: (c.events ?? []).map((e) => ({ ...e, actions: e.actions ?? [] })), blueprints: c.blueprints ?? [], dimensions: c.dimensions ?? [], generatedMobs: c.generatedMobs ?? [], tabIcon: c.tabIcon ?? "", tabName: c.tabName ?? "" });
 
-type Sel = { kind: "block" | "item" | "mob" | "event" | "brew" | "blueprint"; index: number } | null;
+type Sel = { kind: "block" | "item" | "mob" | "event" | "brew" | "blueprint" | "dimension"; index: number } | null;
 
 export default function ContentTab({ project }: { project: Project }) {
   const [content, setContent] = useState<Content | null>(null);
@@ -240,6 +241,12 @@ export default function ContentTab({ project }: { project: Project }) {
       const bp: Blueprint = (TEMPLATES.find((x) => x.id === choice.template) ?? TEMPLATES[0]).build();
       setContent({ ...content, blueprints: [...content.blueprints, bp] });
       setSel({ kind: "blueprint", index: content.blueprints.length });
+    } else if (choice.kind === "dimension") {
+      const used = new Set(content.dimensions.map((d) => d.id));
+      let id = choice.preset === "lava" ? "lavawelt" : choice.preset === "night" ? "schattenwelt" : "neue_dimension";
+      for (let n = 2; used.has(id); n++) id = `${id.replace(/_\d+$/, "")}_${n}`;
+      setContent({ ...content, dimensions: [...content.dimensions, newDimension(id, choice.preset)] });
+      setSel({ kind: "dimension", index: content.dimensions.length });
     } else if (choice.kind === "event") {
       setContent({ ...content, events: [...content.events, newEvent(content.blocks[0]?.id ?? "")] });
       setSel({ kind: "event", index: content.events.length });
@@ -295,6 +302,13 @@ export default function ContentTab({ project }: { project: Project }) {
 
   async function remove(target: Sel = sel) {
     if (!content || !target) return;
+    if (target.kind === "dimension") {
+      const d = content.dimensions[target.index];
+      if (!(await confirmDialog(t("„{name}“ entfernen?", { name: d.nameDe || d.id }), t("Die Dimension wird beim Speichern aus der Mod entfernt. Bereits erkundete Gebiete bleiben in der Welt gespeichert."), t("Entfernen"), t("Abbrechen"), true))) return;
+      setContent((c) => (c ? { ...c, dimensions: c.dimensions.filter((_, i) => i !== target.index) } : c));
+      setSel(null);
+      return;
+    }
     if (target.kind === "blueprint") {
       const bp = content.blueprints[target.index];
       if (bp.nodes.length > 1 && !(await confirmDialog(t("„{name}“ entfernen?", { name: bp.name }), t("Der Blueprint mit allen Knoten wird gelöscht."), t("Entfernen"), t("Abbrechen"), true))) return;
@@ -437,6 +451,41 @@ export default function ContentTab({ project }: { project: Project }) {
           )}
           {content.mobs.length === 0 && <p className="muted small pad">{t("Noch keine Kreaturen.")}</p>}
           <div className="content-list-head">
+            <span>{t("Dimensionen ·")}{" "}{content.dimensions.length}</span>
+            <button className="icon-btn" onClick={() => setCreateGroup("world")} aria-label={t("Dimension hinzufügen")} data-tip={t("Dimension")}>
+              <PlusIcon size={15} />
+            </button>
+          </div>
+          {content.dimensions.map((d, i) =>
+            !q || `${d.id} ${d.nameDe} ${d.nameEn}`.toLowerCase().includes(q) ? (
+              <button
+                key={`dim${i}`}
+                className={sel?.kind === "dimension" && sel.index === i ? "entry active" : "entry"}
+                onClick={() => setSel({ kind: "dimension", index: i })}
+                {...contextMenu(() => [
+                  { label: t("Bearbeiten"), icon: <PencilIcon size={15} />, onClick: () => setSel({ kind: "dimension", index: i }) },
+                  {
+                    label: t("ID kopieren"),
+                    icon: <TagIcon size={15} />,
+                    hint: `${project.modId}:${d.id}`,
+                    onClick: () => navigator.clipboard.writeText(`${project.modId}:${d.id}`).then(() => toast(t("ID kopiert."), "success")),
+                  },
+                  "separator",
+                  { label: t("Entfernen"), icon: <TrashIcon size={15} />, danger: true, onClick: () => remove({ kind: "dimension", index: i }) },
+                ])}
+              >
+                <span className="logic-icon">
+                  <GlobeIcon size={14} />
+                </span>
+                <span className="entry-text">
+                  <span className="entry-name">{d.nameDe || d.id}</span>
+                  <span className="entry-id">{d.id}</span>
+                </span>
+              </button>
+            ) : null,
+          )}
+          {content.dimensions.length === 0 && <p className="muted small pad">{t("Noch keine Dimensionen.")}</p>}
+          <div className="content-list-head">
             <span>{t("Blueprints ·")}{" "}{content.blueprints.length}</span>
             <button className="icon-btn" onClick={() => setCreateGroup("logic")} aria-label={t("Blueprint hinzufügen")} data-tip={t("Blueprint")}>
               <PlusIcon size={15} />
@@ -547,7 +596,27 @@ export default function ContentTab({ project }: { project: Project }) {
             </div>
           </div>
         )}
-        {sel?.kind === "blueprint" && content.blueprints[sel.index] ? (
+        {sel?.kind === "dimension" && content.dimensions[sel.index] ? (
+          <DimensionEditor
+            key={`dim-${sel.index}`}
+            project={project}
+            content={content}
+            dim={content.dimensions[sel.index]}
+            own={own}
+            onChange={(d) => setContent({ ...content, dimensions: content.dimensions.map((x, i) => (i === sel.index ? d : x)) })}
+            onDuplicate={() => {
+              const d = content.dimensions[sel.index];
+              setContent({ ...content, dimensions: [...content.dimensions, { ...structuredClone(d), id: `${d.id}_kopie`, nameDe: `${d.nameDe} (${t("Kopie")})` }] });
+              setSel({ kind: "dimension", index: content.dimensions.length });
+            }}
+            onRemove={() => remove()}
+            onAddBlueprint={(b) => {
+              setContent({ ...content, blueprints: [...content.blueprints, b] });
+              setSel({ kind: "blueprint", index: content.blueprints.length });
+              toast(t("Blueprint angelegt – wähle darin den Block, der dich hinbringt."), "success");
+            }}
+          />
+        ) : sel?.kind === "blueprint" && content.blueprints[sel.index] ? (
           <BlueprintEditor
             key={`bp-${sel.index}`}
             project={project}
