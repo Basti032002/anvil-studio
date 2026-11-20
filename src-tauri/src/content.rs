@@ -840,7 +840,11 @@ fn generate_java(p: &Project, c: &Content) -> String {
             w = java_float(w),
             h = java_float(h)
         ));
-        let egg = if api.props_tools {
+        let egg = if api.lazy_props {
+            // ab 1.21.9: Kreatur steckt in den Item-Eigenschaften
+            format!("p -> new SpawnEggItem(p.spawnEgg({k}.get()))")
+        } else if api.materials_v2 {
+            // 1.21.2–1.21.8: Farben kommen aus items/*.json
             format!("p -> new SpawnEggItem({k}.get(), p)")
         } else {
             format!("p -> new DeferredSpawnEggItem({k}, 0x{:06x}, 0x{:06x}, p)", parse_color(&m.egg_primary), parse_color(&m.egg_secondary))
@@ -942,7 +946,7 @@ fn generate_java(p: &Project, c: &Content) -> String {
             "net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent",
             "net.neoforged.neoforge.event.entity.RegisterSpawnPlacementsEvent",
         ]);
-        if !api.props_tools {
+        if !api.materials_v2 {
             imports.push("net.neoforged.neoforge.common.DeferredSpawnEggItem");
         }
     }

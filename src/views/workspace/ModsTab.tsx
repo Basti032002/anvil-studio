@@ -72,7 +72,7 @@ export default function ModsTab({ project }: { project: Project }) {
               try {
                 const n = await modsApi.update(project.id);
                 setMods(await modsApi.list(project.id));
-                toast(n ? t("{n} Mod{v1} aktualisiert.", { n: n, v1: n > 1 ? "s" : "" }) : t("Alle Mods sind aktuell."), "success");
+                toast(n ? t("Aktualisierte Mods: {n}", { n }) : t("Alle Mods sind aktuell."), "success");
               } catch (e) {
                 toast(String(e), "error");
               } finally {

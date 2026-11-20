@@ -68,7 +68,11 @@ jobs:
           done
           kill $PID 2>/dev/null || true
           pkill -f 'net.neoforged' 2>/dev/null || true
-          grep -E 'Done \(' server.log || { tail -150 server.log; exit 1; }
+          if ! grep -qE 'Done \(' server.log; then
+            echo "---- Absturzbericht ----"; cat run/crash-reports/*.txt 2>/dev/null | head -120
+            echo "---- Registry-Fehler ----"; grep -iE "error|exception|failed|missing|unknown|not a" server.log | grep -viE "DEBUG|Reading file" | head -60
+            exit 1
+          fi
           # Fehler, die unsere erzeugten Daten betreffen
           if grep -iE "(error|exception|failed|couldn't).*(kristallhoehlen|anvil)" server.log; then
             echo "---- Fehler in erzeugten Daten ----"; exit 1

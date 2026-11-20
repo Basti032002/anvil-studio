@@ -231,7 +231,7 @@ export function ToolForm({ project, item, own, onChange }: { project: Project; i
             ))}
           </select>
         </Field>
-        <Field label={t("Stufe")} hint={t("wie stark – setzt alle Werte")}>
+        <Field label={t("Werkzeugstufe")} hint={t("wie stark – setzt alle Werte")}>
           <select className="input" value={item.toolTier} onChange={(e) => onChange(toolPreset(item.toolType, e.target.value as Tier))}>
             <option value="wood">{t("Holz")}</option>
             <option value="stone">{t("Stein")}</option>
