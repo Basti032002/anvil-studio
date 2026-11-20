@@ -1038,7 +1038,7 @@ fn generate_java(p: &Project, c: &Content) -> String {
         let base_k = up(&b.id);
         let mut props = block_props(b, v.shape == "deepslate");
         if matches!(v.shape, "button" | "pressure_plate") {
-            props.push_str(if api.materials_v2 { ".noCollision()" } else { ".noCollission()" });
+            props.push_str(if api.lazy_props { ".noCollision()" } else { ".noCollission()" });
         }
         let props = if api.lazy_props { format!("() -> {props}") } else { props };
         let set_type = if b.material == "wood" { "OAK" } else if b.material == "metal" { "IRON" } else { "STONE" };
