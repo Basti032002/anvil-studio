@@ -203,8 +203,8 @@ export type FileEntry = { name: string; rel: string; isDir: boolean; size: numbe
 export const contentApi = {
   load: (projectId: string) => invoke<Content>("content_load", { projectId }),
   save: (projectId: string, content: Content) => invoke<{ content: Content; registration: string }>("content_save", { projectId, content }),
-  textureGet: (projectId: string, kind: "block" | "item", id: string) => invoke<string | null>("texture_get", { projectId, kind, id }),
-  textureSave: (projectId: string, kind: "block" | "item", id: string, pngBase64: string) => invoke<void>("texture_save", { projectId, kind, id, pngBase64 }),
+  textureGet: (projectId: string, kind: "block" | "item" | "armor" | "armor_legs", id: string) => invoke<string | null>("texture_get", { projectId, kind, id }),
+  textureSave: (projectId: string, kind: "block" | "item" | "armor" | "armor_legs", id: string, pngBase64: string) => invoke<void>("texture_save", { projectId, kind, id, pngBase64 }),
   open: (projectId: string) => invoke<string[]>("project_open", { projectId }),
 };
 

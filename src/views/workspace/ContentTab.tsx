@@ -5,7 +5,7 @@ import { useCatalog } from "../../catalog";
 import { Segmented, Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
 import McIcon from "../../components/McIcon";
-import { BoxIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TrashIcon, PencilIcon, TagIcon } from "../../icons";
+import { BoxIcon, ChestplateIcon, GemIcon, CloseIcon, CopyIcon, CubeIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TrashIcon, PencilIcon, TagIcon } from "../../icons";
 import { toast } from "../../state";
 import PixelEditor from "./PixelEditor";
 import { ArmorForm, BlockExtras, Field, ItemKindSwitch, ToolForm } from "./ContentForms";
@@ -93,7 +93,7 @@ export default function ContentTab({ project }: { project: Project }) {
       content
         ? [
             ...content.blocks.flatMap((b) =>
-              variantIds(b).map((v) => ({ id: v.id, name: v.name, kind: "block" as const, texture: textures[b.id], shape: v.shape })),
+              variantIds(b).map((v) => ({ id: v.id, name: v.name, kind: "block" as const, texture: textures[v.id] ?? textures[b.id], shape: v.shape })),
             ),
             ...content.items.map((i) => ({ id: i.id, name: i.nameDe || i.nameEn || i.id, kind: "item" as const, texture: textures[i.id] })),
           ]
@@ -477,6 +477,35 @@ export default function ContentTab({ project }: { project: Project }) {
                   id={current.id}
                   onSaved={(dataUrl) => setTextures((t) => ({ ...t, [current.id]: dataUrl }))}
                 />
+              ) : null}
+              {savedIds.includes(current.id) && block?.ore.enabled && block.ore.deepslate && block.ore.dimension === "overworld" && savedIds.includes(`deepslate_${block.id}`) && (
+                <div className="texture-sub">
+                  <div className="texture-sub-head">
+                    <GemIcon size={16} />
+                    <span className="panel-title-lg">Tiefenschiefer-Variante</span>
+                  </div>
+                  <PixelEditor
+                    projectId={project.id}
+                    kind="block"
+                    id={`deepslate_${block.id}`}
+                    onSaved={(dataUrl) => setTextures((t) => ({ ...t, [`deepslate_${block.id}`]: dataUrl }))}
+                  />
+                </div>
+              )}
+              {savedIds.includes(current.id) && item?.kind === "armor" && item.armorMaterial && savedContent?.items.some((x) => x.kind === "armor" && x.armorMaterial === item.armorMaterial) && (
+                <div className="texture-sub">
+                  <div className="texture-sub-head">
+                    <ChestplateIcon size={16} />
+                    <span className="panel-title-lg">{item.armorSlot === "leggings" ? "Getragen: Hose" : "Getragen: Helm, Brust & Stiefel"}</span>
+                  </div>
+                  <p className="muted small">
+                    64×32 im Aufbau eines Spieler-Skins. Gilt für alle Teile aus „{item.armorMaterial}“{item.armorSlot === "leggings" ? " (nur Hose)" : " außer der Hose"}.
+                  </p>
+                  <PixelEditor key={`${item.armorMaterial}-${item.armorSlot === "leggings"}`} projectId={project.id} kind={item.armorSlot === "leggings" ? "armor_legs" : "armor"} id={item.armorMaterial} />
+                </div>
+              )}
+              {savedIds.includes(current.id) ? (
+                null
               ) : (
                 <div className="texture-wait">
                   <SparkIcon size={20} />

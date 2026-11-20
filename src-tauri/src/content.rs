@@ -746,7 +746,16 @@ fn ensure_registration(p: &Project) -> Result<String, String> {
 // ---- Assets & Daten ------------------------------------------------------------
 
 fn texture_path(p: &Project, kind: &str, id: &str) -> PathBuf {
-    root(p).join(format!("src/main/resources/assets/{}/textures/{kind}/{id}.png", p.mod_id))
+    let assets = root(p).join(format!("src/main/resources/assets/{}", p.mod_id));
+    let modern = mc_at_least(&p.mc_version, (1, 21, 2));
+    match kind {
+        // Getragene Rüstung: id = Material
+        "armor" if modern => assets.join(format!("textures/entity/equipment/humanoid/{id}.png")),
+        "armor_legs" if modern => assets.join(format!("textures/entity/equipment/humanoid_leggings/{id}.png")),
+        "armor" => assets.join(format!("textures/models/armor/{id}_layer_1.png")),
+        "armor_legs" => assets.join(format!("textures/models/armor/{id}_layer_2.png")),
+        _ => assets.join(format!("textures/{kind}/{id}.png")),
+    }
 }
 
 fn ensure_texture(p: &Project, kind: &str, id: &str) -> Result<(), String> {
@@ -1142,7 +1151,7 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
         let id = &v.id;
         let full = format!("{modid}:{id}");
         let m = format!("{modid}:block/{id}");
-        let tex = format!("{modid}:block/{}", b.id);
+        let tex = if v.shape == "deepslate" { format!("{modid}:block/{id}") } else { format!("{modid}:block/{}", b.id) };
         let base_model = format!("{modid}:block/{}", b.id);
         let model = |parent: &str, keys: &[&str]| -> Value {
             let mut t = Map::new();
@@ -1246,6 +1255,13 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
 
     for b in &c.blocks {
         ensure_texture(p, "block", &b.id)?;
+        if b.ore.enabled && b.ore.deepslate && b.ore.dimension == "overworld" {
+            // Eigene Tiefenschiefer-Textur, anfangs eine Kopie der Erz-Textur
+            let deep = texture_path(p, "block", &format!("deepslate_{}", b.id));
+            if !deep.exists() {
+                let _ = std::fs::copy(texture_path(p, "block", &b.id), &deep);
+            }
+        }
         if !b.ore.enabled {
             continue;
         }
@@ -1333,9 +1349,9 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
     // Getragene Rüstung: Platzhalter-Texturen und (ab 1.21.4) Equipment-Definition
     for mat in armor_sets(c).keys() {
         let png = armor_placeholder(mat);
+        write_if_missing(&texture_path(p, "armor", mat), &png)?;
+        write_if_missing(&texture_path(p, "armor_legs", mat), &png)?;
         if api.materials_v2 {
-            write_if_missing(&assets.join(format!("textures/entity/equipment/humanoid/{mat}.png")), &png)?;
-            write_if_missing(&assets.join(format!("textures/entity/equipment/humanoid_leggings/{mat}.png")), &png)?;
             write_json(
                 &assets.join(format!("equipment/{mat}.json")),
                 &json!({ "layers": {
@@ -1343,9 +1359,6 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
                     "humanoid_leggings": [{ "texture": format!("{modid}:{mat}") }]
                 } }),
             )?;
-        } else {
-            write_if_missing(&assets.join(format!("textures/models/armor/{mat}_layer_1.png")), &png)?;
-            write_if_missing(&assets.join(format!("textures/models/armor/{mat}_layer_2.png")), &png)?;
         }
     }
 
@@ -1421,7 +1434,7 @@ pub fn content_save(app: AppHandle, project_id: String, content: Content) -> Res
 }
 
 fn check_kind(kind: &str, id: &str) -> Result<(), String> {
-    if !matches!(kind, "block" | "item") || !valid_id(id) {
+    if !matches!(kind, "block" | "item" | "armor" | "armor_legs") || !valid_id(id) {
         return Err("Ungültige Textur".into());
     }
     Ok(())

@@ -825,3 +825,10 @@ svg [opacity="0.2"] { fill: var(--accent); opacity: 0.38; }
 .ctx-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ctx-hint { font-size: 11px; color: var(--muted); }
 .ctx-sep { height: 1px; margin: 4px 6px; background: var(--border); }
+.pixel-canvas-wrap.wide { width: 386px; height: 194px; }
+.pixel-canvas-wrap.wide .pixel-canvas { width: 384px; height: 192px; }
+.pixel-canvas-wrap.wide.show-grid::after { width: 384px; height: 192px; background-size: 6px 6px; }
+.armor-preview { width: 256px; height: 128px; image-rendering: pixelated; border-radius: 6px; background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 16px 16px; }
+.texture-sub { border-top: 1px solid var(--border); padding-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.texture-sub-head { display: flex; align-items: center; gap: 8px; }
+.pixel-main:has(.wide) { flex-wrap: wrap; }

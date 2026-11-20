@@ -3,14 +3,14 @@ import { contentApi } from "../../api";
 import { BucketIcon, CheckIcon, EraserIcon, GridToggleIcon, MirrorIcon, PencilIcon, PipetteIcon, RedoIcon, TrashIcon, UndoIcon } from "../../icons";
 import { toast } from "../../state";
 
-const SIZE = 16;
 const PALETTE = [
   "#000000", "#3b3b3b", "#7a7a7a", "#c6c6c6", "#ffffff", "#5b3a1e", "#8b5a2b", "#c58b4e",
   "#e64b3c", "#f29e38", "#f6d743", "#6fcf5a", "#2f9e44", "#38b6c8", "#3d6fd8", "#9b5de5",
 ];
 
 type Tool = "pencil" | "eraser" | "fill" | "picker";
-type Props = { projectId: string; kind: "block" | "item"; id: string; onSaved?: (dataUrl: string) => void };
+export type TexKind = "block" | "item" | "armor" | "armor_legs";
+type Props = { projectId: string; kind: TexKind; id: string; onSaved?: (dataUrl: string) => void };
 
 function hexToRgba(hex: string): [number, number, number, number] {
   const n = parseInt(hex.slice(1), 16);
@@ -21,8 +21,11 @@ function rgbaToHex(r: number, g: number, b: number) {
 }
 
 export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
+  const wide = kind === "armor" || kind === "armor_legs";
+  const W = wide ? 64 : 16;
+  const H = wide ? 32 : 16;
   const canvas = useRef<HTMLCanvasElement>(null);
-  const pixels = useRef<Uint8ClampedArray>(new Uint8ClampedArray(SIZE * SIZE * 4));
+  const pixels = useRef<Uint8ClampedArray>(new Uint8ClampedArray(W * H * 4));
   const undo = useRef<Uint8ClampedArray[]>([]);
   const redo = useRef<Uint8ClampedArray[]>([]);
   const drawing = useRef(false);
@@ -38,7 +41,7 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
   function render() {
     const ctx = canvas.current?.getContext("2d");
     if (!ctx) return;
-    ctx.putImageData(new ImageData(Uint8ClampedArray.from(pixels.current), SIZE, SIZE), 0, 0);
+    ctx.putImageData(new ImageData(Uint8ClampedArray.from(pixels.current), W, H), 0, 0);
     setPreview(canvas.current!.toDataURL("image/png"));
   }
 
@@ -50,7 +53,7 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
     setStatus("idle");
     contentApi.textureGet(projectId, kind, id).then((b64) => {
       if (cancelled) return;
-      pixels.current = new Uint8ClampedArray(SIZE * SIZE * 4);
+      pixels.current = new Uint8ClampedArray(W * H * 4);
       if (!b64) {
         render();
         return;
@@ -59,12 +62,12 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
       img.onload = () => {
         if (cancelled) return;
         const off = document.createElement("canvas");
-        off.width = SIZE;
-        off.height = SIZE;
+        off.width = W;
+        off.height = H;
         const c = off.getContext("2d")!;
         c.imageSmoothingEnabled = false;
-        c.drawImage(img, 0, 0, SIZE, SIZE);
-        pixels.current = c.getImageData(0, 0, SIZE, SIZE).data;
+        c.drawImage(img, 0, 0, W, H);
+        pixels.current = c.getImageData(0, 0, W, H).data;
         render();
         force((x) => x + 1);
       };
@@ -98,23 +101,23 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
   }
 
   function setPx(x: number, y: number, rgba: [number, number, number, number]) {
-    const targets = mirror ? [x, SIZE - 1 - x] : [x];
+    const targets = mirror ? [x, W - 1 - x] : [x];
     for (const tx of targets) {
-      const i = (y * SIZE + tx) * 4;
+      const i = (y * W + tx) * 4;
       pixels.current.set(rgba, i);
     }
   }
 
   function fill(x: number, y: number, rgba: [number, number, number, number]) {
     const p = pixels.current;
-    const start = (y * SIZE + x) * 4;
+    const start = (y * W + x) * 4;
     const target = [p[start], p[start + 1], p[start + 2], p[start + 3]];
     if (target.every((v, k) => v === rgba[k])) return;
     const stack = [[x, y]];
     while (stack.length) {
       const [cx, cy] = stack.pop()!;
-      if (cx < 0 || cy < 0 || cx >= SIZE || cy >= SIZE) continue;
-      const i = (cy * SIZE + cx) * 4;
+      if (cx < 0 || cy < 0 || cx >= W || cy >= H) continue;
+      const i = (cy * W + cx) * 4;
       if (p[i] !== target[0] || p[i + 1] !== target[1] || p[i + 2] !== target[2] || p[i + 3] !== target[3]) continue;
       p.set(rgba, i);
       stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
@@ -123,9 +126,9 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
 
   function cell(e: React.PointerEvent) {
     const r = canvas.current!.getBoundingClientRect();
-    const x = Math.floor(((e.clientX - r.left) / r.width) * SIZE);
-    const y = Math.floor(((e.clientY - r.top) / r.height) * SIZE);
-    return x >= 0 && y >= 0 && x < SIZE && y < SIZE ? [x, y] : null;
+    const x = Math.floor(((e.clientX - r.left) / r.width) * W);
+    const y = Math.floor(((e.clientY - r.top) / r.height) * H);
+    return x >= 0 && y >= 0 && x < W && y < H ? [x, y] : null;
   }
 
   function apply(e: React.PointerEvent, first: boolean) {
@@ -133,7 +136,7 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
     if (!c) return;
     const [x, y] = c;
     if (tool === "picker") {
-      const i = (y * SIZE + x) * 4;
+      const i = (y * W + x) * 4;
       if (pixels.current[i + 3] > 0) setColor(rgbaToHex(pixels.current[i], pixels.current[i + 1], pixels.current[i + 2]));
       setTool("pencil");
       return;
@@ -176,13 +179,13 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
     const img = new Image();
     img.onload = () => {
       const off = document.createElement("canvas");
-      off.width = SIZE;
-      off.height = SIZE;
+      off.width = W;
+      off.height = H;
       const c = off.getContext("2d")!;
       c.imageSmoothingEnabled = false;
-      c.drawImage(img, 0, 0, SIZE, SIZE);
+      c.drawImage(img, 0, 0, W, H);
       snapshot();
-      pixels.current = c.getImageData(0, 0, SIZE, SIZE).data;
+      pixels.current = c.getImageData(0, 0, W, H).data;
       render();
       scheduleSave();
       URL.revokeObjectURL(img.src);
@@ -221,11 +224,11 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
             <RedoIcon size={16} />
           </button>
         </div>
-        <div className={grid ? "pixel-canvas-wrap show-grid" : "pixel-canvas-wrap"}>
+        <div className={`pixel-canvas-wrap${grid ? " show-grid" : ""}${wide ? " wide" : ""}`}>
           <canvas
             ref={canvas}
-            width={SIZE}
-            height={SIZE}
+            width={W}
+            height={H}
             className={`pixel-canvas tool-${tool}`}
             onPointerDown={(e) => {
               (e.target as HTMLElement).setPointerCapture(e.pointerId);
@@ -266,7 +269,7 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
             className="btn small full ghost"
             onClick={() => {
               snapshot();
-              pixels.current = new Uint8ClampedArray(SIZE * SIZE * 4);
+              pixels.current = new Uint8ClampedArray(W * H * 4);
               render();
               scheduleSave();
             }}
@@ -277,7 +280,9 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
         </div>
       </div>
       <div className="pixel-preview">
-        {kind === "block" ? (
+        {wide ? (
+          <img className="armor-preview" src={preview} alt="" />
+        ) : kind === "block" ? (
           <div className="cube-stage" aria-label="Vorschau als Block">
             <div className="cube">
               <span className="face top" style={{ backgroundImage: `url(${preview})` }} />
