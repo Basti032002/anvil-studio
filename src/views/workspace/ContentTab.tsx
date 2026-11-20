@@ -1,3 +1,4 @@
+import { getDraft, setDraft } from "./draft";
 import { t } from "../../i18n";
 import { confirmDialog, contextMenu, MenuItem } from "../../components/Overlay";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -89,6 +90,13 @@ export default function ContentTab({ project }: { project: Project }) {
   );
 
   useEffect(() => {
+    const d = getDraft(project.id);
+    if (d) {
+      setContent(normalize(d.content));
+      setSaved(d.saved);
+      loadTextures(d.content);
+      return;
+    }
     contentApi
       .load(project.id)
       .then((raw) => {
@@ -101,6 +109,9 @@ export default function ContentTab({ project }: { project: Project }) {
   }, [project.id, loadTextures]);
 
   const dirty = content ? JSON.stringify(content) !== saved : false;
+  useEffect(() => {
+    if (content && saved) setDraft(project.id, content, saved);
+  }, [content, saved, project.id]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "n") {

@@ -1,40 +1,23 @@
 import { t } from "../../i18n";
-import { useState } from "react";
 import { ActionDef, ActionKind, BrewDef, Content, EventDef, EventTrigger, Project } from "../../api";
 import { Toggle } from "../../components/Chrome";
 import { OwnEntry } from "../../components/ItemPicker";
-import { CloseIcon, CopyIcon, FlaskIcon, LightningIcon, PlusIcon, TrashIcon } from "../../icons";
+import { CloseIcon, CopyIcon, FlaskIcon, LightningIcon, PlusIcon, TranslateIcon, TrashIcon } from "../../icons";
 import { Field, ItemField } from "./ContentForms";
-import { EXTRA_NAME_LANGS, POTIONS, variantIds } from "./contentDefaults";
+import { POTIONS, variantIds } from "./contentDefaults";
 
 // ---- Weitere Sprachen ------------------------------------------------------
 
 /** Namen in weiteren Sprachen (aufklappbar). */
-export function NamesField({ names, onChange }: { names: Record<string, string>; onChange: (n: Record<string, string>) => void }) {
-  const filled = EXTRA_NAME_LANGS.filter((l) => names[l.id]?.trim()).length;
-  const [open, setOpen] = useState(filled > 0);
+export function NamesField({ names }: { names: Record<string, string>; onChange?: (n: Record<string, string>) => void }) {
+  const filled = Object.values(names).filter((v) => v?.trim()).length;
   return (
-    <div className="field span-2 names-field">
-      <button type="button" className="names-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
-        <span className={open ? "tree-chev open" : "tree-chev"}>›</span>
-        {t("Weitere Sprachen")} <span className="muted small">· {t("{n} von {total} ausgefüllt", { n: filled, total: EXTRA_NAME_LANGS.length })}</span>
+    <div className="field span-2 loc-hint">
+      <TranslateIcon size={15} />
+      <span className="grow">{filled ? t("{n} weitere Sprachen übersetzt", { n: filled }) : t("Weitere Sprachen übersetzt du im Localization-Tab.")}</span>
+      <button type="button" className="btn small" onClick={() => window.dispatchEvent(new CustomEvent("anvil:open-tab", { detail: "loc" }))}>
+        {t("In Localization öffnen")}
       </button>
-      {open && (
-        <div className="names-grid">
-          {EXTRA_NAME_LANGS.map((l) => (
-            <label key={l.id} className="names-row">
-              <span className="mono muted small">{l.id}</span>
-              <input
-                className="input"
-                placeholder={l.label}
-                value={names[l.id] ?? ""}
-                onChange={(e) => onChange({ ...names, [l.id]: e.target.value })}
-              />
-            </label>
-          ))}
-          <span className="muted small span-all">{t("Leere Felder nutzen in Minecraft automatisch den englischen Namen.")}</span>
-        </div>
-      )}
     </div>
   );
 }

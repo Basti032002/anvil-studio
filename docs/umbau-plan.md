@@ -17,7 +17,7 @@ nächsten offenen Etappe weitermachen.
    Erstellen-Fenster mit „Alle“ + Suche (Strg+N), Übersicht mit Kacheln und „Noch offen“
 2. [x] **Editoren mit Unterreitern** (0.5.0-dev.15): Block, Item, Kreatur, Dimension – Kopf mit Name/ID,
    Reiter (Allgemein, Aussehen, Funktion, Abbau & Drops, Rezept, Formen …), Vorschau rechts
-3. [ ] **Localization-Tab** (oben in der Leiste): alle Texte der Mod in einer Tabelle,
+3. [x] **Localization-Tab** (0.5.0-dev.16) (oben in der Leiste): alle Texte der Mod in einer Tabelle,
    Sprachen hinzufügen (alle MC-Sprachen), Filter „nur fehlende“, Import/Export JSON
 4. [ ] **Blueprints**: Wenn/Sonst, UND/ODER/NICHT, Vergleich, Schleifen (n-mal, für jeden
    Spieler/Mob, solange), Warten, Variablen (Welt / pro Spieler), Mathe, eigene Funktionen,

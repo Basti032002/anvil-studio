@@ -1,3 +1,4 @@
+import LocalizationTab from "./workspace/LocalizationTab";
 import { t, translateMessage } from "../i18n";
 import { MenuItem, openMenu } from "../components/Overlay";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -8,8 +9,8 @@ import ModSettingsTab from "./workspace/ModSettingsTab";
 import ExportTab from "./workspace/ExportTab";
 
 const CodeTab = lazy(() => import("./workspace/CodeTab"));
-type MainTab = "content" | "code" | "mods" | "settings" | "export" | "console";
-import { RefreshIcon, UndoIcon, AlertIcon, CheckIcon, CopyIcon, ChevronIcon, CloseIcon, CodeIcon, CubeIcon, GearIcon, DownloadIcon, FileIcon, FolderIcon, HammerIcon, PackageIcon, PlayIcon, SearchIcon, SparkIcon, StopIcon, TerminalIcon, TrashIcon } from "../icons";
+type MainTab = "content" | "code" | "loc" | "mods" | "settings" | "export" | "console";
+import { RefreshIcon, UndoIcon, AlertIcon, CheckIcon, CopyIcon, ChevronIcon, CloseIcon, CodeIcon, CubeIcon, GearIcon, DownloadIcon, FileIcon, FolderIcon, HammerIcon, PackageIcon, PlayIcon, SearchIcon, SparkIcon, StopIcon, TerminalIcon, TranslateIcon, TrashIcon } from "../icons";
 import { toast, useSettings } from "../state";
 import { clearLogs, markNotRunning, markStarted, pushLog, useLastExit, useLogs, useRunning } from "../store";
 
@@ -47,6 +48,12 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
   const lastExit = useLastExit(project.id);
   const [tab, setTab] = useState<Tab>("output");
   const [mainTab, setMainTab] = useState<MainTab>(() => (autoRun ? "console" : (load(`anvil.tab.${project.id}`, "content") as MainTab)));
+  // andere Bereiche können einen Tab öffnen (z. B. „In Localization öffnen“)
+  useEffect(() => {
+    const on = (e: Event) => setMainTab((e as CustomEvent<MainTab>).detail);
+    window.addEventListener("anvil:open-tab", on);
+    return () => window.removeEventListener("anvil:open-tab", on);
+  }, []);
   useEffect(() => save(`anvil.tab.${project.id}`, mainTab), [mainTab, project.id]);
 
   // Beim Öffnen: Projektdaten migrieren, ggf. neu erzeugen
@@ -282,6 +289,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
           [
             ["content", t("Inhalte"), <CubeIcon size={14} />],
             ["code", t("Code"), <CodeIcon size={14} />],
+            ["loc", t("Localization"), <TranslateIcon size={14} />],
             ["mods", t("Mods"), <PackageIcon size={14} />],
             ["settings", t("Mod-Einstellungen"), <GearIcon size={14} />],
             ["export", t("Export"), <DownloadIcon size={14} />],
@@ -300,6 +308,11 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
       {mainTab === "content" && (
         <div className="ws-view">
           <ContentTab project={project} />
+        </div>
+      )}
+      {mainTab === "loc" && (
+        <div className="ws-view">
+          <LocalizationTab project={project} />
         </div>
       )}
       {mainTab === "mods" && (

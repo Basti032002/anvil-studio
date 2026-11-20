@@ -350,6 +350,10 @@ pub struct Content {
     pub tab_icon: String,
     /// Name des Kreativ-Tabs (leer = Projektname)
     pub tab_name: String,
+    /// Zusätzliche Sprachen (Minecraft-Codes wie fr_fr, ja_jp) – de_de und en_us sind immer dabei
+    pub languages: Vec<String>,
+    /// Übersetzungen aus dem Localization-Tab: Sprachcode → Sprachschlüssel → Text (überschreibt Erzeugtes)
+    pub translations: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>,
     /// Brau-Rezepte: Trank + Zutat → Trank
     pub brewing: Vec<BrewDef>,
     /// Ereignisse ohne Code: Auslöser → Aktionen
@@ -410,6 +414,8 @@ impl Default for Content {
             generated_mobs: vec![],
             tab_icon: String::new(),
             tab_name: String::new(),
+            languages: vec![],
+            translations: Default::default(),
             brewing: vec![],
             events: vec![],
             blueprints: vec![],
@@ -2297,6 +2303,102 @@ const MODEL_SUFFIXES: [&str; 11] = ["", "_inner", "_outer", "_top", "_post", "_s
 const EXTRA_LANGS: [(&str, &str); 6] = [("fr", "fr_fr"), ("es", "es_es"), ("pl", "pl_pl"), ("nl", "nl_nl"), ("tr", "tr_tr"), ("ru", "ru_ru")];
 
 /// Namensmuster für Varianten in weiteren Sprachen ({n} = Name des Grundblocks)
+/// Ein Text der Mod, den man übersetzen kann
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct LangEntry {
+    pub key: String,
+    /// block | item | entity | egg | tab
+    pub kind: String,
+    /// Inhalt, zu dem der Text gehört ("block:ruby", "item:ruby", "mob:golem", "tab")
+    pub owner: String,
+    /// stairs, slab … bei Block-Varianten, sonst leer
+    pub shape: String,
+    pub de: String,
+    pub en: String,
+    /// Namen aus dem alten Feld „Weitere Sprachen“ (Kurzcode → Name)
+    #[serde(skip)]
+    pub names: std::collections::BTreeMap<String, String>,
+    /// Daraus erzeugte Texte je Sprachcode (fr_fr → „Escalier en …“)
+    pub legacy: std::collections::BTreeMap<String, String>,
+}
+
+/// Alle Sprachschlüssel, die beim Erzeugen entstehen (Deutsch und Englisch)
+pub fn lang_entries(p: &Project, c: &Content) -> Vec<LangEntry> {
+    let modid = &p.mod_id;
+    let name_of = |de: &str, en: &str, german: bool| -> String {
+        let (a, b) = if german { (de, en) } else { (en, de) };
+        if a.trim().is_empty() { b.trim().to_string() } else { a.trim().to_string() }
+    };
+    let mut out = vec![];
+    let tab = if c.tab_name.trim().is_empty() { p.name.clone() } else { c.tab_name.trim().to_string() };
+    out.push(LangEntry { key: format!("itemGroup.{modid}.anvil"), kind: "tab".into(), owner: "tab".into(), shape: String::new(), de: tab.clone(), en: tab, names: Default::default(), legacy: Default::default() });
+    for v in all_variants(c) {
+        let b = v.base;
+        let (de, en) = (name_of(&b.name_de, &b.name_en, true), name_of(&b.name_de, &b.name_en, false));
+        let (de, en) = match v.shape {
+            "deepslate" => (format!("Tiefenschiefer-{de}"), format!("Deepslate {en}")),
+            "stairs" => (format!("{de}-Treppe"), format!("{en} Stairs")),
+            "slab" => (format!("{de}-Stufe"), format!("{en} Slab")),
+            "wall" => (format!("{de}-Mauer"), format!("{en} Wall")),
+            "fence" => (format!("{de}-Zaun"), format!("{en} Fence")),
+            "button" => (format!("{de}-Knopf"), format!("{en} Button")),
+            "pressure_plate" => (format!("{de}-Druckplatte"), format!("{en} Pressure Plate")),
+            _ => (de, en),
+        };
+        out.push(LangEntry { key: format!("block.{modid}.{}", v.id), kind: "block".into(), owner: format!("block:{}", b.id), shape: if v.shape == "block" { String::new() } else { v.shape.to_string() }, de, en, names: b.names.clone(), legacy: Default::default() });
+    }
+    for i in &c.items {
+        out.push(LangEntry { key: format!("item.{modid}.{}", i.id), kind: "item".into(), owner: format!("item:{}", i.id), shape: String::new(), de: name_of(&i.name_de, &i.name_en, true), en: name_of(&i.name_de, &i.name_en, false), names: i.names.clone(), legacy: Default::default() });
+    }
+    for m in &c.mobs {
+        let (de, en) = (name_of(&m.name_de, &m.name_en, true), name_of(&m.name_de, &m.name_en, false));
+        out.push(LangEntry { key: format!("entity.{modid}.{}", m.id), kind: "entity".into(), owner: format!("mob:{}", m.id), shape: String::new(), de: de.clone(), en: en.clone(), names: m.names.clone(), legacy: Default::default() });
+        out.push(LangEntry { key: format!("item.{modid}.{}_spawn_egg", m.id), kind: "egg".into(), owner: format!("mob:{}", m.id), shape: "egg".into(), de: format!("{de}-Spawn-Ei"), en: format!("{en} Spawn Egg"), names: m.names.clone(), legacy: Default::default() });
+    }
+    for e in out.iter_mut() {
+        for (short, name) in &e.names {
+            if let (Some(full), n) = (full_code(short), name.trim()) {
+                if !n.is_empty() {
+                    let pat = variant_pattern(short, if e.shape.is_empty() { e.kind.as_str() } else { e.shape.as_str() });
+                    e.legacy.insert(full.to_string(), pat.replace("{n}", n));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Minecraft-Sprachcode zu den alten Kurzcodes (fr → fr_fr …)
+fn full_code(short: &str) -> Option<&'static str> {
+    EXTRA_LANGS.iter().find(|(s, _)| *s == short).map(|(_, f)| *f)
+}
+
+#[tauri::command]
+pub fn content_lang_entries(app: AppHandle, project_id: String, content: Content) -> Result<Vec<LangEntry>, String> {
+    let p = crate::projects::get(&app, &project_id)?;
+    Ok(lang_entries(&p, &content))
+}
+
+/// Übersetzungen als JSON-Datei speichern (nur .json, vom Nutzer gewählter Pfad)
+#[tauri::command]
+pub fn lang_export(path: String, data: Value) -> Result<(), String> {
+    if !path.to_lowercase().ends_with(".json") {
+        return Err("Bitte eine .json-Datei wählen.".into());
+    }
+    std::fs::write(&path, serde_json::to_string_pretty(&data).map_err(err)?).map_err(err)
+}
+
+/// Übersetzungen aus einer JSON-Datei lesen
+#[tauri::command]
+pub fn lang_import(path: String) -> Result<Value, String> {
+    if !path.to_lowercase().ends_with(".json") {
+        return Err("Bitte eine .json-Datei wählen.".into());
+    }
+    let text = std::fs::read_to_string(&path).map_err(err)?;
+    serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| format!("Die Datei ist kein gültiges JSON: {e}"))
+}
+
 fn variant_pattern(lang: &str, shape: &str) -> &'static str {
     match (lang, shape) {
         ("fr", "deepslate") => "{n} des abîmes",
@@ -2647,22 +2749,6 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
         }
     }
 
-    let name_of = |de: &str, en: &str, german: bool| -> String {
-        let (a, b) = if german { (de, en) } else { (en, de) };
-        if a.trim().is_empty() { b.trim().to_string() } else { a.trim().to_string() }
-    };
-    let tab_name = if c.tab_name.trim().is_empty() { p.name.clone() } else { c.tab_name.trim().to_string() };
-    let mut lang_de = vec![(format!("itemGroup.{modid}.anvil"), tab_name.clone())];
-    let mut lang_en = vec![(format!("itemGroup.{modid}.anvil"), tab_name)];
-    let mut lang_x: std::collections::BTreeMap<&str, Vec<(String, String)>> = Default::default();
-    let mut add_x = |names: &std::collections::BTreeMap<String, String>, key: String, shape: &str| {
-        for (code, _) in EXTRA_LANGS {
-            if let Some(n) = names.get(code).map(|n| n.trim()).filter(|n| !n.is_empty()) {
-                lang_x.entry(code).or_default().push((key.clone(), variant_pattern(code, shape).replace("{n}", n)));
-            }
-        }
-    };
-
     for v in &variants {
         let b = v.base;
         let id = &v.id;
@@ -2821,21 +2907,6 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
             _ => remove_if_exists(recipe),
         }
 
-        // Namen
-        let (de, en) = (name_of(&b.name_de, &b.name_en, true), name_of(&b.name_de, &b.name_en, false));
-        let (de, en) = match v.shape {
-            "deepslate" => (format!("Tiefenschiefer-{de}"), format!("Deepslate {en}")),
-            "stairs" => (format!("{de}-Treppe"), format!("{en} Stairs")),
-            "slab" => (format!("{de}-Stufe"), format!("{en} Slab")),
-            "wall" => (format!("{de}-Mauer"), format!("{en} Wall")),
-            "fence" => (format!("{de}-Zaun"), format!("{en} Fence")),
-            "button" => (format!("{de}-Knopf"), format!("{en} Button")),
-            "pressure_plate" => (format!("{de}-Druckplatte"), format!("{en} Pressure Plate")),
-            _ => (de, en),
-        };
-        lang_de.push((format!("block.{modid}.{id}"), de));
-        lang_en.push((format!("block.{modid}.{id}"), en));
-        add_x(&b.names, format!("block.{modid}.{id}"), v.shape);
     }
 
     for b in &c.blocks {
@@ -2906,9 +2977,6 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
         } else {
             remove_if_exists(recipe);
         }
-        lang_de.push((format!("item.{modid}.{id}"), name_of(&i.name_de, &i.name_en, true)));
-        lang_en.push((format!("item.{modid}.{id}"), name_of(&i.name_de, &i.name_en, false)));
-        add_x(&i.names, format!("item.{modid}.{id}"), "item");
     }
 
     // Reparatur-Tags (Werkzeuge je Item, Rüstung je Material); alte entfernen
@@ -3014,22 +3082,48 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
         } else {
             remove_if_exists(modifier);
         }
-        let (de, en) = (name_of(&m.name_de, &m.name_en, true), name_of(&m.name_de, &m.name_en, false));
-        lang_de.push((format!("entity.{modid}.{id}"), de.clone()));
-        lang_en.push((format!("entity.{modid}.{id}"), en.clone()));
-        lang_de.push((format!("item.{modid}.{egg}"), format!("{de}-Spawn-Ei")));
-        lang_en.push((format!("item.{modid}.{egg}"), format!("{en} Spawn Egg")));
-        add_x(&m.names, format!("entity.{modid}.{id}"), "entity");
-        add_x(&m.names, format!("item.{modid}.{egg}"), "egg");
     }
 
-    merge_lang(&assets.join("lang/de_de.json"), &lang_de, &removed_keys)?;
-    merge_lang(&assets.join("lang/en_us.json"), &lang_en, &removed_keys)?;
-    for (code, file) in EXTRA_LANGS {
-        let set = lang_x.remove(code).unwrap_or_default();
-        let path = assets.join(format!("lang/{file}.json"));
+    // Sprachdateien: erzeugte Namen + Übersetzungen aus dem Localization-Tab
+    let entries = lang_entries(p, c);
+    let ours: std::collections::HashSet<&str> = entries.iter().map(|e| e.key.as_str()).collect();
+    let mut files: std::collections::BTreeMap<String, Vec<(String, String)>> = Default::default();
+    files.insert("de_de".into(), entries.iter().map(|e| (e.key.clone(), e.de.clone())).collect());
+    files.insert("en_us".into(), entries.iter().map(|e| (e.key.clone(), e.en.clone())).collect());
+    for e in &entries {
+        for (code, text) in &e.legacy {
+            files.entry(code.clone()).or_default().push((e.key.clone(), text.clone()));
+        }
+    }
+    let valid_code = |c: &str| (2..=12).contains(&c.len()) && c.chars().all(|ch| ch.is_ascii_lowercase() || ch == '_');
+    for code in c.languages.iter().chain(c.translations.keys()) {
+        if valid_code(code) {
+            files.entry(code.clone()).or_default();
+        }
+    }
+    for (code, tr) in &c.translations {
+        if !valid_code(code) {
+            continue;
+        }
+        let set = files.entry(code.clone()).or_default();
+        for (k, v) in tr {
+            if ours.contains(k.as_str()) && !v.trim().is_empty() {
+                set.retain(|(x, _)| x != k);
+                set.push((k.clone(), v.trim().to_string()));
+            }
+        }
+    }
+    // Sprachdateien, die es schon gibt, aber nicht mehr gewählt sind: eigene Schlüssel entfernen
+    if let Ok(dir) = std::fs::read_dir(assets.join("lang")) {
+        for f in dir.flatten() {
+            let name = f.file_name().to_string_lossy().trim_end_matches(".json").to_string();
+            files.entry(name).or_default();
+        }
+    }
+    for (code, set) in &files {
+        let path = assets.join(format!("lang/{code}.json"));
         if !set.is_empty() || path.exists() {
-            merge_lang(&path, &set, &removed_keys)?;
+            merge_lang(&path, set, &removed_keys)?;
         }
     }
 

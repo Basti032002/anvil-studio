@@ -227,6 +227,10 @@ export type Content = {
   generatedMobs: string[];
   tabIcon: string;
   tabName: string;
+  /** zusätzliche Sprachen (Minecraft-Codes) */
+  languages?: string[];
+  /** Sprachcode → Schlüssel → Text */
+  translations?: Record<string, Record<string, string>>;
   brewing: BrewDef[];
   events: EventDef[];
   blueprints: Blueprint[];
@@ -260,7 +264,11 @@ export const contentApi = {
   textureGet: (projectId: string, kind: TexKind, id: string) => invoke<string | null>("texture_get", { projectId, kind, id }),
   textureSave: (projectId: string, kind: TexKind, id: string, pngBase64: string) => invoke<void>("texture_save", { projectId, kind, id, pngBase64 }),
   open: (projectId: string) => invoke<string[]>("project_open", { projectId }),
+  langEntries: (projectId: string, content: Content) => invoke<LangEntry[]>("content_lang_entries", { projectId, content }),
+  langExport: (path: string, data: unknown) => invoke<void>("lang_export", { path, data }),
+  langImport: (path: string) => invoke<Record<string, Record<string, string>>>("lang_import", { path }),
 };
+export type LangEntry = { key: string; kind: "block" | "item" | "entity" | "egg" | "tab"; owner: string; shape: string; de: string; en: string; legacy: Record<string, string> };
 
 export const modsApi = {
   search: (projectId: string, query: string) => invoke<ModHit[]>("mods_search", { projectId, query }),
