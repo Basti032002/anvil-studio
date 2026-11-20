@@ -977,3 +977,33 @@ select option { background: var(--panel); color: var(--text); }
 .create-tab.active { background: var(--accent-soft); }
 .bp-box { position: absolute; border: 1px dashed var(--accent); background: var(--accent-soft); border-radius: 4px; pointer-events: none; z-index: 5; }
 .bp-zoom .icon-btn:disabled { opacity: 0.35; cursor: default; }
+.bp-node.cat-vars { --cat: #e879a6; }
+.bp-dot.cat-vars { --cat: #e879a6; }
+
+/* ---- Export-Seite ---- */
+.export-page { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 18px; overflow-y: auto; height: 100%; align-content: start; }
+.export-main, .export-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.export-side .panel { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+.export-hero { display: flex; flex-direction: column; gap: 18px; padding: 20px; }
+.export-id { display: flex; align-items: center; gap: 14px; }
+.export-logo { width: 56px; height: 56px; border-radius: 12px; object-fit: cover; image-rendering: pixelated; flex: none; }
+.export-logo.empty { display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+.export-name { font-size: 20px; font-weight: 650; }
+.export-version { display: flex; flex-direction: column; gap: 4px; width: 130px; }
+.export-build { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.btn.lg { height: 42px; padding: 0 20px; font-size: 14px; }
+.export-list { padding: 0; }
+.export-list .panel-head { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.jar-rows { display: flex; flex-direction: column; }
+.jar-row { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); color: var(--text-2); }
+.jar-row:last-child { border-bottom: 0; }
+.jar-row:hover { background: var(--hover); }
+.jar-row .mono { color: var(--text); font-size: 12.5px; }
+.check-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.check-list li { display: flex; align-items: center; gap: 9px; padding: 6px 4px; color: var(--text-2); }
+.check-list li > svg { color: var(--warn); flex: none; }
+.check-list li.ok > svg { color: var(--accent); }
+.check-list .ellipsis { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge-mini.ok { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
+.publish-links { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 1000px) { .export-page { grid-template-columns: 1fr; } }

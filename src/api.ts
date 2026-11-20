@@ -244,7 +244,8 @@ export type FileEntry = { name: string; rel: string; isDir: boolean; size: numbe
 
 export const contentApi = {
   load: (projectId: string) => invoke<Content>("content_load", { projectId }),
-  save: (projectId: string, content: Content) => invoke<{ content: Content; registration: string }>("content_save", { projectId, content }),
+  save: (projectId: string, content: Content) => invoke<{ content: Content; registration: string; javaChanged: boolean }>("content_save", { projectId, content }),
+  hotReload: (projectId: string) => invoke<number>("content_hot_reload", { projectId }),
   textureGet: (projectId: string, kind: TexKind, id: string) => invoke<string | null>("texture_get", { projectId, kind, id }),
   textureSave: (projectId: string, kind: TexKind, id: string, pngBase64: string) => invoke<void>("texture_save", { projectId, kind, id, pngBase64 }),
   open: (projectId: string) => invoke<string[]>("project_open", { projectId }),
@@ -283,6 +284,21 @@ export const modSettingsApi = {
   get: (projectId: string) => invoke<ModSettings>("mod_settings_get", { projectId }),
   save: (projectId: string, settings: ModSettings) => invoke<void>("mod_settings_save", { projectId, settings }),
 };
+
+export type JarInfo = { path: string; name: string; size: number; modified: number };
+export const exportApi = {
+  jars: (projectId: string) => invoke<JarInfo[]>("export_jars", { projectId }),
+  copyJar: (projectId: string, path: string, dest: string) => invoke<void>("export_copy_jar", { projectId, path, dest }),
+  deleteJar: (projectId: string, path: string) => invoke<void>("export_delete_jar", { projectId, path }),
+  sourceZip: (projectId: string, dest: string) => invoke<number>("export_source_zip", { projectId, dest }),
+};
+
+/** Windows-Speichern-Dialog. Gibt null zurück, wenn abgebrochen. */
+export async function pickSaveFile(title: string, defaultPath: string, ext: string, label: string): Promise<string | null> {
+  const { save } = await import("@tauri-apps/plugin-dialog");
+  const r = await save({ title, defaultPath, filters: [{ name: label, extensions: [ext] }] });
+  return typeof r === "string" ? r : null;
+}
 
 export const changeMcVersion = (projectId: string, version: string) => invoke<string[]>("change_mc_version", { projectId, version });
 

@@ -5,10 +5,11 @@ import { api, contentApi, CrashReport, Project, Task, TASK_LABELS } from "../api
 import ContentTab from "./workspace/ContentTab";
 import ModsTab from "./workspace/ModsTab";
 import ModSettingsTab from "./workspace/ModSettingsTab";
+import ExportTab from "./workspace/ExportTab";
 
 const CodeTab = lazy(() => import("./workspace/CodeTab"));
-type MainTab = "content" | "code" | "mods" | "settings" | "console";
-import { AlertIcon, CheckIcon, CopyIcon, ChevronIcon, CloseIcon, CodeIcon, CubeIcon, GearIcon, DownloadIcon, FileIcon, FolderIcon, HammerIcon, PackageIcon, PlayIcon, SearchIcon, SparkIcon, StopIcon, TerminalIcon, TrashIcon } from "../icons";
+type MainTab = "content" | "code" | "mods" | "settings" | "export" | "console";
+import { RefreshIcon, UndoIcon, AlertIcon, CheckIcon, CopyIcon, ChevronIcon, CloseIcon, CodeIcon, CubeIcon, GearIcon, DownloadIcon, FileIcon, FolderIcon, HammerIcon, PackageIcon, PlayIcon, SearchIcon, SparkIcon, StopIcon, TerminalIcon, TrashIcon } from "../icons";
 import { toast, useSettings } from "../state";
 import { clearLogs, markNotRunning, markStarted, pushLog, useLastExit, useLogs, useRunning } from "../store";
 
@@ -66,6 +67,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
   const consoleRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const autoRunDone = useRef(false);
+  const pendingRestart = useRef(false);
 
   useEffect(() => save(`anvil.config.${project.id}`, config), [config, project.id]);
   useEffect(() => save(`anvil.world.${project.id}`, world), [world, project.id]);
@@ -80,6 +82,11 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
 
   useEffect(() => {
     if (!lastExit) return;
+    if (pendingRestart.current) {
+      pendingRestart.current = false;
+      actions.current.run();
+      return;
+    }
     if (!lastExit.success) toast(t("{v0} ist fehlgeschlagen.", { v0: TASK_LABELS[lastExit.task as Task] ?? lastExit.task }), "error");
     refreshInfo().then(async () => {
       if (exportPending && lastExit.task === "build") {
@@ -108,13 +115,13 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [logs.length, tab, filter]);
 
-  async function start(task: Task, opts: { world?: string } = {}) {
+  async function start(task: Task, opts: { world?: string; stay?: boolean } = {}) {
     if (!javaReady) {
       toast(t("Java 21 fehlt noch – installiere es über die Statusleiste unten."), "error");
       return;
     }
     setTab("output");
-    setMainTab("console");
+    if (!opts.stay) setMainTab("console");
     try {
       markStarted(project.id, task);
       await api.runTask(project.id, task, opts.world);
@@ -140,6 +147,14 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
     const exec = (cmd: string) => {
       if (cmd === "stop") {
         if (runningRef.current) api.stopTask(project.id).catch((e) => toast(String(e), "error"));
+      } else if (cmd === "restart") {
+        if (runningRef.current) {
+          pendingRestart.current = true;
+          api.stopTask(project.id).catch((e) => {
+            pendingRestart.current = false;
+            toast(String(e), "error");
+          });
+        } else actions.current.run();
       } else if (!runningRef.current) {
         if (cmd === "run") actions.current.run();
         if (cmd === "build") actions.current.build();
@@ -149,6 +164,9 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
       if (e.key === "F5") {
         e.preventDefault();
         exec(e.shiftKey ? "stop" : "run");
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "r" && runningRef.current) {
+        e.preventDefault();
+        exec("restart");
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
         e.preventDefault();
         exec("build");
@@ -220,6 +238,26 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
               <PlayIcon size={13} />
             </button>
           )}
+          {running && (running.task === "runClient" || running.task === "runServer") && (
+            <>
+              <button
+                className="icon-btn"
+                onClick={() => contentApi.hotReload(project.id).then(() => toast(t("Im laufenden Spiel neu geladen."), "success")).catch((e) => toast(String(e), "error"))}
+                aria-label={t("Neu laden")}
+                data-tip={t("Texturen, Namen und Rezepte neu laden · ohne Neustart")}
+              >
+                <RefreshIcon size={16} />
+              </button>
+              <button
+                className="icon-btn"
+                onClick={() => window.dispatchEvent(new CustomEvent("anvil:workspace", { detail: "restart" }))}
+                aria-label={t("Neu starten")}
+                data-tip={t("Spiel neu starten · Strg R")}
+              >
+                <UndoIcon size={16} />
+              </button>
+            </>
+          )}
           <button className="icon-btn" disabled={busy} onClick={() => start("build")} aria-label={t("Bauen")} data-tip={t("Bauen · Strg B")}>
             <HammerIcon size={16} />
           </button>
@@ -246,6 +284,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
             ["code", t("Code"), <CodeIcon size={14} />],
             ["mods", t("Mods"), <PackageIcon size={14} />],
             ["settings", t("Mod-Einstellungen"), <GearIcon size={14} />],
+            ["export", t("Export"), <DownloadIcon size={14} />],
             ["console", t("Konsole"), <TerminalIcon size={14} />],
           ] as [MainTab, string, React.ReactNode][]
         ).map(([k, label, icon]) => (
@@ -271,6 +310,19 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
       {mainTab === "settings" && (
         <div className="ws-view">
           <ModSettingsTab project={project} onSaved={onChanged} />
+        </div>
+      )}
+      {mainTab === "export" && (
+        <div className="ws-view">
+          <ExportTab
+            project={project}
+            busy={busy}
+            building={!!running && running.task === "build"}
+            elapsed={elapsed}
+            lastBuild={lastExit && lastExit.task === "build" ? { at: lastExit.at, success: lastExit.success } : null}
+            onBuild={() => start("build", { stay: true })}
+            onOpenSettings={() => setMainTab("settings")}
+          />
         </div>
       )}
       {mainTab === "code" && (

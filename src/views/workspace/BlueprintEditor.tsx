@@ -6,6 +6,7 @@ import { OwnEntry } from "../../components/ItemPicker";
 import { MenuItem, openMenu } from "../../components/Overlay";
 import {
   ClipboardIcon,
+  VarIcon,
   RedoIcon,
   UndoIcon,
   BlueprintIcon,
@@ -38,6 +39,7 @@ type Palette = { sx: number; sy: number; wx: number; wy: number; connect?: { fro
 const CAT_ICON: Record<BpCat, React.ReactNode> = {
   event: <LightningIcon size={13} />,
   flow: <BranchIcon size={13} />,
+  vars: <VarIcon size={13} />,
   world: <WeatherIcon size={13} />,
   player: <UserIcon size={13} />,
   other: <WrenchIcon size={13} />,
@@ -691,6 +693,25 @@ function PropInput({ project, content, own, spec, value, onChange }: { project: 
           ))}
         </select>
       );
+    case "var": {
+      const names = [...new Set(content.blueprints.flatMap((b) => b.nodes.map((n) => n.props.var).filter(Boolean)))].sort();
+      return (
+        <>
+          <input
+            className="input mono"
+            list="bp-vars"
+            value={value}
+            onChange={(e) => onChange(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"))}
+            placeholder="punkte"
+          />
+          <datalist id="bp-vars">
+            {names.map((n) => (
+              <option key={n} value={n} />
+            ))}
+          </datalist>
+        </>
+      );
+    }
     case "number":
       return <input className="input" type="number" step="any" value={value} onChange={(e) => onChange(e.target.value)} />;
     case "item":

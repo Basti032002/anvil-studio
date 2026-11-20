@@ -1,5 +1,6 @@
 // Icons: Phosphor (Bold) – klare, gleichmäßige Linien in der Textfarbe.
 import {
+  Hash,
   Graph,
   GitFork,
   Hourglass,
@@ -213,3 +214,4 @@ export const CancelIcon = ({ size = 16 }: P) => <Prohibit size={size} weight="bo
 export const ZoomInIcon = ({ size = 16 }: P) => <MagnifyingGlassPlus size={size} weight="bold" aria-hidden="true" />;
 export const ZoomOutIcon = ({ size = 16 }: P) => <MagnifyingGlassMinus size={size} weight="bold" aria-hidden="true" />;
 export const FitIcon = ({ size = 16 }: P) => <CornersOut size={size} weight="bold" aria-hidden="true" />;
+export const VarIcon = ({ size = 16 }: P) => <Hash size={size} weight="bold" aria-hidden="true" />;

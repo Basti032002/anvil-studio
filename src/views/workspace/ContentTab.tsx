@@ -8,6 +8,7 @@ import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
 import McIcon from "../../components/McIcon";
 import { BlueprintIcon, BoxIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, FlaskIcon, GemIcon, LampIcon, LightningIcon, PencilIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TagIcon, TrashIcon } from "../../icons";
 import { toast } from "../../state";
+import { useRunning } from "../../store";
 import PixelEditor from "./PixelEditor";
 import { ArmorForm, BlockExtras, Field, ItemKindSwitch, ToolForm } from "./ContentForms";
 import MobEditor from "./MobEditor";
@@ -30,6 +31,8 @@ export default function ContentTab({ project }: { project: Project }) {
   const [filter, setFilter] = useState("");
   const [textures, setTextures] = useState<Record<string, string>>({});
   const [createGroup, setCreateGroup] = useState<CreateGroup | null>(null);
+  const running = useRunning(project.id);
+  const gameRunning = !!running && (running.task === "runClient" || running.task === "runServer");
 
   const loadTextures = useCallback(
     async (c: Content) => {
@@ -71,6 +74,10 @@ export default function ContentTab({ project }: { project: Project }) {
       loadTextures(c);
       if (r.registration === "ok" || r.registration === "added") {
         setHint(null);
+        if (gameRunning) {
+          await liveUpdate(r.javaChanged);
+          return;
+        }
         toast(r.registration === "added" ? t("Gespeichert – die Hauptklasse wurde einmalig ergänzt.") : t("Gespeichert, Code und Dateien erzeugt."), "success");
       } else {
         setHint(r.registration);
@@ -81,6 +88,30 @@ export default function ContentTab({ project }: { project: Project }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Spiel läuft: ohne Neustart nachladen, wenn nur Dateien geändert wurden */
+  async function liveUpdate(javaChanged: boolean) {
+    if (!javaChanged) {
+      try {
+        await contentApi.hotReload(project.id);
+        toast(t("Gespeichert und im laufenden Spiel neu geladen."), "success");
+      } catch (e) {
+        toast(String(e), "error");
+      }
+      return;
+    }
+    // Neue Blöcke, Items oder Logik brauchen einen Neustart
+    contentApi.hotReload(project.id).catch(() => {});
+    if (
+      await confirmDialog(
+        t("Neustart nötig"),
+        t("Neue oder entfernte Inhalte und geänderte Logik werden erst nach einem Neustart des Spiels aktiv. Texturen, Namen und Rezepte wurden schon neu geladen."),
+        t("Jetzt neu starten"),
+        t("Später"),
+      )
+    )
+      window.dispatchEvent(new CustomEvent("anvil:workspace", { detail: "restart" }));
   }
 
   useEffect(() => {

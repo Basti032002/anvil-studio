@@ -1,6 +1,7 @@
 mod admin;
 mod blueprint;
 mod content;
+mod export;
 mod fsx;
 mod i18n;
 mod java;
@@ -73,6 +74,11 @@ pub fn run() {
             updater::install_update,
             updater::patch_notes_pending,
             updater::patch_notes_seen,
+            export::export_jars,
+            content::content_hot_reload,
+            export::export_copy_jar,
+            export::export_delete_jar,
+            export::export_source_zip,
             admin::account_configured,
             admin::account_start_login,
             admin::account_poll_login,

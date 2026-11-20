@@ -1386,6 +1386,7 @@ public final class AnvilContent {{
 {armor_reg_call}        BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);
         TABS.register(modEventBus);
+        AnvilDevReload.init();
 {mob_reg_call}{extra_calls}    }}
 {mob_methods}{extra_methods}}}
 "#,
@@ -1884,7 +1885,10 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
     if let Some(parent) = java.parent() {
         std::fs::create_dir_all(parent).map_err(err)?;
     }
-    std::fs::write(&java, generate_java(p, c)).map_err(err)?;
+    let java_code = generate_java(p, c);
+    let java_changed = std::fs::read_to_string(&java).map(|old| old != java_code).unwrap_or(true);
+    std::fs::write(&java, java_code).map_err(err)?;
+    write_dev_reload(p, &java)?;
     let client_java = java.with_file_name("AnvilClient.java");
     if c.mobs.is_empty() {
         remove_if_exists(client_java);
@@ -2333,7 +2337,148 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
     c.generated_mobs = mob_ids;
     c.generator_version = GENERATOR_VERSION;
     save_file(p, c)?;
+    LAST_JAVA_CHANGED.store(java_changed, std::sync::atomic::Ordering::SeqCst);
     Ok(registration)
+}
+
+/// Ob beim letzten Erzeugen der Java-Code geändert wurde (dann ist ein Neustart nötig)
+static LAST_JAVA_CHANGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// Kleiner Helfer in der Mod: lädt Texturen, Namen, Rezepte usw. im laufenden Spiel neu,
+/// sobald Anvil Studio die Datei `.anvil-reload` im Spielordner aktualisiert.
+fn write_dev_reload(p: &Project, java: &Path) -> Result<(), String> {
+    let pkg = &p.package;
+    let common = format!(
+        r#"// AUTOMATISCH ERZEUGT von Anvil Studio – Schnelles Testen (Neu laden ohne Neustart).
+package {pkg}.anvil;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
+
+/** Nur aktiv, wenn Anvil Studio die Datei .anvil-reload schreibt – im normalen Spiel passiert nichts. */
+public final class AnvilDevReload {{
+    static final Path MARKER = Path.of(".anvil-reload");
+    private static long last = -1;
+    private static int ticks;
+
+    private AnvilDevReload() {{}}
+
+    static long stamp() {{
+        try {{
+            return Files.exists(MARKER) ? Files.getLastModifiedTime(MARKER).toMillis() : 0;
+        }} catch (Exception e) {{
+            return 0;
+        }}
+    }}
+
+    public static void init() {{
+        NeoForge.EVENT_BUS.addListener(AnvilDevReload::onServerTick);
+        try {{
+            Class.forName("net.minecraft.client.Minecraft");
+            Class.forName("{pkg}.anvil.AnvilDevReloadClient").getMethod("init").invoke(null);
+        }} catch (Throwable ignored) {{
+            // Server ohne Client-Klassen
+        }}
+    }}
+
+    private static void onServerTick(ServerTickEvent.Post event) {{
+        if (++ticks % 20 != 0) return;
+        long now = stamp();
+        if (last < 0) {{
+            last = now;
+            return;
+        }}
+        if (now == last) return;
+        last = now;
+        MinecraftServer server = event.getServer();
+        server.getCommands().performPrefixedCommand(server.createCommandSourceStack().withSuppressedOutput(), "reload");
+        server.getPlayerList().broadcastSystemMessage(Component.literal("\u00a7a[Anvil Studio]\u00a7r Rezepte, Loot und Daten neu geladen"), false);
+    }}
+}}
+"#
+    );
+    let client = format!(
+        r#"// AUTOMATISCH ERZEUGT von Anvil Studio – Schnelles Testen (nur Client).
+package {pkg}.anvil;
+
+import net.minecraft.client.Minecraft;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.common.NeoForge;
+
+public final class AnvilDevReloadClient {{
+    private static long last = -1;
+    private static int ticks;
+
+    private AnvilDevReloadClient() {{}}
+
+    public static void init() {{
+        NeoForge.EVENT_BUS.addListener(AnvilDevReloadClient::onClientTick);
+    }}
+
+    private static void onClientTick(ClientTickEvent.Post event) {{
+        if (++ticks % 20 != 0) return;
+        long now = AnvilDevReload.stamp();
+        if (last < 0) {{
+            last = now;
+            return;
+        }}
+        if (now == last) return;
+        last = now;
+        Minecraft.getInstance().reloadResourcePacks();
+    }}
+}}
+"#
+    );
+    std::fs::write(java.with_file_name("AnvilDevReload.java"), common).map_err(err)?;
+    std::fs::write(java.with_file_name("AnvilDevReloadClient.java"), client).map_err(err)?;
+    Ok(())
+}
+
+/// Geänderte Texturen, Modelle, Namen, Rezepte und Loot ins laufende Spiel bringen.
+/// Rückgabe: Anzahl kopierter Dateien.
+#[tauri::command]
+pub fn content_hot_reload(app: AppHandle, project_id: String) -> Result<usize, String> {
+    let p = crate::projects::get(&app, &project_id)?;
+    let src = root(&p).join("src/main/resources");
+    let dst = root(&p).join("build/resources/main");
+    let mut copied = 0;
+    for sub in ["assets", "data"] {
+        let from = src.join(sub);
+        if !from.exists() {
+            continue;
+        }
+        for e in walkdir::WalkDir::new(&from).into_iter().flatten() {
+            if !e.file_type().is_file() {
+                continue;
+            }
+            let rel = e.path().strip_prefix(&src).map_err(err)?;
+            let target = dst.join(rel);
+            let same = std::fs::metadata(&target).ok().map(|m| m.len()) == e.metadata().ok().map(|m| m.len())
+                && std::fs::read(&target).ok() == std::fs::read(e.path()).ok();
+            if same {
+                continue;
+            }
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(err)?;
+            }
+            std::fs::copy(e.path(), &target).map_err(err)?;
+            copied += 1;
+        }
+    }
+    // Spielordner benachrichtigen
+    let mut dirs = vec![root(&p).join("run")];
+    if let Ok(entries) = std::fs::read_dir(root(&p).join("runs")) {
+        dirs.extend(entries.flatten().map(|e| e.path()));
+    }
+    let stamp = crate::util::now().to_string();
+    for d in dirs.into_iter().filter(|d| d.is_dir()) {
+        let _ = std::fs::write(d.join(".anvil-reload"), &stamp);
+    }
+    Ok(copied)
 }
 
 // ---- Befehle -------------------------------------------------------------------
@@ -2342,6 +2487,8 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
 #[serde(rename_all = "camelCase")]
 pub struct SaveResult {
     content: Content,
+    /// Java-Code geändert → Neustart nötig, sonst reicht Neu laden
+    java_changed: bool,
     /// "ok" | "added" | Anleitung
     registration: String,
 }
@@ -2362,7 +2509,8 @@ pub fn content_save(app: AppHandle, project_id: String, content: Content) -> Res
     c.generated_items = old.generated_items;
     c.generated_mobs = old.generated_mobs;
     let registration = generate(&p, &mut c)?;
-    Ok(SaveResult { content: c, registration })
+    let java_changed = LAST_JAVA_CHANGED.load(std::sync::atomic::Ordering::SeqCst);
+    Ok(SaveResult { content: c, registration, java_changed })
 }
 
 fn check_kind(kind: &str, id: &str) -> Result<(), String> {
