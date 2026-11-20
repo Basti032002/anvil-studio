@@ -1,4 +1,5 @@
 mod admin;
+mod blueprint;
 mod content;
 mod fsx;
 mod i18n;

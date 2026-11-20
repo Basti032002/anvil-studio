@@ -285,6 +285,7 @@ pub struct Content {
     pub brewing: Vec<BrewDef>,
     /// Ereignisse ohne Code: Auslöser → Aktionen
     pub events: Vec<EventDef>,
+    pub blueprints: Vec<crate::blueprint::Blueprint>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -340,6 +341,7 @@ impl Default for Content {
             tab_name: String::new(),
             brewing: vec![],
             events: vec![],
+            blueprints: vec![],
         }
     }
 }
@@ -906,6 +908,18 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
         methods.push_str(&format!(
             "\n    private static Holder<MobEffect> anvilEffect(String id) {{\n        return {eff};\n    }}\n\n    private static Item anvilItem(String id) {{\n        return {item};\n    }}\n\n    private static SoundEvent anvilSound(String id) {{\n        return {sound};\n    }}\n"
         ));
+    }
+
+    // ---- Blueprints ----
+    if c.blueprints.iter().any(|b| b.enabled) {
+        let mut own: std::collections::HashSet<String> = all_variants(c).iter().map(|v| v.id.clone()).collect();
+        own.extend(c.items.iter().map(|i| i.id.clone()));
+        own.extend(c.mobs.iter().map(|m| m.id.clone()));
+        let bp_api = crate::blueprint::BpApi { get_value: api.materials_v2, modid: p.mod_id.clone(), own };
+        let (bi, bc, bm) = crate::blueprint::generate(&c.blueprints, &bp_api);
+        imports.extend(bi);
+        calls.push_str(&bc);
+        methods.push_str(&bm);
     }
 
     // ---- Brau-Rezepte ----
@@ -2551,6 +2565,86 @@ mod tests {
             ("entity_killed", "crystal_zombie"),
         ] {
             c.events.push(EventDef { trigger: trigger.into(), target: target.into(), cancel: trigger == "break_block", actions: all.clone() });
+        }
+        // Blueprint mit allen Knoten
+        {
+            use crate::blueprint::{BpLink, BpNode, Blueprint, EVENT_KINDS};
+            let node = |id: &str, kind: &str, props: &[(&str, &str)]| BpNode {
+                id: id.into(),
+                kind: kind.into(),
+                x: 0.0,
+                y: 0.0,
+                props: props.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            };
+            let link = |a: &str, o: &str, b: &str| BpLink { from: a.into(), out: o.into(), to: b.into() };
+            let actions: Vec<(&str, Vec<(&str, &str)>)> = vec![
+                ("message", vec![("text", "Hallo {player} \"!\""), ("to", "all")]),
+                ("message", vec![("text", "Nur du")]),
+                ("actionbar", vec![("text", "Aktionsleiste")]),
+                ("title", vec![("text", "Willkommen \"hier\"")]),
+                ("command", vec![("command", "/say hi")]),
+                ("weather", vec![("weather", "thunder"), ("seconds", "60")]),
+                ("time", vec![("time", "night")]),
+                ("summon", vec![("entity", "crystal_cow"), ("count", "2")]),
+                ("lightning", vec![]),
+                ("setblock", vec![("block", "ruby_block"), ("dy", "-1")]),
+                ("particle", vec![("particle", "minecraft:flame"), ("count", "30")]),
+                ("teleport", vec![("dy", "5")]),
+                ("give", vec![("item", "ruby"), ("count", "3")]),
+                ("effect", vec![("effect", "speed"), ("seconds", "5"), ("level", "2")]),
+                ("clear_effects", vec![]),
+                ("sound", vec![("sound", "minecraft:entity.player.levelup")]),
+                ("explode", vec![("power", "1.5")]),
+                ("fire", vec![("seconds", "3"), ("who", "target")]),
+                ("heal", vec![("amount", "4")]),
+                ("damage", vec![("amount", "1"), ("who", "target")]),
+                ("launch", vec![("strength", "2")]),
+                ("xp", vec![("amount", "5")]),
+                ("gamemode", vec![("mode", "adventure")]),
+                ("difficulty", vec![("difficulty", "hard")]),
+                ("clear_inventory", vec![]),
+                ("kill", vec![("who", "target")]),
+            ];
+            let conds = [
+                ("chance", "30"), ("sneaking", ""), ("raining", ""), ("thundering", ""), ("day", ""), ("night", ""), ("creative", ""),
+                ("holding", "ruby"), ("health_below", "5"), ("dimension", "nether"), ("block_below", "stone"), ("message_contains", "hallo"),
+            ];
+            let mut nodes = vec![];
+            let mut links = vec![];
+            for (ei, ev) in EVENT_KINDS.iter().enumerate() {
+                let target = match *ev {
+                    "ev_click_block" | "ev_break" | "ev_place" => "ruby_block",
+                    "ev_click_item" | "ev_use" | "ev_craft" => "ruby",
+                    "ev_hurt" | "ev_kill" => "minecraft:zombie",
+                    _ => "",
+                };
+                let e = format!("e{ei}");
+                nodes.push(node(&e, ev, &[("target", target), ("seconds", "30")]));
+                let (cond, val) = conds[ei % conds.len()];
+                let iff = format!("if{ei}");
+                nodes.push(node(&iff, "if", &[("cond", cond), ("value", val)]));
+                links.push(link(&e, "next", &iff));
+                let cancel = format!("c{ei}");
+                nodes.push(node(&cancel, "cancel", &[]));
+                links.push(link(&iff, "false", &cancel));
+                let rep = format!("r{ei}");
+                nodes.push(node(&rep, "repeat", &[("times", "2")]));
+                links.push(link(&iff, "true", &rep));
+                let del = format!("d{ei}");
+                nodes.push(node(&del, "delay", &[("seconds", "1.5")]));
+                links.push(link(&rep, "done", &del));
+                let mut prev = (rep.clone(), "body".to_string());
+                for (ai, (kind, props)) in actions.iter().enumerate() {
+                    if ai == actions.len() / 2 {
+                        prev = (del.clone(), "next".to_string());
+                    }
+                    let id = format!("a{ei}_{ai}");
+                    nodes.push(node(&id, kind, props));
+                    links.push(link(&prev.0, &prev.1, &id));
+                    prev = (id, "next".into());
+                }
+            }
+            c.blueprints.push(Blueprint { name: "Alles".into(), enabled: true, nodes, links });
         }
         for (i, model) in ["cow", "pig", "chicken", "zombie", "spider", "creeper"].iter().enumerate() {
             c.mobs.push(MobDef {
