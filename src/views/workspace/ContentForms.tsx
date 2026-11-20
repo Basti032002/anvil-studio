@@ -25,7 +25,21 @@ function Num({ value, onChange, min, max, step = 1 }: { value: number; onChange:
 }
 
 /** Auswahl eines Items über den Katalog (mit Symbol). */
-export function ItemField({ project, own, value, onChange, placeholder }: { project: Project; own: OwnEntry[]; value: string; onChange: (v: string) => void; placeholder: string }) {
+export function ItemField({
+  project,
+  own,
+  value,
+  onChange,
+  placeholder,
+  blocksOnly,
+}: {
+  project: Project;
+  own: OwnEntry[];
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  blocksOnly?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const { catalog } = useCatalog(project.mcVersion, !!value || open);
   const info = resolveItem(value, catalog, own, project.modId);
@@ -48,6 +62,7 @@ export function ItemField({ project, own, value, onChange, placeholder }: { proj
           mcVersion={project.mcVersion}
           modId={project.modId}
           own={own}
+          blocksOnly={blocksOnly}
           onClose={() => setOpen(false)}
           onPick={(id) => {
             onChange(id);

@@ -3009,7 +3009,7 @@ mod tests {
             ambient_light: 0.1,
             sea_level: 63,
         });
-        c.dimensions.push(crate::dimension::DimDef { id: "lavawelt".into(), fluid: "lava".into(), biome: "minecraft:desert".into(), time: "night".into(), sky: "nether".into(), sea_level: 40, ..Default::default() });
+        c.dimensions.push(crate::dimension::DimDef { id: "lavawelt".into(), top_block: "#minecraft:soul_fire_base_blocks".into(), fluid: "lava".into(), biome: "minecraft:desert".into(), time: "night".into(), sky: "nether".into(), sea_level: 40, ..Default::default() });
         // Blueprint mit allen Knoten
         {
             use crate::blueprint::{BpLink, BpNode, Blueprint, EVENT_KINDS};

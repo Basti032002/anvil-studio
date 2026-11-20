@@ -86,7 +86,15 @@ pub fn files(d: &DimDef, mc_at_least: &dyn Fn((u32, u32, u32)) -> bool, resolve:
 
     // Geländeeinstellungen: Oberwelt mit ausgetauschten Blöcken
     let mut ns: Value = serde_json::from_str(if mc_at_least((1, 21, 9)) { OW_NEW } else { OW_OLD }).unwrap_or(Value::Null);
-    let pick = |s: &str, def: &str| if s.trim().is_empty() { def.to_string() } else { resolve(s.trim()) };
+    // Nur echte Blöcke: Tags (#…) gehen im Gelände nicht → Standardblock
+    let pick = |s: &str, def: &str| {
+        let s = s.trim();
+        if s.is_empty() || s.starts_with('#') {
+            def.to_string()
+        } else {
+            resolve(s)
+        }
+    };
     let top = pick(&d.top_block, "minecraft:grass_block");
     let fill = pick(&d.fill_block, "minecraft:dirt");
     let stone = pick(&d.stone_block, "minecraft:stone");
@@ -127,4 +135,21 @@ pub fn files(d: &DimDef, mc_at_least: &dyn Fn((u32, u32, u32)) -> bool, resolve:
         }),
     ));
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tags_fall_back_to_default_block() {
+        let d = DimDef { id: "welt".into(), top_block: "#minecraft:soul_fire_base_blocks".into(), stone_block: "minecraft:netherrack".into(), fluid: "water".into(), ..Default::default() };
+        let resolve = |s: &str| if let Some(x) = s.strip_prefix('#') { format!("test:{x}") } else { s.to_string() };
+        let files = files(&d, &|_| false, &resolve);
+        let ns = &files.iter().find(|(p, _)| p.starts_with("worldgen/noise_settings")).unwrap().1;
+        let text = ns.to_string();
+        assert!(!text.contains("soul_fire_base_blocks"), "Tag darf nicht im Gelände landen");
+        assert!(text.contains("minecraft:grass_block"));
+        assert_eq!(ns["default_block"]["Name"], "minecraft:netherrack");
+    }
 }

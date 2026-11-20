@@ -72,7 +72,7 @@ export default function DimensionEditor({
   const hasTravel = content.blueprints.some((b) => b.nodes.some((n) => n.kind === "travel" && n.props.dim === dim.id));
   const blockField = (key: "topBlock" | "fillBlock" | "stoneBlock", label: string, hint: string, def: string) => (
     <Field label={label} hint={hint}>
-      <ItemField project={project} own={ownBlocks} value={dim[key]} onChange={(v) => set({ [key]: v })} placeholder={t("Standard: {block}", { block: def })} />
+      <ItemField project={project} own={ownBlocks} blocksOnly value={dim[key]} onChange={(v) => set({ [key]: v })} placeholder={t("Standard: {block}", { block: def })} />
     </Field>
   );
 

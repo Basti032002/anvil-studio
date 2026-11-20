@@ -38,16 +38,19 @@ export default function ItemPicker({
   own,
   onPick,
   onClose,
+  blocksOnly = false,
 }: {
   mcVersion: string;
   modId: string;
   own: OwnEntry[];
   onPick: (id: string) => void;
   onClose: () => void;
+  /** Nur Blöcke (keine Items, keine Tags) – z. B. für das Gelände einer Dimension */
+  blocksOnly?: boolean;
 }) {
   const { catalog, loading, error, progress } = useCatalog(mcVersion);
   const [query, setQuery] = useState("");
-  const [cat, setCat] = useState<Cat>("all");
+  const [cat, setCat] = useState<Cat>(blocksOnly ? "block" : "all");
   const [limit, setLimit] = useState(240);
   const input = useRef<HTMLInputElement>(null);
 
@@ -67,31 +70,36 @@ export default function ItemPicker({
   const rows: Row[] = useMemo(() => {
     const q = query.trim().toLowerCase();
     const match = (r: Row) => !q || r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) || r.sub.toLowerCase().includes(q);
-    const ownRows: Row[] = own.map((o) => ({
+    const ownRows: Row[] = own.filter((o) => !blocksOnly || o.kind === "block").map((o) => ({
       id: `${modId}:${o.id}`,
       name: o.name || o.id,
       sub: o.id,
       icon: (o.kind === "block" ? shapeIcon(o.shape ?? "block", `own:${o.id}`) : { kind: "flat", tex: `own:${o.id}` }) as McIconDef,
       textures: ownTextures,
     }));
-    const tagRows: Row[] = COMMON_TAGS.map((t) => {
+    const tagRows: Row[] = (blocksOnly ? [] : COMMON_TAGS).map((t) => {
       const e = catalog?.entries.find((x) => x.id === t.icon);
       return { id: t.id, name: t.name, sub: t.id, icon: e?.icon, textures: catalog?.textures };
     });
     const vanilla: Row[] = (catalog?.entries ?? [])
-      .filter((e) => cat === "all" || cat === e.kind)
+      .filter((e) => (blocksOnly ? e.kind === "block" : cat === "all" || cat === e.kind))
       .map((e) => ({ id: e.id, name: e.name, sub: e.nameEn, icon: e.icon, textures: catalog?.textures }));
     const list = cat === "own" ? ownRows : cat === "tags" ? tagRows : cat === "all" ? [...ownRows, ...tagRows, ...vanilla] : vanilla;
     return list.filter(match);
-  }, [catalog, own, ownTextures, query, cat, modId]);
+  }, [catalog, own, ownTextures, query, cat, modId, blocksOnly]);
 
-  const cats: [Cat, string][] = [
-    ["all", t("Alle")],
-    ["block", t("Blöcke")],
-    ["item", t("Items")],
-    ["own", t("Eigene ({length})", { length: own.length })],
-    ["tags", t("Tags")],
-  ];
+  const cats: [Cat, string][] = blocksOnly
+    ? [
+        ["block", t("Blöcke")],
+        ["own", t("Eigene ({length})", { length: own.filter((o) => o.kind === "block").length })],
+      ]
+    : [
+        ["all", t("Alle")],
+        ["block", t("Blöcke")],
+        ["item", t("Items")],
+        ["own", t("Eigene ({length})", { length: own.length })],
+        ["tags", t("Tags")],
+      ];
 
   return createPortal(
     <div className="picker-overlay" onMouseDown={onClose}>
