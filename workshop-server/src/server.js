@@ -523,6 +523,20 @@ export function buildServer() {
   });
 
   app.get("/api/health", async () => ({ ok: true, categories: CATEGORIES }));
+
+  // Kleine Startseite für Besucher im Browser – der Workshop selbst läuft in der App
+  app.get("/", async (req, reply) => {
+    const n = db.prepare("SELECT COUNT(*) AS n FROM items WHERE status = 'public'").get().n;
+    reply.type("text/html; charset=utf-8");
+    return `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Anvil Studio Workshop</title><style>
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:#111317;color:#e7e9ee;font-family:system-ui,sans-serif}
+main{max-width:460px;padding:32px;text-align:center}h1{font-size:28px;margin:0 0 8px}p{color:#9aa1ad;line-height:1.5}
+.n{font-size:40px;font-weight:700;color:#f59e0b;margin:24px 0 4px}.ok{display:inline-block;margin-top:20px;padding:4px 12px;border-radius:99px;background:#16341f;color:#4ade80;font-size:13px}
+</style></head><body><main><h1>⚒ Anvil Studio Workshop</h1>
+<p>Hier teilen Modder ihre Minecraft-Mods und Quellcodes. Stöbern, herunterladen und spielen geht direkt in der Anvil-Studio-App.</p>
+<div class="n">${n}</div><p>veröffentlichte ${n === 1 ? "Projekt" : "Projekte"}</p><span class="ok">● Server online</span></main></body></html>`;
+  });
   return app;
 }
 
