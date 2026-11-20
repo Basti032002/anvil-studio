@@ -795,10 +795,6 @@ select option { background: var(--panel); color: var(--text); }
 .ms-footer svg { vertical-align: -1px; }
 @media (max-width: 1000px) { .ms-grid { grid-template-columns: minmax(0, 1fr); } }
 
-/* ---- Phosphor Duotone: zweite Ebene in der Akzentfarbe ---- */
-svg [opacity="0.2"] { fill: var(--accent); opacity: 0.38; }
-.btn.primary svg [opacity="0.2"], .btn.danger svg [opacity="0.2"], .ptool.active svg [opacity="0.2"], .run-btn svg [opacity="0.2"] { fill: currentColor; opacity: 0.25; }
-.icon-btn.danger:hover svg [opacity="0.2"], .danger svg [opacity="0.2"] { fill: var(--error); }
 
 /* ---- Dialoge ---- */
 .modal-backdrop { position: fixed; inset: 0; z-index: 900; background: var(--overlay); display: grid; place-items: center; animation: fade var(--fast) ease; backdrop-filter: blur(2px); }
