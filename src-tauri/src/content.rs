@@ -3686,24 +3686,32 @@ mod tests {
                 ("feed", vec![]),
                 ("enchant", vec![("enchant", "sharpness"), ("level", "2")]),
                 ("travel", vec![("dim", "traumland"), ("mode", "toggle")]),
+                ("var_math", vec![("var", "punkte"), ("op", "mul"), ("src", "var"), ("var2", "runde"), ("scope2", "global")]),
+                ("var_math", vec![("var", "punkte"), ("op", "div"), ("value", "0")]),
+                ("random_tp", vec![("radius", "20")]),
+                ("set_name", vec![("text", "Bello {player}")]),
+                ("place_structure", vec![("structure", "minecraft:igloo")]),
+                ("equip", vec![("item", "minecraft:diamond_helmet"), ("slot", "head")]),
+                ("call", vec![("fn", "Belohnung geben")]),
             ];
             let conds = [
                 ("chance", "30"), ("sneaking", ""), ("raining", ""), ("thundering", ""), ("day", ""), ("night", ""), ("creative", ""),
                 ("holding", "ruby"), ("health_below", "5"), ("dimension", "nether"), ("block_below", "stone"), ("message_contains", "hallo"),
                 ("var", "3"), ("has_item", "ruby"), ("level_at_least", "5"), ("in_water", ""), ("on_fire", ""), ("is_player_target", ""),
+                ("players_online", "2"), ("y_above", "100"), ("y_below", "0"), ("on_ground", ""), ("is_sprinting", ""), ("full_health", ""),
             ];
             let mut nodes = vec![];
             let mut links = vec![];
             for (ei, ev) in EVENT_KINDS.iter().enumerate() {
                 let target = match *ev {
                     "ev_click_block" | "ev_break" | "ev_place" | "ev_left_click_block" => "ruby_block",
-                    "ev_click_item" | "ev_use" | "ev_craft" | "ev_pickup" => "ruby",
+                    "ev_click_item" | "ev_use" | "ev_craft" | "ev_pickup" | "ev_toss" => "ruby",
                     "ev_click_entity" => "minecraft:cow",
                     "ev_hurt" | "ev_kill" => "minecraft:zombie",
                     _ => "",
                 };
                 let e = format!("e{ei}");
-                nodes.push(node(&e, ev, &[("target", target), ("seconds", "30")]));
+                nodes.push(node(&e, ev, &[("target", target), ("seconds", "30"), ("command", "/Anvil-Test"), ("fn", "Belohnung geben")]));
                 let (cond, val) = conds[ei % conds.len()];
                 let iff = format!("if{ei}");
                 nodes.push(node(&iff, "if", &[("cond", cond), ("value", val), ("var", "punkte"), ("cmp", "ge")]));
@@ -3729,6 +3737,38 @@ mod tests {
                 }
             }
             c.blueprints.push(Blueprint { name: "Alles".into(), enabled: true, nodes, links });
+            // Logik: UND/ODER/NICHT, Schleifen, Funktion
+            let nodes = vec![
+                node("e", "ev_break", &[]),
+                node("if", "if", &[("cond", "sneaking"), ("not", "not"), ("join", "or"), ("b_cond", "var"), ("b_var", "punkte"), ("b_cmp", "lt"), ("b_value", "3")]),
+                node("w", "while", &[("cond", "var"), ("var", "punkte"), ("cmp", "lt"), ("value", "5"), ("max", "10")]),
+                node("w1", "var_set", &[("var", "punkte"), ("op", "add"), ("value", "1")]),
+                node("fp", "for_players", &[("range", "radius"), ("radius", "32")]),
+                node("fp1", "message", &[("text", "Hallo {player}")]),
+                node("fp2", "delay", &[("seconds", "1")]),
+                node("fp3", "heal", &[("amount", "2")]),
+                node("fe", "for_entities", &[("radius", "8"), ("entity", "minecraft:zombie")]),
+                node("fe1", "fire", &[("who", "target"), ("seconds", "2")]),
+                node("fe2", "stop", &[]),
+                node("st", "stop", &[]),
+                node("f", "ev_function", &[("fn", "Belohnung geben")]),
+                node("f1", "give", &[("item", "minecraft:emerald")]),
+            ];
+            let links = vec![
+                link("e", "next", "if"),
+                link("if", "true", "w"),
+                link("w", "body", "w1"),
+                link("w", "done", "fp"),
+                link("fp", "body", "fp1"),
+                link("fp1", "next", "fp2"),
+                link("fp2", "next", "fp3"),
+                link("fp", "done", "fe"),
+                link("fe", "body", "fe1"),
+                link("fe1", "next", "fe2"),
+                link("if", "false", "st"),
+                link("f", "next", "f1"),
+            ];
+            c.blueprints.push(Blueprint { name: "Logik".into(), enabled: true, nodes, links });
         }
         for (i, model) in ["cow", "pig", "chicken", "zombie", "spider", "creeper"].iter().enumerate() {
             c.mobs.push(MobDef {

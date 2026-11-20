@@ -3,6 +3,7 @@
 //! Befehle – deren Syntax ist über die Versionen 1.21.x stabil.
 
 use serde::{Deserialize, Serialize};
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashSet};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -125,19 +126,47 @@ fn who(props: &BTreeMap<String, String>) -> &'static str {
     }
 }
 
-pub const EVENT_KINDS: [&str; 21] = [
+pub const EVENT_KINDS: [&str; 26] = [
     "ev_join", "ev_respawn", "ev_dimension", "ev_timer", "ev_click_block", "ev_click_item", "ev_break", "ev_place", "ev_use", "ev_hurt", "ev_kill",
     "ev_jump", "ev_chat", "ev_craft", "ev_start", "ev_click_entity", "ev_player_death", "ev_leave", "ev_pickup", "ev_level_up", "ev_left_click_block",
+    "ev_function", "ev_command", "ev_toss", "ev_player_hurt", "ev_fish",
 ];
+
+/// Parameter eines Körpers (Schleifen, Funktionen) – dieselben Namen wie im Ereignis
+const BODY_PARAMS: &str = "ServerLevel level, Player player, LivingEntity target, double x, double y, double z, BlockState state, ItemStack stack, String message";
+
+/// Name einer eigenen Funktion als Java-Bezeichner
+pub fn fn_name(s: &str) -> String {
+    let v = var_name(s);
+    if v.is_empty() { "funktion".into() } else { v }
+}
 
 struct Gen<'a> {
     api: &'a BpApi,
     bp: &'a Blueprint,
     nodes: BTreeMap<&'a str, &'a BpNode>,
     cancellable: bool,
+    /// zusätzliche Methoden (Schleifenkörper)
+    extra: &'a RefCell<String>,
+    seq: &'a Cell<usize>,
 }
 
 impl<'a> Gen<'a> {
+    /// Körper als eigene Methode (frische Variablennamen), gibt den Methodennamen zurück
+    fn body_method(&self, from: &str, out: &str, depth: usize, stack: &mut HashSet<String>) -> Option<String> {
+        let g = Gen { api: self.api, bp: self.bp, nodes: self.nodes.clone(), cancellable: false, extra: self.extra, seq: self.seq };
+        let body = g.follow(from, out, 0, true, stack);
+        let _ = depth;
+        if body.trim().is_empty() {
+            return None;
+        }
+        let n = self.seq.get() + 1;
+        self.seq.set(n);
+        let name = format!("anvilBody{n}");
+        self.extra.borrow_mut().push_str(&format!("\n    private static void {name}({BODY_PARAMS}) {{\n{body}    }}\n"));
+        Some(name)
+    }
+
     /// Code für alle Knoten, die an Ausgang `out` von `from` hängen
     fn follow(&self, from: &str, out: &str, depth: usize, in_lambda: bool, stack: &mut HashSet<String>) -> String {
         let mut links: Vec<&BpLink> = self.bp.links.iter().filter(|l| l.from == from && l.out == out).collect();
@@ -168,7 +197,7 @@ impl<'a> Gen<'a> {
         let code = match n.kind.as_str() {
             // ---- Ablauf ----
             "if" => {
-                let cond = self.condition(p);
+                let cond = self.full_condition(p);
                 let t = self.follow(&n.id, "true", depth + 1, in_lambda, stack);
                 let f = self.follow(&n.id, "false", depth + 1, in_lambda, stack);
                 let mut c = format!("{ind}if ({cond}) {{\n{t}{ind}}}");
@@ -188,6 +217,94 @@ impl<'a> Gen<'a> {
                 let times = num(p, "times", 3.0, 1.0, 1000.0) as i64;
                 let body = self.follow(&n.id, "body", depth + 1, in_lambda, stack);
                 format!("{ind}for (int i{depth} = 0; i{depth} < {times}; i{depth}++) {{\n{body}{ind}}}\n") + &self.follow(&n.id, "done", depth, in_lambda, stack)
+            }
+            "while" => {
+                let cond = self.full_condition(p);
+                let max = num(p, "max", 100.0, 1.0, 10000.0) as i64;
+                let body = self.follow(&n.id, "body", depth + 1, in_lambda, stack);
+                format!("{ind}for (int w{depth} = 0; w{depth} < {max} && ({cond}); w{depth}++) {{\n{body}{ind}}}\n") + &self.follow(&n.id, "done", depth, in_lambda, stack)
+            }
+            "for_players" => {
+                let call = self.body_method(&n.id, "body", depth, stack);
+                let mut c = String::new();
+                if let Some(m) = call {
+                    let filter = if prop(p, "range") == "radius" {
+                        format!(" if (p.distanceToSqr(x, y, z) > {r} * {r}) continue;", r = num(p, "radius", 16.0, 1.0, 512.0))
+                    } else {
+                        String::new()
+                    };
+                    c = format!("{ind}for (net.minecraft.server.level.ServerPlayer p : new java.util.ArrayList<>(level.getServer().getPlayerList().getPlayers())) {{{filter} if (p.level() instanceof ServerLevel pl) {m}(pl, p, p, p.getX(), p.getY(), p.getZ(), null, p.getMainHandItem(), message); }}\n");
+                }
+                c + &self.follow(&n.id, "done", depth, in_lambda, stack)
+            }
+            "for_entities" => {
+                let call = self.body_method(&n.id, "body", depth, stack);
+                let mut c = String::new();
+                if let Some(m) = call {
+                    let r = num(p, "radius", 8.0, 1.0, 64.0);
+                    let e = prop(p, "entity");
+                    let filter = if id_ok(e) { format!(" if (e.getType() != anvilEntity(\"{}\")) continue;", rid(self.api, e)) } else { String::new() };
+                    let players = if prop(p, "players") == "yes" { "" } else { " if (e instanceof Player) continue;" };
+                    c = format!("{ind}for (LivingEntity e : level.getEntitiesOfClass(LivingEntity.class, new net.minecraft.world.phys.AABB(x - {r}, y - {r}, z - {r}, x + {r}, y + {r}, z + {r}))) {{{filter}{players} {m}(level, player, e, e.getX(), e.getY(), e.getZ(), state, stack, message); }}\n");
+                }
+                c + &self.follow(&n.id, "done", depth, in_lambda, stack)
+            }
+            "stop" => {
+                stack.remove(&n.id);
+                return format!("{ind}if (true) return;\n");
+            }
+            "call" => {
+                let f = fn_name(prop(p, "fn"));
+                format!("{ind}anvilFn_{f}(level, player, target, x, y, z, state, stack, message);\n") + &next(stack)
+            }
+            "var_math" => {
+                let name = var_name(prop(p, "var"));
+                let holder = if prop(p, "scope") == "global" { "null" } else { "player" };
+                let operand = if prop(p, "src") == "var" {
+                    let h2 = if prop(p, "scope2") == "global" { "null" } else { "player" };
+                    format!("anvilGet(level, {h2}, \"{}\")", var_name(prop(p, "var2")))
+                } else {
+                    (num(p, "value", 1.0, -1_000_000_000.0, 1_000_000_000.0) as i64).to_string()
+                };
+                let cur = format!("anvilGet(level, {holder}, \"{name}\")");
+                let expr = match prop(p, "op") {
+                    "set" => operand.clone(),
+                    "sub" => format!("{cur} - {operand}"),
+                    "mul" => format!("{cur} * {operand}"),
+                    "div" => format!("({operand}) == 0 ? {cur} : {cur} / ({operand})"),
+                    "mod" => format!("({operand}) == 0 ? {cur} : Math.floorMod({cur}, {operand})"),
+                    "min" => format!("Math.min({cur}, {operand})"),
+                    "max" => format!("Math.max({cur}, {operand})"),
+                    "rand" => format!("level.getRandom().nextInt(Math.max(1, {operand}))"),
+                    _ => format!("{cur} + {operand}"),
+                };
+                format!("{ind}anvilSet(level, {holder}, \"{name}\", (int) ({expr}));\n") + &next(stack)
+            }
+            "random_tp" => run(format!("spreadplayers ~ ~ 0 {} false @s", num(p, "radius", 50.0, 1.0, 10000.0) as i64)) + &next(stack),
+            "set_name" => {
+                let t = text_expr(prop(p, "text"));
+                format!("{ind}if (target != null && !(target instanceof Player)) {{ target.setCustomName(Component.literal({t})); target.setCustomNameVisible(true); }}\n") + &next(stack)
+            }
+            "place_structure" => {
+                let st = prop(p, "structure");
+                let st = if id_ok(st) { st.to_string() } else { "minecraft:village_plains".into() };
+                format!("{ind}anvilRun(level, null, x, y, z, \"place structure {} ~ ~ ~\");\n", js(&st)) + &next(stack)
+            }
+            "equip" => {
+                let it = prop(p, "item");
+                if id_ok(it) {
+                    let slot = match prop(p, "slot") {
+                        "chest" => "armor.chest",
+                        "legs" => "armor.legs",
+                        "feet" => "armor.feet",
+                        "offhand" => "weapon.offhand",
+                        "hand" => "weapon.mainhand",
+                        _ => "armor.head",
+                    };
+                    run(format!("item replace entity @s {slot} with {}", rid(self.api, it))) + &next(stack)
+                } else {
+                    next(stack)
+                }
             }
             "cancel" => {
                 let c = if self.cancellable && !in_lambda { format!("{ind}event.setCanceled(true);\n") } else { String::new() };
@@ -426,6 +543,21 @@ impl<'a> Gen<'a> {
         code
     }
 
+    /// Bedingung mit NICHT und optional einer zweiten (UND / ODER)
+    fn full_condition(&self, p: &BTreeMap<String, String>) -> String {
+        let one = |prefix: &str| -> String {
+            let sub: BTreeMap<String, String> = p.iter().filter_map(|(k, v)| k.strip_prefix(prefix).map(|k| (k.to_string(), v.clone()))).collect();
+            let c = self.condition(&sub);
+            if prop(&sub, "not") == "not" { format!("!({c})") } else { format!("({c})") }
+        };
+        let a = one("");
+        match prop(p, "join") {
+            "and" => format!("{a} && {}", one("b_")),
+            "or" => format!("{a} || {}", one("b_")),
+            _ => a,
+        }
+    }
+
     fn condition(&self, p: &BTreeMap<String, String>) -> String {
         let v = prop(p, "value");
         match prop(p, "cond") {
@@ -461,6 +593,12 @@ impl<'a> Gen<'a> {
             "in_water" => "target != null && target.isInWater()".into(),
             "on_fire" => "target != null && target.isOnFire()".into(),
             "is_player_target" => "target instanceof Player".into(),
+            "players_online" => format!("level.getServer().getPlayerCount() >= {}", num(p, "value", 2.0, 0.0, 1000.0) as i64),
+            "y_above" => format!("y > {}", num(p, "value", 64.0, -64.0, 320.0)),
+            "y_below" => format!("y < {}", num(p, "value", 0.0, -64.0, 320.0)),
+            "on_ground" => "target != null && target.onGround()".into(),
+            "is_sprinting" => "player != null && player.isSprinting()".into(),
+            "full_health" => "target != null && target.getHealth() >= target.getMaxHealth()".into(),
             "message_contains" => format!("message.toLowerCase().contains(\"{}\".toLowerCase())", js(v)),
             // Zufall in Prozent (Standard)
             _ => format!("level.getRandom().nextFloat() < {:.3}f", num(p, "value", 50.0, 0.0, 100.0) / 100.0),
@@ -542,6 +680,21 @@ fn event_head(kind: &str) -> Option<(&'static str, &'static str, bool)> {
             false,
         ),
         "ev_leave" => ("PlayerEvent.PlayerLoggedOutEvent", PLAYER_CTX, false),
+        "ev_toss" => (
+            "net.neoforged.neoforge.event.entity.item.ItemTossEvent",
+            "        final Player player = event.getPlayer();\n        if (!(player.level() instanceof ServerLevel level)) return;\n        final LivingEntity target = player;\n        final double x = player.getX(), y = player.getY(), z = player.getZ();\n        final BlockState state = null;\n        final ItemStack stack = event.getEntity().getItem();\n        final String message = \"\";\n",
+            true,
+        ),
+        "ev_player_hurt" => (
+            "LivingIncomingDamageEvent",
+            "        if (!(event.getEntity() instanceof Player player) || !(player.level() instanceof ServerLevel level)) return;\n        final LivingEntity target = event.getSource().getEntity() instanceof LivingEntity a0 ? a0 : player;\n        final double x = player.getX(), y = player.getY(), z = player.getZ();\n        final BlockState state = null;\n        final ItemStack stack = player.getMainHandItem();\n        final String message = \"\";\n",
+            true,
+        ),
+        "ev_fish" => (
+            "net.neoforged.neoforge.event.entity.player.ItemFishedEvent",
+            "        final Player player = event.getEntity();\n        if (!(player.level() instanceof ServerLevel level)) return;\n        final LivingEntity target = player;\n        final double x = player.getX(), y = player.getY(), z = player.getZ();\n        final BlockState state = null;\n        final ItemStack stack = event.getDrops().isEmpty() ? ItemStack.EMPTY : event.getDrops().get(0);\n        final String message = \"\";\n",
+            true,
+        ),
         "ev_pickup" => (
             "ItemEntityPickupEvent.Post",
             "        final Player player = event.getPlayer();\n        if (!(player.level() instanceof ServerLevel level)) return;\n        final LivingEntity target = player;\n        final double x = player.getX(), y = player.getY(), z = player.getZ();\n        final BlockState state = null;\n        final ItemStack stack = event.getOriginalStack();\n        final String message = \"\";\n",
@@ -565,7 +718,7 @@ fn event_filter(api: &BpApi, n: &BpNode) -> Option<String> {
     let t = rid(api, t);
     Some(match n.kind.as_str() {
         "ev_click_block" | "ev_break" | "ev_place" | "ev_left_click_block" => format!("state != null && state.is(anvilBlock(\"{t}\"))"),
-        "ev_click_item" | "ev_use" | "ev_craft" | "ev_pickup" => format!("stack.is(anvilBpItem(\"{t}\"))"),
+        "ev_click_item" | "ev_use" | "ev_craft" | "ev_pickup" | "ev_toss" => format!("stack.is(anvilBpItem(\"{t}\"))"),
         "ev_click_entity" => format!("targetType == anvilEntity(\"{t}\")"),
         "ev_hurt" | "ev_kill" => format!("target.getType() == anvilEntity(\"{t}\")"),
         _ => return None,
@@ -684,9 +837,12 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
 "##
     ));
 
+    let extra = RefCell::new(String::new());
+    let seq = Cell::new(0usize);
+    let mut functions: BTreeMap<String, String> = BTreeMap::new();
     let mut counter = 0;
     for bp in &active {
-        let gen = Gen { api, bp, nodes: bp.nodes.iter().map(|n| (n.id.as_str(), n)).collect(), cancellable: false };
+        let gen = Gen { api, bp, nodes: bp.nodes.iter().map(|n| (n.id.as_str(), n)).collect(), cancellable: false, extra: &extra, seq: &seq };
         for n in bp.nodes.iter().filter(|n| EVENT_KINDS.contains(&n.kind.as_str())) {
             counter += 1;
             let mut stack = HashSet::new();
@@ -698,6 +854,22 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
                         "        if (now % {ticks}L == 0) {{\n            for (Player player : server.getPlayerList().getPlayers()) {{\n                if (!(player.level() instanceof ServerLevel level)) continue;\n                final LivingEntity target = player;\n                final double x = player.getX(), y = player.getY(), z = player.getZ();\n                final BlockState state = null;\n                final ItemStack stack = player.getMainHandItem();\n                final String message = \"\";\n{body}            }}\n        }}\n"
                     ));
                 }
+                "ev_function" => {
+                    let body = gen.follow(&n.id, "next", 1, true, &mut stack);
+                    functions.entry(fn_name(prop(&n.props, "fn"))).or_default().push_str(&body);
+                }
+                "ev_command" => {
+                    let name: String = prop(&n.props, "command").trim_start_matches('/').to_lowercase().chars().filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_').collect();
+                    if name.is_empty() {
+                        continue;
+                    }
+                    let body = gen.follow(&n.id, "next", 0, true, &mut stack);
+                    let method = format!("anvilBp{counter}");
+                    calls.push_str(&format!("        NeoForge.EVENT_BUS.addListener(AnvilContent::{method});\n"));
+                    methods.push_str(&format!(
+                        "\n    private static void {method}(net.neoforged.neoforge.event.RegisterCommandsEvent event) {{\n        event.getDispatcher().register(net.minecraft.commands.Commands.literal(\"{name}\").executes(ctx -> {{ {method}Run(ctx.getSource()); return 1; }}));\n    }}\n\n    private static void {method}Run(CommandSourceStack source) {{\n        final ServerLevel level = source.getLevel();\n        final Player player = source.getPlayer();\n        final LivingEntity target = player;\n        final double x = source.getPosition().x, y = source.getPosition().y, z = source.getPosition().z;\n        final BlockState state = null;\n        final ItemStack stack = player != null ? player.getMainHandItem() : ItemStack.EMPTY;\n        final String message = \"\";\n{body}    }}\n"
+                    ));
+                }
                 "ev_start" => {
                     let body = gen.follow(&n.id, "next", 1, false, &mut stack);
                     starts.push_str(&format!(
@@ -706,7 +878,7 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
                 }
                 kind => {
                     let Some((class, head, cancellable)) = event_head(kind) else { continue };
-                    let g = Gen { api, bp, nodes: gen.nodes.clone(), cancellable };
+                    let g = Gen { api, bp, nodes: gen.nodes.clone(), cancellable, extra: &extra, seq: &seq };
                     let body = g.follow(&n.id, "next", 0, false, &mut stack);
                     let body = match event_filter(api, n) {
                         Some(f) => format!("        if (!({f})) return;\n{body}"),
@@ -719,6 +891,16 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
             }
         }
     }
+    // eigene Funktionen (auch leere, wenn nur aufgerufen)
+    for bp in &active {
+        for n in bp.nodes.iter().filter(|n| n.kind == "call") {
+            functions.entry(fn_name(prop(&n.props, "fn"))).or_default();
+        }
+    }
+    for (name, body) in &functions {
+        methods.push_str(&format!("\n    private static void anvilFn_{name}({BODY_PARAMS}) {{\n{body}    }}\n"));
+    }
+    methods.push_str(&extra.into_inner());
     if !starts.is_empty() {
         calls.push_str("        NeoForge.EVENT_BUS.addListener(AnvilContent::anvilStarted);\n");
         methods.push_str(&format!("\n    private static void anvilStarted(ServerStartedEvent event) {{\n{starts}    }}\n"));

@@ -4,7 +4,7 @@ import { Blueprint, BpNode } from "../../api";
 // Katalog der Blueprint-Knoten. Muss zu src-tauri/src/blueprint.rs passen.
 
 export type BpCat = "event" | "flow" | "vars" | "world" | "player" | "other";
-export type PropType = "text" | "number" | "select" | "item" | "block" | "entity" | "effect" | "sound" | "particle" | "who" | "var" | "dim";
+export type PropType = "text" | "number" | "select" | "item" | "block" | "entity" | "effect" | "sound" | "particle" | "who" | "var" | "dim" | "fn";
 export interface PropSpec {
   key: string;
   label: string;
@@ -13,6 +13,8 @@ export interface PropSpec {
   options?: { id: string; label: string }[];
   /** nur zeigen, wenn eine andere Eigenschaft einen dieser Werte hat */
   when?: { key: string; values: string[] };
+  /** und zusätzlich diese Bedingung */
+  when2?: { key: string; values: string[] };
 }
 export interface NodeSpec {
   kind: string;
@@ -25,7 +27,7 @@ export interface NodeSpec {
 
 export const CATS: { id: BpCat; label: string }[] = [
   { id: "event", label: t("Ereignisse") },
-  { id: "flow", label: t("Ablauf") },
+  { id: "flow", label: t("Logik & Schleifen") },
   { id: "vars", label: t("Variablen") },
   { id: "world", label: t("Welt") },
   { id: "player", label: t("Spieler & Kreaturen") },
@@ -50,6 +52,88 @@ const textP = (key: string, label: string, def: string): PropSpec => ({ key, lab
 const target = (type: PropType, label: string): PropSpec => ({ key: "target", label, type, def: "" });
 const scopeP: PropSpec = { key: "scope", label: t("Gilt für"), type: "select", def: "player", options: [{ id: "player", label: t("Spieler") }, { id: "global", label: t("Ganze Welt") }] };
 
+/** Felder einer Bedingung (prefix "b_" für die zweite) */
+function condProps(prefix: string, extra?: { key: string; values: string[] }): PropSpec[] {
+  const w = (values: string[]) => ({ when: { key: `${prefix}cond`, values }, ...(extra ? { when2: extra } : {}) });
+  const P = (spec: PropSpec, values: string[]): PropSpec => ({ ...spec, key: prefix + spec.key, ...w(values) });
+  return [
+    {
+      ...sel(`${prefix}cond`, prefix ? t("Zweite Bedingung") : t("Bedingung"), "chance", [
+        ["chance", t("Zufall (Prozent)")],
+        ["sneaking", t("Spieler schleicht")],
+        ["is_sprinting", t("Spieler sprintet")],
+        ["raining", t("Es regnet")],
+        ["thundering", t("Gewitter")],
+        ["day", t("Es ist Tag")],
+        ["night", t("Es ist Nacht")],
+        ["creative", t("Kreativmodus")],
+        ["holding", t("Hält Item in der Hand")],
+        ["health_below", t("Leben des Ziels unter")],
+        ["full_health", t("Ziel hat volles Leben")],
+        ["dimension", t("In Dimension")],
+        ["block_below", t("Steht auf Block")],
+        ["on_ground", t("Ziel steht auf dem Boden")],
+        ["y_above", t("Höhe über")],
+        ["y_below", t("Höhe unter")],
+        ["message_contains", t("Nachricht enthält")],
+        ["var", t("Variable vergleichen")],
+        ["has_item", t("Hat Item im Inventar")],
+        ["level_at_least", t("Level mindestens")],
+        ["in_water", t("Ziel ist im Wasser")],
+        ["on_fire", t("Ziel brennt")],
+        ["is_player_target", t("Ziel ist ein Spieler")],
+        ["players_online", t("Spieler online mindestens")],
+      ]),
+      ...(extra ? { when: extra } : {}),
+    },
+    { ...sel(`${prefix}not`, t("Umkehren"), "is", [["is", t("Bedingung gilt")], ["not", t("NICHT (gilt nicht)")]]), ...(extra ? { when: extra } : {}) },
+    P({ key: "var", label: t("Variable"), type: "var", def: "punkte" }, ["var"]),
+    P({ ...scopeP }, ["var"]),
+    P(
+      {
+        key: "cmp",
+        label: t("Vergleich"),
+        type: "select",
+        def: "ge",
+        options: [
+          { id: "ge", label: "≥" },
+          { id: "gt", label: ">" },
+          { id: "eq", label: "=" },
+          { id: "ne", label: "≠" },
+          { id: "le", label: "≤" },
+          { id: "lt", label: "<" },
+        ],
+      },
+      ["var"],
+    ),
+    P({ key: "value", label: t("Wert"), type: "number", def: "10" }, ["var"]),
+    P({ key: "value", label: t("Item"), type: "item", def: "" }, ["has_item"]),
+    P({ key: "count", label: t("Anzahl"), type: "number", def: "1" }, ["has_item"]),
+    P({ key: "value", label: t("Level"), type: "number", def: "5" }, ["level_at_least"]),
+    P({ key: "value", label: t("Prozent"), type: "number", def: "50" }, ["chance"]),
+    P({ key: "value", label: t("Leben"), type: "number", def: "10" }, ["health_below"]),
+    P({ key: "value", label: t("Höhe (Y)"), type: "number", def: "64" }, ["y_above", "y_below"]),
+    P({ key: "value", label: t("Anzahl"), type: "number", def: "2" }, ["players_online"]),
+    P({ key: "value", label: t("Item"), type: "item", def: "" }, ["holding"]),
+    P({ key: "value", label: t("Block"), type: "block", def: "" }, ["block_below"]),
+    P({ key: "value", label: t("Text"), type: "text", def: "" }, ["message_contains"]),
+    P(
+      {
+        key: "value",
+        label: t("Dimension"),
+        type: "select",
+        def: "overworld",
+        options: [
+          { id: "overworld", label: t("Oberwelt") },
+          { id: "nether", label: t("Nether") },
+          { id: "end", label: t("End") },
+        ],
+      },
+      ["dimension"],
+    ),
+  ];
+}
+
 export const NODES: NodeSpec[] = [
   // ---- Ereignisse ----
   { kind: "ev_join", cat: "event", label: t("Spieler betritt die Welt"), desc: t("Beim Einloggen in die Welt oder auf den Server"), outs: NEXT, props: [] },
@@ -72,6 +156,11 @@ export const NODES: NodeSpec[] = [
   { kind: "ev_player_death", cat: "event", label: t("Spieler stirbt"), desc: t("Wenn ein Spieler stirbt"), outs: NEXT, props: [] },
   { kind: "ev_level_up", cat: "event", label: t("Level aufgestiegen"), desc: t("Wenn der Spieler ein Erfahrungslevel erreicht"), outs: NEXT, props: [] },
   { kind: "ev_leave", cat: "event", label: t("Spieler verlässt die Welt"), desc: t("Beim Ausloggen"), outs: NEXT, props: [] },
+  { kind: "ev_command", cat: "event", label: t("Chat-Befehl"), desc: t("Eigener Befehl, z. B. /belohnung"), outs: NEXT, props: [textP("command", t("Befehl"), "/belohnung")] },
+  { kind: "ev_toss", cat: "event", label: t("Item weggeworfen"), desc: t("Mit Q fallen gelassen"), outs: NEXT, props: [target("item", t("Item"))] },
+  { kind: "ev_player_hurt", cat: "event", label: t("Spieler erleidet Schaden"), desc: t("„Ziel“ ist der Angreifer (falls es einen gibt)"), outs: NEXT, props: [] },
+  { kind: "ev_fish", cat: "event", label: t("Etwas geangelt"), desc: t("Beim Einholen der Angel"), outs: NEXT, props: [] },
+  { kind: "ev_function", cat: "event", label: t("Eigene Funktion"), desc: t("Wird mit „Funktion aufrufen“ gestartet – aus jedem Blueprint"), outs: NEXT, props: [textP("fn", t("Name"), "belohnung")] },
   { kind: "ev_chat", cat: "event", label: t("Chatnachricht"), desc: t("Mit „Wenn → Nachricht enthält“ auf Wörter reagieren"), outs: NEXT, props: [] },
 
   // ---- Ablauf ----
@@ -79,73 +168,53 @@ export const NODES: NodeSpec[] = [
     kind: "if",
     cat: "flow",
     label: t("Wenn"),
-    desc: t("Verzweigt je nach Bedingung"),
+    desc: t("Verzweigt je nach Bedingung – mit NICHT, UND, ODER"),
     outs: [
       { id: "true", label: t("Ja") },
       { id: "false", label: t("Nein") },
       { id: "next", label: t("Danach") },
     ],
     props: [
-      sel("cond", t("Bedingung"), "chance", [
-        ["chance", t("Zufall (Prozent)")],
-        ["sneaking", t("Spieler schleicht")],
-        ["raining", t("Es regnet")],
-        ["thundering", t("Gewitter")],
-        ["day", t("Es ist Tag")],
-        ["night", t("Es ist Nacht")],
-        ["creative", t("Kreativmodus")],
-        ["holding", t("Hält Item in der Hand")],
-        ["health_below", t("Leben des Ziels unter")],
-        ["dimension", t("In Dimension")],
-        ["block_below", t("Steht auf Block")],
-        ["message_contains", t("Nachricht enthält")],
-        ["var", t("Variable vergleichen")],
-        ["has_item", t("Hat Item im Inventar")],
-        ["level_at_least", t("Level mindestens")],
-        ["in_water", t("Ziel ist im Wasser")],
-        ["on_fire", t("Ziel brennt")],
-        ["is_player_target", t("Ziel ist ein Spieler")],
-      ]),
-      { key: "var", label: t("Variable"), type: "var", def: "punkte", when: { key: "cond", values: ["var"] } },
-      { ...scopeP, when: { key: "cond", values: ["var"] } },
-      {
-        key: "cmp",
-        label: t("Vergleich"),
-        type: "select",
-        def: "ge",
-        when: { key: "cond", values: ["var"] },
-        options: [
-          { id: "ge", label: "≥" },
-          { id: "gt", label: ">" },
-          { id: "eq", label: "=" },
-          { id: "ne", label: "≠" },
-          { id: "le", label: "≤" },
-          { id: "lt", label: "<" },
-        ],
-      },
-      { key: "value", label: t("Wert"), type: "number", def: "10", when: { key: "cond", values: ["var"] } },
-      { key: "value", label: t("Item"), type: "item", def: "", when: { key: "cond", values: ["has_item"] } },
-      { key: "count", label: t("Anzahl"), type: "number", def: "1", when: { key: "cond", values: ["has_item"] } },
-      { key: "value", label: t("Level"), type: "number", def: "5", when: { key: "cond", values: ["level_at_least"] } },
-      { key: "value", label: t("Prozent"), type: "number", def: "50", when: { key: "cond", values: ["chance"] } },
-      { key: "value", label: t("Leben"), type: "number", def: "10", when: { key: "cond", values: ["health_below"] } },
-      { key: "value", label: t("Item"), type: "item", def: "", when: { key: "cond", values: ["holding"] } },
-      { key: "value", label: t("Block"), type: "block", def: "", when: { key: "cond", values: ["block_below"] } },
-      { key: "value", label: t("Text"), type: "text", def: "", when: { key: "cond", values: ["message_contains"] } },
-      {
-        key: "value",
-        label: t("Dimension"),
-        type: "select",
-        def: "overworld",
-        when: { key: "cond", values: ["dimension"] },
-        options: [
-          { id: "overworld", label: t("Oberwelt") },
-          { id: "nether", label: t("Nether") },
-          { id: "end", label: t("End") },
-        ],
-      },
+      ...condProps(""),
+      sel("join", t("Verknüpfen"), "none", [["none", t("Nur diese Bedingung")], ["and", t("UND zweite Bedingung")], ["or", t("ODER zweite Bedingung")]]),
+      ...condProps("b_", { key: "join", values: ["and", "or"] }),
     ],
   },
+  {
+    kind: "while",
+    cat: "flow",
+    label: t("Solange"),
+    desc: t("Wiederholt, solange die Bedingung gilt (höchstens „Max.“ mal)"),
+    outs: [
+      { id: "body", label: t("Wiederholen") },
+      { id: "done", label: t("Danach") },
+    ],
+    props: [...condProps(""), numP("max", t("Max. Durchläufe"), "100")],
+  },
+  {
+    kind: "for_players",
+    cat: "flow",
+    label: t("Für jeden Spieler"),
+    desc: t("„Spieler“ ist im Ablauf jeweils der nächste Spieler"),
+    outs: [
+      { id: "body", label: t("Je Spieler") },
+      { id: "done", label: t("Danach") },
+    ],
+    props: [sel("range", t("Welche"), "all", [["all", t("Alle Spieler")], ["radius", t("Im Umkreis")]]), { ...numP("radius", t("Umkreis (Blöcke)"), "16"), when: { key: "range", values: ["radius"] } }],
+  },
+  {
+    kind: "for_entities",
+    cat: "flow",
+    label: t("Für jede Kreatur im Umkreis"),
+    desc: t("„Ziel“ ist im Ablauf jeweils die nächste Kreatur"),
+    outs: [
+      { id: "body", label: t("Je Kreatur") },
+      { id: "done", label: t("Danach") },
+    ],
+    props: [numP("radius", t("Umkreis (Blöcke)"), "8"), { key: "entity", label: t("Nur diese Art (leer = alle)"), type: "entity", def: "" }, sel("players", t("Spieler mitzählen"), "no", [["no", t("Nein")], ["yes", t("Ja")]])],
+  },
+  { kind: "stop", cat: "flow", label: t("Stoppen"), desc: t("Beendet diesen Ablauf sofort"), outs: [], props: [] },
+  { kind: "call", cat: "flow", label: t("Funktion aufrufen"), desc: t("Führt eine eigene Funktion aus"), outs: NEXT, props: [{ key: "fn", label: t("Funktion"), type: "fn", def: "" }] },
   { kind: "delay", cat: "flow", label: t("Warten"), desc: t("Führt den Rest später aus"), outs: NEXT, props: [numP("seconds", t("Sekunden"), "2")] },
   {
     kind: "repeat",
@@ -174,6 +243,22 @@ export const NODES: NodeSpec[] = [
       numP("value", t("Wert"), "1"),
     ],
   },
+  {
+    kind: "var_math",
+    cat: "vars",
+    label: t("Mit Variablen rechnen"),
+    desc: t("Variable = Variable (+ − × ÷ …) Zahl oder andere Variable"),
+    outs: NEXT,
+    props: [
+      { key: "var", label: t("Variable"), type: "var", def: "punkte" },
+      { key: "scope", label: t("Gilt für"), type: "select", def: "player", options: [{ id: "player", label: t("Jeden Spieler einzeln") }, { id: "global", label: t("Die ganze Welt") }] },
+      sel("op", t("Rechnung"), "add", [["add", "+"], ["sub", "−"], ["mul", "×"], ["div", "÷"], ["mod", t("Rest (mod)")], ["min", t("Kleinerer Wert (min)")], ["max", t("Größerer Wert (max)")], ["set", t("Setzen auf")], ["rand", t("Zufallszahl unter")]]),
+      sel("src", t("Mit"), "num", [["num", t("Zahl")], ["var", t("Anderer Variable")]]),
+      { ...numP("value", t("Zahl"), "1"), when: { key: "src", values: ["num"] } },
+      { key: "var2", label: t("Andere Variable"), type: "var", def: "", when: { key: "src", values: ["var"] } },
+      { key: "scope2", label: t("Andere gilt für"), type: "select", def: "player", options: [{ id: "player", label: t("Jeden Spieler einzeln") }, { id: "global", label: t("Die ganze Welt") }], when: { key: "src", values: ["var"] } },
+    ],
+  },
   { kind: "var_show", cat: "vars", label: t("Variable anzeigen"), desc: t("Als Tabelle am Bildschirmrand"), outs: NEXT, props: [{ key: "var", label: t("Variable"), type: "var", def: "punkte" }, sel("slot", t("Ort"), "sidebar", [["sidebar", t("Rechts am Rand")], ["list", t("Spielerliste (Tab)")]])] },
   { kind: "var_hide", cat: "vars", label: t("Anzeige ausblenden"), desc: t("Tabelle am Rand entfernen"), outs: NEXT, props: [] },
 
@@ -181,6 +266,7 @@ export const NODES: NodeSpec[] = [
   { kind: "weather", cat: "world", label: t("Wetter ändern"), desc: "", outs: NEXT, props: [sel("weather", t("Wetter"), "rain", [["clear", t("Klar")], ["rain", t("Regen")], ["thunder", t("Gewitter")]]), numP("seconds", t("Dauer (Sek.)"), "300")] },
   { kind: "time", cat: "world", label: t("Uhrzeit setzen"), desc: "", outs: NEXT, props: [sel("time", t("Zeit"), "day", [["day", t("Morgen")], ["noon", t("Mittag")], ["night", t("Abend")], ["midnight", t("Mitternacht")]])] },
   { kind: "summon", cat: "world", label: t("Kreatur erscheinen lassen"), desc: "", outs: NEXT, props: [{ key: "entity", label: t("Kreatur"), type: "entity", def: "minecraft:zombie" }, numP("count", t("Anzahl"), "1")] },
+  { kind: "place_structure", cat: "world", label: t("Struktur platzieren"), desc: t("Vanilla-Struktur an der Position"), outs: NEXT, props: [sel("structure", t("Struktur"), "minecraft:igloo", [["minecraft:igloo", t("Iglu")], ["minecraft:village_plains", t("Dorf (Ebene)")], ["minecraft:desert_pyramid", t("Wüstentempel")], ["minecraft:jungle_pyramid", t("Dschungeltempel")], ["minecraft:pillager_outpost", t("Plünderer-Außenposten")], ["minecraft:shipwreck", t("Schiffswrack")], ["minecraft:ruined_portal", t("Portalruine")], ["minecraft:witch_hut", t("Hexenhütte")], ["minecraft:trail_ruins", t("Pfadruine")]])] },
   { kind: "lightning", cat: "world", label: t("Blitz einschlagen"), desc: "", outs: NEXT, props: [] },
   { kind: "explode", cat: "world", label: t("Explosion"), desc: "", outs: NEXT, props: [numP("power", t("Stärke"), "2")] },
   {
@@ -248,6 +334,9 @@ export const NODES: NodeSpec[] = [
   { kind: "give", cat: "player", label: t("Item geben"), desc: "", outs: NEXT, props: [{ key: "item", label: t("Item"), type: "item", def: "minecraft:diamond" }, numP("count", t("Anzahl"), "1")] },
   { kind: "effect", cat: "player", label: t("Trankeffekt geben"), desc: "", outs: NEXT, props: [{ key: "effect", label: t("Effekt"), type: "effect", def: "speed" }, numP("seconds", t("Sekunden"), "10"), numP("level", t("Effektstufe"), "1"), who] },
   { kind: "remove_item", cat: "player", label: t("Item wegnehmen"), desc: t("Aus dem Inventar entfernen"), outs: NEXT, props: [{ key: "item", label: t("Item"), type: "item", def: "minecraft:dirt" }, numP("count", t("Anzahl"), "1")] },
+  { kind: "random_tp", cat: "player", label: t("Zufällig teleportieren"), desc: t("Irgendwo im Umkreis auf festen Boden"), outs: NEXT, props: [numP("radius", t("Umkreis (Blöcke)"), "50")] },
+  { kind: "set_name", cat: "player", label: t("Namen geben"), desc: t("Namensschild für das Ziel (keine Spieler)"), outs: NEXT, props: [textP("text", t("Name"), "Bello")] },
+  { kind: "equip", cat: "player", label: t("Ausrüsten"), desc: t("Item direkt in einen Slot legen"), outs: NEXT, props: [{ key: "item", label: t("Item"), type: "item", def: "minecraft:diamond_helmet" }, sel("slot", t("Slot"), "head", [["head", t("Kopf")], ["chest", t("Brust")], ["legs", t("Beine")], ["feet", t("Füße")], ["hand", t("Haupthand")], ["offhand", t("Zweithand")]])] },
   { kind: "feed", cat: "player", label: t("Sättigen"), desc: t("Hunger komplett auffüllen"), outs: NEXT, props: [] },
   { kind: "spawnpoint", cat: "player", label: t("Wiederbelebungspunkt setzen"), desc: t("Spieler erscheint nach dem Tod hier"), outs: NEXT, props: [] },
   {
@@ -299,7 +388,8 @@ export const isEvent = (kind: string) => kind.startsWith("ev_");
 
 /** Welche Eigenschaften gerade sichtbar sind (z. B. abhängig von der Bedingung). */
 export function visibleProps(spec: NodeSpec, props: Record<string, string>): PropSpec[] {
-  return spec.props.filter((p) => !p.when || p.when.values.includes(props[p.when.key] ?? spec.props.find((x) => x.key === p.when!.key)?.def ?? ""));
+  const val = (key: string) => props[key] ?? spec.props.find((x) => x.key === key)?.def ?? "";
+  return spec.props.filter((p) => (!p.when || p.when.values.includes(val(p.when.key))) && (!p.when2 || p.when2.values.includes(val(p.when2.key))));
 }
 
 let seq = 0;
@@ -346,16 +436,60 @@ function chain(name: string, kinds: [string, Record<string, string>?][]): Bluepr
 export const TEMPLATES: BpTemplate[] = [
   { id: "empty", label: t("Leer"), desc: t("Mit einem einzelnen Ereignis anfangen"), build: () => chain(t("Neuer Blueprint"), [["ev_join"]]) },
   {
-    id: "welcome",
-    label: t("Willkommen"),
-    desc: t("Beim Betreten: Titel, Nachricht und Geräusch"),
-    build: () =>
-      chain(t("Willkommen"), [
-        ["ev_join"],
-        ["title", { text: t("Willkommen!") }],
-        ["message", { text: t("Schön, dass du da bist, {player}!"), to: "player" }],
-        ["sound", { sound: "minecraft:ui.toast.challenge_complete" }],
-      ]),
+    id: "command_reward",
+    label: t("Eigener Befehl"),
+    desc: t("/belohnung gibt einmal pro Spieler einen Diamanten"),
+    build: () => {
+      const ev = makeNode("ev_command", 60, 80);
+      ev.props = { command: "/belohnung" };
+      const iff = makeNode("if", 360, 80);
+      iff.props = { cond: "var", var: "belohnt", scope: "player", cmp: "lt", value: "1", not: "is", join: "none" };
+      const give = makeNode("give", 660, 20);
+      give.props = { ...give.props, item: "minecraft:diamond", count: "1" };
+      const set = makeNode("var_set", 960, 20);
+      set.props = { var: "belohnt", scope: "player", op: "set", value: "1" };
+      const no = makeNode("message", 660, 220);
+      no.props = { text: t("Die Belohnung hast du schon abgeholt."), to: "player" };
+      return {
+        name: t("Eigener Befehl"),
+        enabled: true,
+        nodes: [ev, iff, give, set, no],
+        links: [
+          { from: ev.id, out: "next", to: iff.id },
+          { from: iff.id, out: "true", to: give.id },
+          { from: give.id, out: "next", to: set.id },
+          { from: iff.id, out: "false", to: no.id },
+        ],
+      };
+    },
+  },
+  {
+    id: "loop_entities",
+    label: t("Feuerstab"),
+    desc: t("Rechtsklick mit Lohenrute: alle Monster im Umkreis brennen"),
+    build: () => {
+      const ev = makeNode("ev_click_item", 60, 80);
+      ev.props = { target: "minecraft:blaze_rod" };
+      const loop = makeNode("for_entities", 360, 80);
+      loop.props = { ...loop.props, radius: "10" };
+      const fire = makeNode("fire", 660, 40);
+      fire.props = { ...fire.props, who: "target", seconds: "4" };
+      const pt = makeNode("particle", 960, 40);
+      pt.props = { ...pt.props, particle: "minecraft:flame", count: "20" };
+      const sound = makeNode("sound", 660, 240);
+      sound.props = { ...sound.props, sound: "minecraft:item.firecharge.use" };
+      return {
+        name: t("Feuerstab"),
+        enabled: true,
+        nodes: [ev, loop, fire, pt, sound],
+        links: [
+          { from: ev.id, out: "next", to: loop.id },
+          { from: loop.id, out: "body", to: fire.id },
+          { from: fire.id, out: "next", to: pt.id },
+          { from: loop.id, out: "done", to: sound.id },
+        ],
+      };
+    },
   },
   {
     id: "chat_weather",

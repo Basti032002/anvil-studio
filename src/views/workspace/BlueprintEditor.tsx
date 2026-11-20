@@ -693,8 +693,22 @@ function PropInput({ project, content, own, spec, value, onChange }: { project: 
           ))}
         </select>
       );
+    case "fn": {
+      const fns = [...new Set(content.blueprints.flatMap((b) => b.nodes.filter((n) => n.kind === "ev_function").map((n) => n.props.fn).filter(Boolean)))].sort();
+      return (
+        <>
+          <input className="input" list="bp-fns" value={value} onChange={(e) => onChange(e.target.value)} placeholder={t("Name der Funktion")} />
+          <datalist id="bp-fns">
+            {fns.map((n) => (
+              <option key={n} value={n} />
+            ))}
+          </datalist>
+          {value && !fns.includes(value) && <span className="muted tiny">{t("Lege dazu einen Blueprint mit „Eigene Funktion“ und diesem Namen an.")}</span>}
+        </>
+      );
+    }
     case "var": {
-      const names = [...new Set(content.blueprints.flatMap((b) => b.nodes.map((n) => n.props.var).filter(Boolean)))].sort();
+      const names = [...new Set(content.blueprints.flatMap((b) => b.nodes.flatMap((n) => [n.props.var, n.props.var2, n.props.b_var]).filter(Boolean)))].sort();
       return (
         <>
           <input
