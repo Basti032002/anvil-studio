@@ -119,6 +119,17 @@ test("Xbox-Übergangsanmeldung und Übernahme aufs Minecraft-Konto", async () =>
   const up = await json("/api/items", { method: "POST", headers: auth(r.body.token), body: fd });
   assert.equal(up.status, 200, JSON.stringify(up.body));
   assert.equal(up.body.owner.uuid, xuid);
+  // Bild eines noch nicht geprüften Uploads: nur mit Sitzung (?t=)
+  const admin = await login("Admin");
+  await json("/api/admin/settings", { method: "PUT", headers: { ...auth(admin), "content-type": "application/json" }, body: JSON.stringify({ reviewMods: true, reviewSource: true }) });
+  const fd3 = new FormData();
+  fd3.append("meta", JSON.stringify({ title: "Mit Bild", mcVersion: "1.21.1" }));
+  fd3.append("source", new Blob([zip]), "src.zip");
+  fd3.append("images", new Blob([png]), "a.png");
+  const withImg = await json("/api/items", { method: "POST", headers: auth(r.body.token), body: fd3 });
+  assert.equal(withImg.body.status, "pending");
+  assert.equal((await fetch(`${base}/api/items/${withImg.body.id}/images/0`)).status, 404);
+  assert.equal((await fetch(`${base}/api/items/${withImg.body.id}/images/0?t=${r.body.token}`)).status, 200);
 
   // Später mit Minecraft (+ Xbox-Nachweis) → Upload gehört jetzt dem Minecraft-Konto
   r = await post({ minecraftToken: "dev:Spieler", xboxUhs: "1", xboxToken: "devxbox:Gamer Tag" });

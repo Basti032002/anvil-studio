@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 static TOKEN: Mutex<Option<String>> = Mutex::new(None);
 
@@ -113,7 +113,12 @@ pub async fn ws_me(app: AppHandle) -> Result<Option<Value>, String> {
     if crate::minecraft::mc_account().await?.is_none() {
         return Ok(None);
     }
-    call(&app, reqwest::Method::GET, "/api/me", None, true).await.map(Some)
+    let mut me = call(&app, reqwest::Method::GET, "/api/me", None, true).await?;
+    // Sitzung für Bild-Adressen (Bilder noch nicht freigegebener Uploads brauchen sie)
+    if let (Some(o), Some(t)) = (me.as_object_mut(), TOKEN.lock().unwrap().clone()) {
+        o.insert("sessionToken".into(), Value::String(t));
+    }
+    Ok(Some(me))
 }
 
 #[tauri::command]
@@ -161,59 +166,98 @@ pub async fn ws_upload(app: AppHandle, req: UploadRequest) -> Result<Value, Stri
         "categories": req.categories, "trailerUrl": req.trailer_url,
         "mcVersion": p.mc_version, "modVersion": settings.version, "modId": p.mod_id, "license": settings.license,
     });
-    let mut form = reqwest::multipart::Form::new().text("meta", meta.to_string());
-    // Cloudflare (Free) lässt höchstens 100 MB pro Anfrage durch
-    const MAX_TOTAL: u64 = 95 * 1024 * 1024;
-    let mut total: u64 = 0;
-    let mut add = |n: usize, what: &str| -> Result<(), String> {
-        total += n as u64;
-        if total > MAX_TOTAL {
-            return Err(format!("Der Upload ist zu groß (über 95 MB, zuletzt: {what}). Lass Bilder weg oder lade Mod und Quellcode getrennt hoch."));
-        }
-        Ok(())
+    // Erst alle Dateien einsammeln, dann mit Fortschritt hochladen
+    let emit = |step: &str, sent: u64, total: u64| {
+        let _ = app.emit("ws-upload-progress", json!({ "step": step, "sent": sent, "total": total }));
     };
+    let mut files: Vec<(&'static str, String, Vec<u8>)> = vec![];
     if req.include_mod {
+        emit("mod", 0, 0);
         let jars = crate::export::export_jars(app.clone(), req.project_id.clone())?;
         let jar = jars.first().ok_or("Es gibt noch keine fertige Mod-Datei. Baue sie zuerst (Export → Mod-Datei bauen).")?;
-        let bytes = std::fs::read(&jar.path).map_err(err)?;
-        add(bytes.len(), "Mod-Datei")?;
-        form = form.part("mod", reqwest::multipart::Part::bytes(bytes).file_name(jar.name.clone()));
+        files.push(("mod", jar.name.clone(), std::fs::read(&jar.path).map_err(err)?));
     }
     if req.include_source {
+        emit("source", 0, 0);
         let tmp = std::env::temp_dir().join(format!("anvil-src-{}.zip", p.mod_id));
         let r2 = root.clone();
         let t2 = tmp.clone();
         tauri::async_runtime::spawn_blocking(move || crate::export::zip_project(&r2, &t2)).await.map_err(err)??;
         let bytes = std::fs::read(&tmp).map_err(err)?;
         let _ = std::fs::remove_file(&tmp);
-        add(bytes.len(), "Quellcode")?;
-        form = form.part("source", reqwest::multipart::Part::bytes(bytes).file_name("source.zip"));
+        files.push(("source", "source.zip".into(), bytes));
     }
     let logo = root.join("src/main/resources/logo.png");
     if logo.exists() {
-        let bytes = std::fs::read(&logo).map_err(err)?;
-        add(bytes.len(), "Logo")?;
-        form = form.part("icon", reqwest::multipart::Part::bytes(bytes).file_name("icon.png"));
+        files.push(("icon", "icon.png".into(), std::fs::read(&logo).map_err(err)?));
     }
     for img in req.images.iter().take(8) {
         let bytes = std::fs::read(img).map_err(|e| format!("Bild „{img}“ kann nicht gelesen werden: {e}"))?;
-        add(bytes.len(), "Bilder")?;
         let name = PathBuf::from(img).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or("bild.png".into());
-        form = form.part("images", reqwest::multipart::Part::bytes(bytes).file_name(name));
+        files.push(("images", name, bytes));
     }
+    // Cloudflare (Free) lässt höchstens 100 MB pro Anfrage durch
+    const MAX_TOTAL: u64 = 95 * 1024 * 1024;
+    let total: u64 = files.iter().map(|f| f.2.len() as u64).sum();
+    if total > MAX_TOTAL {
+        let what = match files.iter().max_by_key(|f| f.2.len()).map(|f| f.0) {
+            Some("mod") => "Mod-Datei",
+            Some("source") => "Quellcode",
+            _ => "Bilder",
+        };
+        return Err(format!("Der Upload ist zu groß (über 95 MB, zuletzt: {what}). Lass Bilder weg oder lade Mod und Quellcode getrennt hoch."));
+    }
+
     let (method, path) = match &req.item_id {
         Some(id) => (reqwest::Method::PUT, format!("/api/items/{}", enc(id))),
         None => (reqwest::Method::POST, "/api/items".to_string()),
     };
-    let token = session(&app).await?;
-    let r = http_client()?
-        .request(method, format!("{}{path}", base(&app)))
-        .bearer_auth(token)
-        .timeout(std::time::Duration::from_secs(600))
-        .multipart(form)
-        .send()
-        .await
-        .map_err(|e| unreachable_msg(&app, &e))?;
+    let sent = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let last_pct = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(u64::MAX));
+    let build_form = || {
+        sent.store(0, std::sync::atomic::Ordering::SeqCst);
+        let mut form = reqwest::multipart::Form::new().text("meta", meta.to_string());
+        for (field, name, bytes) in &files {
+            let len = bytes.len() as u64;
+            let chunks: Vec<Vec<u8>> = bytes.chunks(128 * 1024).map(|c| c.to_vec()).collect();
+            let (sent, last_pct, app) = (sent.clone(), last_pct.clone(), app.clone());
+            let stream = futures_util::stream::iter(chunks.into_iter().map(move |c| {
+                let now = sent.fetch_add(c.len() as u64, std::sync::atomic::Ordering::SeqCst) + c.len() as u64;
+                let pct = if total > 0 { now * 100 / total } else { 100 };
+                if last_pct.swap(pct, std::sync::atomic::Ordering::SeqCst) != pct {
+                    let _ = app.emit("ws-upload-progress", json!({ "step": "upload", "sent": now, "total": total }));
+                }
+                Ok::<Vec<u8>, std::io::Error>(c)
+            }));
+            let part = reqwest::multipart::Part::stream_with_length(reqwest::Body::wrap_stream(stream), len).file_name(name.clone());
+            form = form.part(*field, part);
+        }
+        form
+    };
+    let send = |token: String, form: reqwest::multipart::Form| {
+        let url = format!("{}{path}", base(&app));
+        let method = method.clone();
+        let app = app.clone();
+        async move {
+            http_client()?
+                .request(method, url)
+                .bearer_auth(token)
+                .timeout(std::time::Duration::from_secs(900))
+                .multipart(form)
+                .send()
+                .await
+                .map_err(|e| unreachable_msg(&app, &e))
+        }
+    };
+    emit("upload", 0, total);
+    let mut r = send(session(&app).await?, build_form()).await?;
+    if r.status().as_u16() == 401 {
+        // Sitzung abgelaufen → einmal neu anmelden und erneut senden
+        reset_session();
+        emit("upload", 0, total);
+        r = send(session(&app).await?, build_form()).await?;
+    }
+    emit("done", total, total);
     read(r).await
 }
 

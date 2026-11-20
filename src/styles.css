@@ -232,7 +232,7 @@ button.status-item:hover { background: var(--hover); color: var(--text); }
 .btn.danger { background: var(--error-soft); border-color: color-mix(in srgb, var(--error) 40%, transparent); color: var(--error-text); }
 .btn.dark { background: var(--elevated); }
 .btn.loading { position: relative; overflow: hidden; }
-.btn.loading::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(-45deg, transparent 0 10px, rgba(0, 0, 0, 0.1) 10px 20px); animation: stripes 0.8s linear infinite; }
+.btn.loading::after { content: ""; position: absolute; inset: 0; background-image: linear-gradient(45deg, rgba(0, 0, 0, 0.1) 25%, transparent 25%, transparent 50%, rgba(0, 0, 0, 0.1) 50%, rgba(0, 0, 0, 0.1) 75%, transparent 75%, transparent); background-size: 40px 40px; animation: stripes 0.8s linear infinite; }
 label.btn { cursor: pointer; }
 .icon-btn { width: 32px; height: 32px; flex: none; display: grid; place-items: center; border-radius: var(--radius-sm); border: 0; background: transparent; color: var(--muted); cursor: pointer; transition: background var(--fast), color var(--fast), transform var(--fast); }
 .icon-btn:hover:not(:disabled) { background: var(--elevated); color: var(--text); }
@@ -1117,8 +1117,8 @@ select option { background: var(--panel); color: var(--text); }
 .ws-account-card img { width: 40px; height: 40px; border-radius: 6px; image-rendering: pixelated; }
 .ws-progress { display: flex; flex-direction: column; gap: 8px; }
 .ws-bar { height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; }
-.ws-bar > div { height: 100%; background: var(--accent); transition: width 300ms var(--ease); }
-.ws-bar > div.indeterminate { animation: ws-slide 1.2s ease-in-out infinite; }
+.ws-bar > div { height: 100%; border-radius: 4px; background: var(--accent); transition: width 300ms var(--ease); }
+.ws-bar > div.indeterminate { width: 35%; border-radius: 4px; transition: none; animation: ws-slide 1.2s ease-in-out infinite; }
 @keyframes ws-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
 .ws-form { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
 .ws-type-cards { display: flex; flex-wrap: wrap; gap: 10px; }

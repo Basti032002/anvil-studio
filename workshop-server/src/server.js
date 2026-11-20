@@ -47,7 +47,9 @@ export function buildServer() {
       const name = token.slice(4).replace(/[^A-Za-z0-9_]/g, "").slice(0, 16) || "Dev";
       return { uuid: crypto.createHash("md5").update(name).digest("hex"), name };
     }
-    const r = await fetch("https://api.minecraftservices.com/minecraft/profile", { headers: { Authorization: `Bearer ${token}` } });
+    const r = await fetch("https://api.minecraftservices.com/minecraft/profile", { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15000) }).catch((e) => {
+      throw fail(502, `Minecraft-Dienste nicht erreichbar (${e.cause?.code || e.name}). Bitte gleich nochmal versuchen.`);
+    });
     if (r.status === 401) throw fail(401, "Die Minecraft-Anmeldung ist abgelaufen. Bitte melde dich neu an.");
     if (r.status === 404) throw fail(403, "Dieses Konto besitzt kein Minecraft: Java Edition.");
     if (!r.ok) throw fail(502, `Minecraft-Dienste antworten nicht (HTTP ${r.status}).`);
@@ -62,6 +64,9 @@ export function buildServer() {
     }
     const r = await fetch("https://profile.xboxlive.com/users/me/profile/settings?settings=Gamertag", {
       headers: { Authorization: `XBL3.0 x=${uhs};${token}`, "x-xbl-contract-version": "2", Accept: "application/json" },
+      signal: AbortSignal.timeout(15000),
+    }).catch((e) => {
+      throw fail(502, `Xbox Live nicht erreichbar (${e.cause?.code || e.name}). Bitte gleich nochmal versuchen.`);
     });
     if (r.status === 401 || r.status === 403) throw fail(401, "Die Xbox-Anmeldung ist abgelaufen. Bitte melde dich neu an.");
     if (!r.ok) throw fail(502, `Xbox Live antwortet nicht (HTTP ${r.status}).`);
@@ -71,9 +76,10 @@ export function buildServer() {
     return { uuid: "xbox-" + String(u.id), name: String(name) };
   }
 
-  function userOf(req) {
+  function userOf(req, allowQuery = false) {
     const h = req.headers.authorization || "";
-    const token = h.startsWith("Bearer ") ? h.slice(7) : "";
+    // Bilder werden per <img> geladen (ohne Header) → Sitzung darf dort auch als ?t= kommen
+    const token = h.startsWith("Bearer ") ? h.slice(7) : allowQuery ? String(req.query?.t || "") : "";
     if (!token) return null;
     const s = db.prepare("SELECT uuid, name FROM sessions WHERE token = ? AND expires_at > ?").get(token, now());
     return s ? { uuid: s.uuid, name: s.name } : null;
@@ -85,7 +91,7 @@ export function buildServer() {
   };
   const requireAdmin = (req) => {
     const u = requireUser(req);
-    if (!isAdmin(u)) throw fail(403, "Nur für Workshop-Admins.");
+    if (!isAdmin(u)) throw fail(403, `Nur für Workshop-Admins. Dein Konto „${u.name}“ ist auf dem Server nicht als Admin eingetragen (ADMIN_NAMES).`);
     return u;
   };
 
@@ -227,19 +233,19 @@ export function buildServer() {
 
   const imgType = (f) => (f.endsWith(".png") ? "image/png" : f.endsWith(".webp") ? "image/webp" : "image/jpeg");
   app.get("/api/items/:id/images/:n", async (req, reply) => {
-    const u = userOf(req);
+    const u = userOf(req, true);
     const row = getItem(req.params.id);
     if (!canSee(row, u)) throw fail(404, "Nicht gefunden.");
     const f = JSON.parse(row.images)[Number(req.params.n)];
     if (!f) throw fail(404, "Bild nicht gefunden.");
-    reply.header("Cache-Control", "public, max-age=3600");
+    reply.header("Cache-Control", row.status === "public" ? "public, max-age=3600" : "private, no-store");
     return send(reply, path.join(FILES, row.id, f), imgType(f));
   });
   app.get("/api/items/:id/icon", async (req, reply) => {
-    const u = userOf(req);
+    const u = userOf(req, true);
     const row = getItem(req.params.id);
     if (!canSee(row, u) || !row.icon) throw fail(404, "Nicht gefunden.");
-    reply.header("Cache-Control", "public, max-age=3600");
+    reply.header("Cache-Control", row.status === "public" ? "public, max-age=3600" : "private, no-store");
     return send(reply, path.join(FILES, row.id, row.icon), "image/png");
   });
 

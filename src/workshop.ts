@@ -35,7 +35,7 @@ export type WsItem = {
   allowResubmit?: boolean;
   reports?: number;
 };
-export type WsMe = { uuid: string; name: string; admin: boolean };
+export type WsMe = { uuid: string; name: string; admin: boolean; sessionToken?: string };
 export type WsSettings = { reviewMods: boolean; reviewSource: boolean; reviewUpdates: boolean };
 export type WsStats = { pending: number; public: number; blocked: number; rejected: number; reported: number; downloads30: number };
 
@@ -124,6 +124,13 @@ export async function refreshWorkshop() {
   } else set({ me: null });
 }
 
+/** Workshop-Konto neu holen (z. B. wenn es beim Start nicht geklappt hat) */
+export async function refreshMe() {
+  if (!state.profile) return;
+  const me = await wsApi.me().catch(() => null);
+  if (me) set({ me });
+}
+
 export function setProfile(profile: McProfile | null) {
   set({ profile });
   if (profile) wsApi.me().then((me) => set({ me })).catch(() => set({ me: null }));
@@ -136,7 +143,12 @@ export async function mcLogout() {
 }
 
 /** Absolute Bild-URL vom Server */
-export const wsUrl = (path: string | null | undefined) => (path ? `${state.base}${path}` : "");
+export const wsUrl = (path: string | null | undefined) => {
+  if (!path) return "";
+  // Bilder von Uploads, die noch geprüft werden, sieht nur der Ersteller oder ein Admin
+  const t = state.me?.sessionToken;
+  return t ? `${state.base}${path}${path.includes("?") ? "&" : "?"}t=${encodeURIComponent(t)}` : `${state.base}${path}`;
+};
 
 export const fmtSize = (b: number) => (b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 

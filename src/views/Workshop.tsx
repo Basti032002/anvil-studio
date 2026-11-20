@@ -26,7 +26,7 @@ import {
   WorkshopIcon,
 } from "../icons";
 import { toast } from "../state";
-import { CATEGORIES, categoryLabel, fmtSize, mcLogout, McProfile, useWorkshop, WsItem, wsApi, wsUrl, youtubeEmbed } from "../workshop";
+import { CATEGORIES, categoryLabel, fmtSize, mcLogout, McProfile, refreshMe, useWorkshop, WsItem, wsApi, wsUrl, youtubeEmbed } from "../workshop";
 
 type Route = { page: "home" } | { page: "item"; id: string } | { page: "upload"; item?: WsItem } | { page: "mine" };
 const MC_VERSIONS = ["1.21.1", "1.21.4", "1.21.8", "1.21.10"];
@@ -35,6 +35,10 @@ export default function Workshop({ projects, onOpenProject }: { projects: Projec
   const [route, setRoute] = useState<Route>({ page: "home" });
   const [login, setLogin] = useState<{ reason: string; then: (p: McProfile) => void } | null>(null);
   const ws = useWorkshop();
+  // Angemeldet, aber Workshop-Konto fehlt (z. B. Server war beim Start nicht erreichbar) → nachholen
+  useEffect(() => {
+    if (ws.profile && !ws.me) refreshMe();
+  }, [ws.profile, ws.me, route.page]);
 
   /** Aktion, die eine Anmeldung braucht */
   const withLogin = (reason: string, then: (p: McProfile) => void) => {
@@ -621,6 +625,7 @@ function UploadPage({ projects, item, onBack, onDone }: { projects: Project[]; i
   const [images, setImages] = useState<string[]>([]);
   const [agree, setAgree] = useState(!!item);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{ step: string; sent: number; total: number } | null>(null);
   const [jars, setJars] = useState<number | null>(null);
   const project = projects.find((p) => p.id === projectId);
 
@@ -653,6 +658,8 @@ function UploadPage({ projects, item, onBack, onDone }: { projects: Project[]; i
   async function submit() {
     if (!project) return;
     setBusy(true);
+    setProgress({ step: "prepare", sent: 0, total: 0 });
+    const un = await listen<{ step: string; sent: number; total: number }>("ws-upload-progress", (e) => setProgress(e.payload));
     try {
       const r = await wsApi.upload({ projectId: project.id, itemId: item?.id ?? null, includeMod, includeSource, title, summary, description, categories, trailerUrl: trailer.trim(), images });
       toast(r.status === "public" ? t("Veröffentlicht!") : t("Eingereicht – du siehst den Stand unter „Meine Uploads“."), "success");
@@ -660,9 +667,26 @@ function UploadPage({ projects, item, onBack, onDone }: { projects: Project[]; i
     } catch (e) {
       toast(String(e), "error");
     } finally {
+      un();
       setBusy(false);
+      setProgress(null);
+      refreshMe();
     }
   }
+  const progressPct = progress && progress.step === "upload" && progress.total > 0 ? Math.min(100, Math.round((progress.sent / progress.total) * 100)) : null;
+  const progressLabel = !progress
+    ? ""
+    : progress.step === "mod"
+      ? t("Mod-Datei wird vorbereitet …")
+      : progress.step === "source"
+        ? t("Quellcode wird gepackt …")
+        : progress.step === "upload"
+          ? progressPct !== null && progressPct >= 100
+            ? t("Server verarbeitet den Upload …")
+            : t("Wird hochgeladen … {sent} von {total}", { sent: fmtSize(progress.sent), total: fmtSize(progress.total) })
+          : progress.step === "done"
+            ? t("Server verarbeitet den Upload …")
+            : t("Wird vorbereitet …");
 
   const fileName = (p: string) => p.split(/[\\/]/).pop();
   const canSubmit = !!project && (includeMod || includeSource) && title.trim() && agree && !busy && !(includeMod && jars === 0);
@@ -810,9 +834,21 @@ function UploadPage({ projects, item, onBack, onDone }: { projects: Project[]; i
               <span className="small">{t("Die Inhalte sind von mir oder ich darf sie teilen. Ich halte mich an die Workshop-Regeln.")}</span>
             </label>
             <div className="muted small">{ws.profile?.kind === "xbox" ? t("Hochladen als {name} (Xbox-Konto)", { name: ws.profile.name }) : t("Hochladen als {name} (Minecraft-Konto)", { name: ws.profile?.name ?? "…" })}</div>
-            <button className={busy ? "btn primary lg full loading" : "btn primary lg full"} disabled={!canSubmit} onClick={submit}>
-              <UploadIcon size={15} /> {item ? t("Aktualisieren") : t("Hochladen")}
-            </button>
+            {busy && progress ? (
+              <div className="ws-progress">
+                <div className="row" style={{ justifyContent: "space-between" }}>
+                  <span className="small">{progressLabel}</span>
+                  <span className="mono muted small">{progressPct !== null && progressPct < 100 ? `${progressPct} %` : ""}</span>
+                </div>
+                <div className="ws-bar">
+                  {progressPct !== null && progressPct < 100 ? <div style={{ width: `${progressPct}%` }} /> : <div className="indeterminate" />}
+                </div>
+              </div>
+            ) : (
+              <button className="btn primary lg full" disabled={!canSubmit} onClick={submit}>
+                <UploadIcon size={15} /> {item ? t("Aktualisieren") : t("Hochladen")}
+              </button>
+            )}
           </aside>
         </div>
       )}
