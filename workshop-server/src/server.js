@@ -107,6 +107,12 @@ export function buildServer() {
         const x = await xboxProfile(xUhs, xToken).catch(() => null);
         if (x) {
           db.prepare("UPDATE items SET owner_uuid = ? WHERE owner_uuid = ?").run(p.uuid, x.uuid);
+          for (const t of ["ratings", "subscriptions"]) {
+            db.prepare(`UPDATE OR IGNORE ${t} SET uuid = ? WHERE uuid = ?`).run(p.uuid, x.uuid);
+            db.prepare(`DELETE FROM ${t} WHERE uuid = ?`).run(x.uuid);
+          }
+          db.prepare("UPDATE comments SET uuid = ?, name = ? WHERE uuid = ?").run(p.uuid, p.name, x.uuid);
+          db.prepare("UPDATE notifications SET uuid = ? WHERE uuid = ?").run(p.uuid, x.uuid);
           db.prepare("UPDATE reports SET reporter_uuid = ? WHERE reporter_uuid = ?").run(p.uuid, x.uuid);
           db.prepare("DELETE FROM sessions WHERE uuid = ?").run(x.uuid);
         }
@@ -135,10 +141,30 @@ export function buildServer() {
     return { ok: true };
   });
 
+  // ---- Benachrichtigungen ----
+  const notify = (uuid, kind, row, text = "") => {
+    if (!uuid) return;
+    db.prepare("INSERT INTO notifications(uuid, kind, item_id, title, text, created_at) VALUES(?, ?, ?, ?, ?, ?)").run(uuid, kind, row?.id || "", row?.title || "", String(text).slice(0, 2000), now());
+    // alte aufräumen: höchstens 200 pro Nutzer
+    db.prepare("DELETE FROM notifications WHERE uuid = ? AND id NOT IN (SELECT id FROM notifications WHERE uuid = ? ORDER BY id DESC LIMIT 200)").run(uuid, uuid);
+  };
+
   // ---- Ansicht eines Uploads ----
+  function deps(row) {
+    let ids = [];
+    try {
+      ids = JSON.parse(row.dependencies || "[]");
+    } catch {}
+    return ids
+      .map((id) => db.prepare("SELECT id, title, status, mod_file FROM items WHERE id = ?").get(id))
+      .filter(Boolean)
+      .map((d) => ({ id: d.id, title: d.title, available: d.status === "public" && !!d.mod_file }));
+  }
+
   function view(row, viewer) {
     const own = viewer && viewer.uuid === row.owner_uuid;
     const admin = isAdmin(viewer);
+    const r = db.prepare("SELECT COUNT(*) AS n, COALESCE(AVG(stars), 0) AS avg FROM ratings WHERE item_id = ?").get(row.id);
     return {
       id: row.id,
       owner: { uuid: row.owner_uuid, name: row.owner_name },
@@ -161,6 +187,16 @@ export function buildServer() {
       featured: !!row.featured,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      rating: { avg: Math.round(r.avg * 10) / 10, count: r.n },
+      comments: db.prepare("SELECT COUNT(*) AS n FROM comments WHERE item_id = ?").get(row.id).n,
+      subscribers: db.prepare("SELECT COUNT(*) AS n FROM subscriptions WHERE item_id = ?").get(row.id).n,
+      dependencies: deps(row),
+      ...(viewer
+        ? {
+            myRating: db.prepare("SELECT stars FROM ratings WHERE item_id = ? AND uuid = ?").get(row.id, viewer.uuid)?.stars || 0,
+            subscribed: !!db.prepare("SELECT 1 FROM subscriptions WHERE item_id = ? AND uuid = ?").get(row.id, viewer.uuid),
+          }
+        : {}),
       // Status und Sperrgrund nur für Ersteller und Admins
       ...(own || admin
         ? { status: row.status, reason: row.reason, allowResubmit: !!row.allow_resubmit, reviewedAt: row.reviewed_at }
@@ -190,7 +226,13 @@ export function buildServer() {
       const like = `%${String(q.q).replace(/[%_]/g, "")}%`;
       args.push(like, like, like);
     }
-    const order = { new: "created_at DESC", updated: "updated_at DESC", name: "title COLLATE NOCASE" }[q.sort] || "featured DESC, downloads DESC";
+    const order =
+      {
+        new: "created_at DESC",
+        updated: "updated_at DESC",
+        name: "title COLLATE NOCASE",
+        rating: "(SELECT COALESCE(AVG(stars), 0) FROM ratings WHERE item_id = items.id) DESC, downloads DESC",
+      }[q.sort] || "featured DESC, downloads DESC";
     const limit = Math.min(100, Math.max(1, Number(q.limit) || 60));
     const offset = Math.max(0, Number(q.offset) || 0);
     const rows = db.prepare(`SELECT * FROM items WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT ? OFFSET ?`).all(...args, limit, offset);
@@ -323,6 +365,9 @@ export function buildServer() {
       license: str(m.license, 60),
       trailerUrl: str(m.trailerUrl, 300),
       categories: Array.isArray(m.categories) ? m.categories.filter((c) => CATEGORIES.includes(c)).slice(0, 5) : undefined,
+      dependencies: Array.isArray(m.dependencies)
+        ? [...new Set(m.dependencies.map(String))].filter((id) => /^[a-f0-9]{16}$/.test(id) && db.prepare("SELECT 1 FROM items WHERE id = ? AND status = 'public'").get(id)).slice(0, 10)
+        : undefined,
     };
     if (out.trailerUrl && !/^https:\/\/(www\.)?(youtube\.com|youtu\.be)\//.test(out.trailerUrl)) throw fail(400, "Der Trailer muss ein YouTube-Link sein.");
     if (!partial && !out.title) throw fail(400, "Bitte gib einen Titel an.");
@@ -376,9 +421,9 @@ export function buildServer() {
       const t = now();
       db.prepare(
         `INSERT INTO items(id, owner_uuid, owner_name, title, summary, description, categories, mc_version, mod_version, mod_id, license, trailer_url,
-          images, icon, mod_file, mod_size, source_file, source_size, status, created_at, updated_at)
+          images, icon, mod_file, mod_size, source_file, source_size, status, dependencies, created_at, updated_at)
          VALUES(@id, @owner_uuid, @owner_name, @title, @summary, @description, @categories, @mc_version, @mod_version, @mod_id, @license, @trailer_url,
-          @images, @icon, @mod_file, @mod_size, @source_file, @source_size, @status, @t, @t)`,
+          @images, @icon, @mod_file, @mod_size, @source_file, @source_size, @status, @dependencies, @t, @t)`,
       ).run({
         id,
         owner_uuid: u.uuid,
@@ -399,6 +444,7 @@ export function buildServer() {
         source_file: files.source_file || "",
         source_size: files.source_size || 0,
         status,
+        dependencies: JSON.stringify(m.dependencies || []),
         t,
       });
       return view(getItem(id), u);
@@ -432,12 +478,19 @@ export function buildServer() {
       ...(m.modId !== undefined ? { mod_id: m.modId } : {}),
       ...(m.license !== undefined ? { license: m.license } : {}),
       ...(m.trailerUrl !== undefined ? { trailer_url: m.trailerUrl } : {}),
+      ...(m.dependencies ? { dependencies: JSON.stringify(m.dependencies.filter((d) => d !== row.id)) } : {}),
       ...files,
       status,
       reason: status === row.status ? row.reason : "",
       updated_at: now(),
     };
     db.prepare(`UPDATE items SET ${Object.keys(set).map((k) => `${k} = @${k}`).join(", ")} WHERE id = @id`).run({ ...set, id: row.id });
+    // Abonnenten über neue Dateien informieren (nur wenn öffentlich)
+    if (status === "public" && (files.mod_file || files.source_file)) {
+      for (const s of db.prepare("SELECT uuid FROM subscriptions WHERE item_id = ? AND uuid != ?").all(row.id, u.uuid)) {
+        notify(s.uuid, "update", { ...row, title: set.title || row.title }, m.modVersion || "");
+      }
+    }
     return view(getItem(row.id), u);
   });
 
@@ -445,6 +498,7 @@ export function buildServer() {
     const u = requireUser(req);
     const row = getItem(req.params.id);
     if (row.owner_uuid !== u.uuid && !isAdmin(u)) throw fail(403, "Das ist nicht dein Eintrag.");
+    if (row.owner_uuid !== u.uuid) notify(row.owner_uuid, "deleted", row, String(req.body?.reason || "").slice(0, 2000));
     db.prepare("DELETE FROM items WHERE id = ?").run(row.id);
     fs.rmSync(path.join(FILES, row.id), { recursive: true, force: true });
     return { ok: true };
@@ -463,6 +517,84 @@ export function buildServer() {
     if (!reason) throw fail(400, "Bitte beschreibe kurz, was nicht stimmt.");
     const dup = db.prepare("SELECT 1 FROM reports WHERE item_id = ? AND reporter_uuid = ? AND resolved = 0").get(row.id, u.uuid);
     if (!dup) db.prepare("INSERT INTO reports(item_id, reporter_uuid, reporter_name, reason, created_at) VALUES(?, ?, ?, ?, ?)").run(row.id, u.uuid, u.name, reason, now());
+    return { ok: true };
+  });
+
+  // ---- Bewertungen ----
+  app.put("/api/items/:id/rating", async (req) => {
+    const u = requireUser(req);
+    const row = getItem(req.params.id);
+    if (row.status !== "public") throw fail(400, "Nur veröffentlichte Einträge können bewertet werden.");
+    if (row.owner_uuid === u.uuid) throw fail(400, "Eigene Einträge kannst du nicht bewerten.");
+    const stars = Math.round(Number(req.body?.stars) || 0);
+    if (stars <= 0) db.prepare("DELETE FROM ratings WHERE item_id = ? AND uuid = ?").run(row.id, u.uuid);
+    else db.prepare("INSERT INTO ratings(item_id, uuid, stars) VALUES(?, ?, ?) ON CONFLICT(item_id, uuid) DO UPDATE SET stars = excluded.stars").run(row.id, u.uuid, Math.min(5, stars));
+    return view(getItem(row.id), u);
+  });
+
+  // ---- Kommentare ----
+  const commentView = (c, u) => ({ id: c.id, author: { uuid: c.uuid, name: c.name }, text: c.text, createdAt: c.created_at, canDelete: !!u && (u.uuid === c.uuid || isAdmin(u)) });
+  app.get("/api/items/:id/comments", async (req) => {
+    const u = userOf(req);
+    const row = getItem(req.params.id);
+    if (!canSee(row, u)) throw fail(404, "Dieser Eintrag existiert nicht (mehr).");
+    const rows = db.prepare("SELECT * FROM comments WHERE item_id = ? ORDER BY created_at DESC LIMIT 200").all(row.id);
+    return { comments: rows.map((c) => commentView(c, u)) };
+  });
+  app.post("/api/items/:id/comments", async (req) => {
+    const u = requireUser(req);
+    const row = getItem(req.params.id);
+    if (row.status !== "public") throw fail(400, "Kommentare gehen nur bei veröffentlichten Einträgen.");
+    const text = String(req.body?.text || "").trim().slice(0, 1000);
+    if (!text) throw fail(400, "Der Kommentar ist leer.");
+    const last = db.prepare("SELECT MAX(created_at) AS t FROM comments WHERE uuid = ?").get(u.uuid).t || 0;
+    if (now() - last < 10) throw fail(429, "Bitte warte kurz vor dem nächsten Kommentar.");
+    const info = db.prepare("INSERT INTO comments(item_id, uuid, name, text, created_at) VALUES(?, ?, ?, ?, ?)").run(row.id, u.uuid, u.name, text, now());
+    if (row.owner_uuid !== u.uuid) notify(row.owner_uuid, "comment", row, `${u.name}: ${text.slice(0, 200)}`);
+    return commentView(db.prepare("SELECT * FROM comments WHERE id = ?").get(info.lastInsertRowid), u);
+  });
+  app.delete("/api/comments/:cid", async (req) => {
+    const u = requireUser(req);
+    const c = db.prepare("SELECT * FROM comments WHERE id = ?").get(Number(req.params.cid));
+    if (!c) throw fail(404, "Kommentar nicht gefunden.");
+    if (c.uuid !== u.uuid && !isAdmin(u)) throw fail(403, "Das ist nicht dein Kommentar.");
+    db.prepare("DELETE FROM comments WHERE id = ?").run(c.id);
+    return { ok: true };
+  });
+
+  // ---- Abonnements ----
+  app.post("/api/items/:id/subscribe", async (req) => {
+    const u = requireUser(req);
+    const row = getItem(req.params.id);
+    if (!canSee(row, u)) throw fail(404, "Dieser Eintrag existiert nicht (mehr).");
+    db.prepare("INSERT OR IGNORE INTO subscriptions(uuid, item_id, created_at) VALUES(?, ?, ?)").run(u.uuid, row.id, now());
+    return view(getItem(row.id), u);
+  });
+  app.delete("/api/items/:id/subscribe", async (req) => {
+    const u = requireUser(req);
+    db.prepare("DELETE FROM subscriptions WHERE uuid = ? AND item_id = ?").run(u.uuid, String(req.params.id));
+    const row = db.prepare("SELECT * FROM items WHERE id = ?").get(String(req.params.id));
+    return row ? view(row, u) : { ok: true };
+  });
+  app.get("/api/me/subscriptions", async (req) => {
+    const u = requireUser(req);
+    const rows = db.prepare("SELECT items.* FROM subscriptions JOIN items ON items.id = subscriptions.item_id WHERE subscriptions.uuid = ? AND items.status = 'public' ORDER BY items.updated_at DESC").all(u.uuid);
+    return { items: rows.map((r) => view(r, u)) };
+  });
+
+  // ---- Benachrichtigungen ----
+  app.get("/api/me/notifications", async (req) => {
+    const u = requireUser(req);
+    const rows = db.prepare("SELECT * FROM notifications WHERE uuid = ? ORDER BY id DESC LIMIT 50").all(u.uuid);
+    const unread = db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE uuid = ? AND read = 0").get(u.uuid).n;
+    return {
+      unread,
+      items: rows.map((n) => ({ id: n.id, kind: n.kind, itemId: n.item_id, title: n.title, text: n.text, createdAt: n.created_at, read: !!n.read })),
+    };
+  });
+  app.post("/api/me/notifications/read", async (req) => {
+    const u = requireUser(req);
+    db.prepare("UPDATE notifications SET read = 1 WHERE uuid = ?").run(u.uuid);
     return { ok: true };
   });
 
@@ -515,21 +647,26 @@ export function buildServer() {
       case "approve":
         review(row, admin, { status: "public", reason: "" });
         db.prepare("UPDATE reports SET resolved = 1 WHERE item_id = ?").run(row.id);
+        if (row.status !== "public") notify(row.owner_uuid, "approved", row);
         break;
       case "reject":
         if (!reason) throw fail(400, "Bitte gib einen Grund an – der Ersteller sieht ihn.");
         review(row, admin, { status: "rejected", reason, allow_resubmit: 1 });
+        notify(row.owner_uuid, "rejected", row, reason);
         break;
       case "block":
         if (!reason) throw fail(400, "Bitte gib einen Grund an – der Ersteller sieht ihn.");
         review(row, admin, { status: "blocked", reason, allow_resubmit: req.body?.allowResubmit === false ? 0 : 1 });
         db.prepare("UPDATE reports SET resolved = 1 WHERE item_id = ?").run(row.id);
+        notify(row.owner_uuid, "blocked", row, reason);
         break;
       case "unblock":
         review(row, admin, { status: "public", reason: "" });
+        notify(row.owner_uuid, "unblocked", row);
         break;
       case "feature":
         db.prepare("UPDATE items SET featured = ? WHERE id = ?").run(req.body?.featured ? 1 : 0, row.id);
+        if (req.body?.featured && !row.featured) notify(row.owner_uuid, "featured", row);
         break;
       case "dismiss-reports":
         db.prepare("UPDATE reports SET resolved = 1 WHERE item_id = ?").run(row.id);

@@ -1,5 +1,6 @@
 // Icons: Phosphor (Bold) – klare, gleichmäßige Linien in der Textfarbe.
 import {
+  Bell,
   Star,
   Storefront,
   Hash,
@@ -219,3 +220,5 @@ export const FitIcon = ({ size = 16 }: P) => <CornersOut size={size} weight="bol
 export const VarIcon = ({ size = 16 }: P) => <Hash size={size} weight="bold" aria-hidden="true" />;
 export const WorkshopIcon = ({ size = 16 }: P) => <Storefront size={size} weight="bold" aria-hidden="true" />;
 export const StarIcon = ({ size = 16 }: P) => <Star size={size} weight="bold" aria-hidden="true" />;
+export const StarFillIcon = ({ size = 16 }: P) => <Star size={size} weight="fill" aria-hidden="true" />;
+export const BellIcon = ({ size = 16 }: P) => <Bell size={size} weight="bold" aria-hidden="true" />;

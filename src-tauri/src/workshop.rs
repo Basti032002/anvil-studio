@@ -136,6 +136,83 @@ pub async fn ws_report(app: AppHandle, id: String, reason: String) -> Result<(),
     call(&app, reqwest::Method::POST, &format!("/api/items/{}/report", enc(&id)), Some(json!({ "reason": reason })), true).await.map(|_| ())
 }
 
+// ---- Bewertungen, Kommentare, Abos, Benachrichtigungen ----
+
+#[tauri::command]
+pub async fn ws_rate(app: AppHandle, id: String, stars: u8) -> Result<Value, String> {
+    call(&app, reqwest::Method::PUT, &format!("/api/items/{}/rating", enc(&id)), Some(json!({ "stars": stars })), true).await
+}
+
+#[tauri::command]
+pub async fn ws_comments(app: AppHandle, id: String) -> Result<Value, String> {
+    call(&app, reqwest::Method::GET, &format!("/api/items/{}/comments", enc(&id)), None, false).await
+}
+
+#[tauri::command]
+pub async fn ws_comment_add(app: AppHandle, id: String, text: String) -> Result<Value, String> {
+    call(&app, reqwest::Method::POST, &format!("/api/items/{}/comments", enc(&id)), Some(json!({ "text": text })), true).await
+}
+
+#[tauri::command]
+pub async fn ws_comment_delete(app: AppHandle, comment_id: i64) -> Result<(), String> {
+    call(&app, reqwest::Method::DELETE, &format!("/api/comments/{comment_id}"), None, true).await.map(|_| ())
+}
+
+#[tauri::command]
+pub async fn ws_subscribe(app: AppHandle, id: String, on: bool) -> Result<Value, String> {
+    let method = if on { reqwest::Method::POST } else { reqwest::Method::DELETE };
+    let body = if on { Some(json!({})) } else { None };
+    call(&app, method, &format!("/api/items/{}/subscribe", enc(&id)), body, true).await
+}
+
+#[tauri::command]
+pub async fn ws_subscriptions(app: AppHandle) -> Result<Value, String> {
+    let mut v = call(&app, reqwest::Method::GET, "/api/me/subscriptions", None, true).await?;
+    // Ist die neueste Fassung schon heruntergeladen?
+    if let Some(items) = v["items"].as_array_mut() {
+        for it in items.iter_mut() {
+            let id = it["id"].as_str().unwrap_or_default().to_string();
+            let fresh = cached_mod(&app, &id, &mod_key(it)).map(|p| p.exists()).unwrap_or(false);
+            it["installed"] = json!(fresh);
+        }
+    }
+    Ok(v)
+}
+
+/// Neue Fassungen abonnierter Mods (samt Abhängigkeiten) im Hintergrund laden
+#[tauri::command]
+pub async fn ws_sync_subscriptions(app: AppHandle) -> Result<u32, String> {
+    if crate::minecraft::mc_account().await?.is_none() {
+        return Ok(0);
+    }
+    let v = call(&app, reqwest::Method::GET, "/api/me/subscriptions", None, true).await?;
+    let mut updated = 0;
+    for it in v["items"].as_array().into_iter().flatten() {
+        if !it["hasMod"].as_bool().unwrap_or(false) {
+            continue;
+        }
+        let id = it["id"].as_str().unwrap_or_default();
+        let key = mod_key(it);
+        if cached_mod(&app, id, &key).map(|p| p.exists()).unwrap_or(true) {
+            continue;
+        }
+        if fetch_mod(&app, id, &key).await.is_ok() {
+            updated += 1;
+        }
+    }
+    Ok(updated)
+}
+
+#[tauri::command]
+pub async fn ws_notifications(app: AppHandle) -> Result<Value, String> {
+    call(&app, reqwest::Method::GET, "/api/me/notifications", None, true).await
+}
+
+#[tauri::command]
+pub async fn ws_notifications_read(app: AppHandle) -> Result<(), String> {
+    call(&app, reqwest::Method::POST, "/api/me/notifications/read", Some(json!({})), true).await.map(|_| ())
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UploadRequest {
@@ -151,6 +228,9 @@ pub struct UploadRequest {
     trailer_url: String,
     /// Bilddateien auf der Festplatte (leer = Bilder unverändert lassen)
     images: Vec<String>,
+    /// Workshop-IDs anderer Mods, die zum Spielen gebraucht werden
+    #[serde(default)]
+    dependencies: Option<Vec<String>>,
 }
 
 #[tauri::command]
@@ -166,6 +246,10 @@ pub async fn ws_upload(app: AppHandle, req: UploadRequest) -> Result<Value, Stri
         "categories": req.categories, "trailerUrl": req.trailer_url,
         "mcVersion": p.mc_version, "modVersion": settings.version, "modId": p.mod_id, "license": settings.license,
     });
+    let mut meta = meta;
+    if let Some(d) = &req.dependencies {
+        meta["dependencies"] = json!(d);
+    }
     // Erst alle Dateien einsammeln, dann mit Fortschritt hochladen
     let emit = |step: &str, sent: u64, total: u64| {
         let _ = app.emit("ws-upload-progress", json!({ "step": step, "sent": sent, "total": total }));
@@ -287,9 +371,19 @@ pub async fn ws_download(app: AppHandle, id: String, kind: String, dest: String)
 }
 
 /// Mod-Datei in den Cache laden (zum Spielen). Rückgabe: Pfad der .jar
-pub async fn fetch_mod(app: &AppHandle, id: &str, version: &str) -> Result<PathBuf, String> {
+/// Schlüssel einer Mod-Fassung: Version + Zeitpunkt der letzten Änderung
+pub fn mod_key(item: &Value) -> String {
+    format!("{}-{}", item["modVersion"].as_str().unwrap_or("1.0"), item["updatedAt"].as_i64().unwrap_or(0))
+}
+
+fn cached_mod(app: &AppHandle, id: &str, key: &str) -> Result<PathBuf, String> {
     let dir = crate::util::data_dir(app)?.join("workshop").join(id);
-    let jar = dir.join(format!("{}.jar", version.replace(|c: char| !c.is_ascii_alphanumeric() && c != '.', "_")));
+    Ok(dir.join(format!("{}.jar", key.replace(|c: char| !c.is_ascii_alphanumeric() && c != '.' && c != '-', "_"))))
+}
+
+pub async fn fetch_mod(app: &AppHandle, id: &str, key: &str) -> Result<PathBuf, String> {
+    let jar = cached_mod(app, id, key)?;
+    let dir = jar.parent().map(|p| p.to_path_buf()).unwrap_or_default();
     if !jar.exists() {
         let _ = std::fs::remove_dir_all(&dir);
         download_to(app, id, "mod", &jar).await?;

@@ -4,6 +4,8 @@ import { MobModel } from "../../api";
 import {
   BlueprintIcon,
   ChestIcon,
+  GearIcon,
+  HammerIcon,
   ChestplateIcon,
   CloseIcon,
   CubeIcon,
@@ -26,7 +28,7 @@ import { TEMPLATES } from "./blueprints";
 
 export type CreateGroup = "block" | "item" | "mob" | "world" | "logic";
 export type CreateChoice =
-  | { kind: "block"; variant: "normal" | "ore" | "lamp" | "storage" | "shapes" }
+  | { kind: "block"; variant: "normal" | "ore" | "lamp" | "storage" | "shapes" | "workbench" | "machine" }
   | { kind: "item"; variant: "basic" | "food" | "sword" | "pickaxe" | "axe" | "shovel" | "hoe" | "toolset" | "armor" | "armorset" }
   | { kind: "mob"; model: MobModel }
   | { kind: "blueprint"; template: string }
@@ -66,6 +68,8 @@ function cards(group: CreateGroup): { title: string; cards: Card[] }[] {
           cards: [
             { choice: { kind: "block", variant: "lamp" }, icon: <LampIcon size={20} />, title: t("Lampe"), desc: t("Leuchtet mit Redstone-Signal") },
             { choice: { kind: "block", variant: "storage" }, icon: <ChestIcon size={20} />, title: t("Lager-Truhe"), desc: t("Block mit Inventar zum Öffnen") },
+            { choice: { kind: "block", variant: "workbench" }, icon: <HammerIcon size={20} />, title: t("Werkbank"), desc: t("Eigenes 3×3-Raster mit Rezepten, die nur hier gehen") },
+            { choice: { kind: "block", variant: "machine" }, icon: <GearIcon size={20} />, title: t("Maschine"), desc: t("Verarbeitet Items über Zeit, mit Fortschrittsbalken") },
           ],
         },
       ];

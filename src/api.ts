@@ -139,12 +139,16 @@ export type BlockDef = {
   recipe: Recipe;
   shapes: BlockShape[];
   ore: OreDef;
-  kind: "normal" | "lamp" | "storage";
+  kind: "normal" | "lamp" | "storage" | "workbench" | "machine";
   rows: number;
+  workbenchRecipes: WorkbenchRecipe[];
+  machine: { fuel: boolean; recipes: MachineRecipe[] };
   names: Record<string, string>;
   model: Cuboid[];
   rotate: boolean;
 };
+export type WorkbenchRecipe = { shaped: boolean; grid: string[]; result: string; count: number };
+export type MachineRecipe = { input: string; inputCount: number; output: string; outputCount: number; time: number };
 export type Cuboid = { from: [number, number, number]; to: [number, number, number]; tex: string };
 export type BlockShape = "stairs" | "slab" | "wall" | "fence" | "button" | "pressure_plate";
 export type OreDef = {

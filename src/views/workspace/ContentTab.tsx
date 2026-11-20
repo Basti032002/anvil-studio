@@ -205,11 +205,13 @@ export default function ContentTab({ project }: { project: Project }) {
     };
     if (choice.kind === "block") {
       const v = choice.variant;
-      const b = newBlock(uid(v === "ore" ? "neues_erz" : v === "lamp" ? "neue_lampe" : v === "storage" ? "neue_truhe" : "neuer_block"));
+      const b = newBlock(uid(v === "ore" ? "neues_erz" : v === "lamp" ? "neue_lampe" : v === "storage" ? "neue_truhe" : v === "workbench" ? "neue_werkbank" : v === "machine" ? "neue_maschine" : "neuer_block"));
       if (v === "ore") Object.assign(b, { nameDe: t("Neues Erz"), nameEn: "New Ore", hardness: 3, resistance: 3, tier: "stone", ore: { ...b.ore, enabled: true } });
       if (v === "lamp") Object.assign(b, { nameDe: t("Neue Lampe"), nameEn: "New Lamp", kind: "lamp", material: "glass", hardness: 0.3, resistance: 0.3, tool: "none" });
       if (v === "storage") Object.assign(b, { nameDe: t("Neue Truhe"), nameEn: "New Chest", kind: "storage", material: "wood", hardness: 2.5, resistance: 2.5, tool: "axe", rows: 3 });
       if (v === "shapes") Object.assign(b, { shapes: ["stairs", "slab", "wall"] });
+      if (v === "workbench") Object.assign(b, { nameDe: t("Neue Werkbank"), nameEn: "New Workbench", kind: "workbench", material: "wood", hardness: 2.5, resistance: 2.5, tool: "axe" });
+      if (v === "machine") Object.assign(b, { nameDe: t("Neue Maschine"), nameEn: "New Machine", kind: "machine", material: "metal", hardness: 3.5, resistance: 3.5, tool: "pickaxe", machine: { fuel: true, recipes: [{ input: "minecraft:cobblestone", inputCount: 1, output: "minecraft:gravel", outputCount: 1, time: 100 }] } });
       setContent({ ...content, blocks: [...content.blocks, b] });
       setSel({ kind: "block", index: content.blocks.length });
     } else if (choice.kind === "item") {

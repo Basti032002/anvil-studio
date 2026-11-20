@@ -34,7 +34,17 @@ export type WsItem = {
   reason?: string;
   allowResubmit?: boolean;
   reports?: number;
+  rating?: { avg: number; count: number };
+  comments?: number;
+  subscribers?: number;
+  dependencies?: { id: string; title: string; available: boolean }[];
+  myRating?: number;
+  subscribed?: boolean;
+  /** nur in „Abonniert“: neueste Fassung schon heruntergeladen */
+  installed?: boolean;
 };
+export type WsComment = { id: number; author: { uuid: string; name: string }; text: string; createdAt: number; canDelete: boolean };
+export type WsNotification = { id: number; kind: "approved" | "rejected" | "blocked" | "unblocked" | "featured" | "deleted" | "comment" | "update"; itemId: string; title: string; text: string; createdAt: number; read: boolean };
 export type WsMe = { uuid: string; name: string; admin: boolean; sessionToken?: string };
 export type WsSettings = { reviewMods: boolean; reviewSource: boolean; reviewUpdates: boolean };
 export type WsStats = { pending: number; public: number; blocked: number; rejected: number; reported: number; downloads30: number };
@@ -81,7 +91,17 @@ export const wsApi = {
     categories: string[];
     trailerUrl: string;
     images: string[];
+    dependencies?: string[];
   }) => invoke<WsItem>("ws_upload", { req }),
+  rate: (id: string, stars: number) => invoke<WsItem>("ws_rate", { id, stars }),
+  comments: (id: string) => invoke<{ comments: WsComment[] }>("ws_comments", { id }),
+  addComment: (id: string, text: string) => invoke<WsComment>("ws_comment_add", { id, text }),
+  deleteComment: (commentId: number) => invoke<void>("ws_comment_delete", { commentId }),
+  subscribe: (id: string, on: boolean) => invoke<WsItem>("ws_subscribe", { id, on }),
+  subscriptions: () => invoke<{ items: WsItem[] }>("ws_subscriptions"),
+  syncSubscriptions: () => invoke<number>("ws_sync_subscriptions"),
+  notifications: () => invoke<{ unread: number; items: WsNotification[] }>("ws_notifications"),
+  readNotifications: () => invoke<void>("ws_notifications_read"),
   download: (id: string, kind: "mod" | "source", dest: string) => invoke<void>("ws_download", { id, kind, dest }),
   openSource: (id: string) => invoke<Project>("ws_open_source", { id }),
   adminItems: (status: string, q = "") => invoke<{ items: WsItem[] }>("ws_admin_items", { status, q }),

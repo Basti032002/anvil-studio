@@ -140,3 +140,79 @@ test("Xbox-Übergangsanmeldung und Übernahme aufs Minecraft-Konto", async () =>
   assert.equal((await post({})).status, 400);
   await app.close();
 });
+
+test("Bewertungen, Kommentare, Abos, Abhängigkeiten, Benachrichtigungen", async () => {
+  const app2 = buildServer();
+  await app2.listen({ port: 0 });
+  const b2 = `http://127.0.0.1:${app2.server.address().port}`;
+  const j = async (url, opts = {}) => {
+    const r = await fetch(b2 + url, opts);
+    return { status: r.status, body: await r.json() };
+  };
+  const log = async (n) => (await j("/api/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ minecraftToken: `dev:${n}` }) })).body.token;
+  const jh = (t) => ({ authorization: `Bearer ${t}`, "content-type": "application/json" });
+  const anna = await log("Anna");
+  const ben = await log("Ben");
+  const admin = await log("Admin");
+  await j("/api/admin/settings", { method: "PUT", headers: jh(admin), body: JSON.stringify({ reviewMods: true, reviewSource: true }) });
+
+  const up = async (tok, meta) => {
+    const fd = new FormData();
+    fd.append("meta", JSON.stringify(meta));
+    fd.append("mod", new Blob([zip]), "m.jar");
+    return (await j("/api/items", { method: "POST", headers: { authorization: `Bearer ${tok}` }, body: fd })).body;
+  };
+  const lib = await up(anna, { title: "Bibliothek", mcVersion: "1.21.1" });
+  await j(`/api/admin/items/${lib.id}/approve`, { method: "POST", headers: jh(admin), body: "{}" });
+  const mod = await up(ben, { title: "Mit Abhängigkeit", mcVersion: "1.21.1", dependencies: [lib.id, "ffffffffffffffff"] });
+  assert.deepEqual(mod.dependencies.map((d) => d.id), [lib.id]);
+  assert.equal(mod.dependencies[0].available, true);
+
+  // Benachrichtigung bei Freigabe / Ablehnung
+  await j(`/api/admin/items/${mod.id}/reject`, { method: "POST", headers: jh(admin), body: JSON.stringify({ reason: "Bitte Beschreibung" }) });
+  let n = (await j("/api/me/notifications", { headers: jh(ben) })).body;
+  assert.equal(n.unread, 1);
+  assert.equal(n.items[0].kind, "rejected");
+  assert.equal(n.items[0].text, "Bitte Beschreibung");
+  await j("/api/me/notifications/read", { method: "POST", headers: jh(ben), body: "{}" });
+  assert.equal((await j("/api/me/notifications", { headers: jh(ben) })).body.unread, 0);
+
+  // Bewerten
+  assert.equal((await j(`/api/items/${lib.id}/rating`, { method: "PUT", headers: jh(anna), body: JSON.stringify({ stars: 5 }) })).status, 400);
+  let r = await j(`/api/items/${lib.id}/rating`, { method: "PUT", headers: jh(ben), body: JSON.stringify({ stars: 4 }) });
+  assert.equal(r.body.rating.avg, 4);
+  assert.equal(r.body.myRating, 4);
+  r = await j(`/api/items/${lib.id}/rating`, { method: "PUT", headers: jh(admin), body: JSON.stringify({ stars: 2 }) });
+  assert.equal(r.body.rating.count, 2);
+  assert.equal(r.body.rating.avg, 3);
+
+  // Kommentieren → Ersteller bekommt Nachricht
+  r = await j(`/api/items/${lib.id}/comments`, { method: "POST", headers: jh(ben), body: JSON.stringify({ text: "Super Mod!" }) });
+  assert.equal(r.status, 200);
+  assert.equal((await j(`/api/items/${lib.id}/comments`, { method: "POST", headers: jh(ben), body: JSON.stringify({ text: "Nochmal" }) })).status, 429);
+  const list = (await j(`/api/items/${lib.id}/comments`)).body.comments;
+  assert.equal(list.length, 1);
+  assert.equal(list[0].canDelete, false);
+  n = (await j("/api/me/notifications", { headers: jh(anna) })).body;
+  assert.ok(n.items.some((x) => x.kind === "comment" && x.text.includes("Super Mod")));
+  assert.equal((await j(`/api/comments/${list[0].id}`, { method: "DELETE", headers: { authorization: `Bearer ${anna}` } })).status, 403);
+  assert.equal((await j(`/api/comments/${list[0].id}`, { method: "DELETE", headers: { authorization: `Bearer ${admin}` } })).body.ok, true);
+
+  // Abonnieren → Update-Nachricht
+  r = await j(`/api/items/${lib.id}/subscribe`, { method: "POST", headers: jh(ben), body: "{}" });
+  assert.equal(r.body.subscribed, true);
+  assert.equal(r.body.subscribers, 1);
+  assert.equal((await j("/api/me/subscriptions", { headers: jh(ben) })).body.items.length, 1);
+  await j(`/api/admin/settings`, { method: "PUT", headers: jh(admin), body: JSON.stringify({ reviewUpdates: false }) });
+  const fd = new FormData();
+  fd.append("meta", JSON.stringify({ modVersion: "1.1.0" }));
+  fd.append("mod", new Blob([zip]), "m.jar");
+  await j(`/api/items/${lib.id}`, { method: "PUT", headers: { authorization: `Bearer ${anna}` }, body: fd });
+  n = (await j("/api/me/notifications", { headers: jh(ben) })).body;
+  assert.equal(n.items[0].kind, "update");
+  assert.equal(n.items[0].text, "1.1.0");
+
+  // Sortieren nach Bewertung
+  assert.equal((await j("/api/items?sort=rating")).status, 200);
+  await app2.close();
+});

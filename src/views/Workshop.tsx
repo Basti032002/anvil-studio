@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, exportApi, ModSettings, modSettingsApi, pickSaveFile, Project } from "../api";
 import { confirmDialog, openMenu } from "../components/Overlay";
 import McLoginDialog from "../components/McLogin";
+import { Comments, DependencyList, DependencyPicker, NotificationBell, RateBox, RatingSummary, SubscribeButton, Subscriptions, Stars, useSubscriptionSync } from "./WorkshopSocial";
 import {
   AlertIcon,
   ArrowLeftIcon,
@@ -28,13 +29,14 @@ import {
 import { toast } from "../state";
 import { CATEGORIES, categoryLabel, fmtSize, mcLogout, McProfile, refreshMe, useWorkshop, WsItem, wsApi, wsUrl, youtubeEmbed } from "../workshop";
 
-type Route = { page: "home" } | { page: "item"; id: string } | { page: "upload"; item?: WsItem } | { page: "mine" };
+type Route = { page: "home" } | { page: "item"; id: string } | { page: "upload"; item?: WsItem } | { page: "mine" } | { page: "subs" };
 const MC_VERSIONS = ["1.21.1", "1.21.4", "1.21.8", "1.21.10"];
 
 export default function Workshop({ projects, onOpenProject }: { projects: Project[]; onOpenProject: (p: Project) => void }) {
   const [route, setRoute] = useState<Route>({ page: "home" });
   const [login, setLogin] = useState<{ reason: string; then: (p: McProfile) => void } | null>(null);
   const ws = useWorkshop();
+  useSubscriptionSync();
   // Angemeldet, aber Workshop-Konto fehlt (z. B. Server war beim Start nicht erreichbar) → nachholen
   useEffect(() => {
     if (ws.profile && !ws.me) refreshMe();
@@ -48,11 +50,13 @@ export default function Workshop({ projects, onOpenProject }: { projects: Projec
 
   return (
     <div className="page workshop">
-      {route.page === "home" && <Home onOpen={(id) => setRoute({ page: "item", id })} onUpload={() => withLogin(t("Zum Hochladen brauchst du dein Minecraft-Konto."), () => setRoute({ page: "upload" }))} onMine={() => withLogin(t("Melde dich an, um deine Uploads zu sehen."), () => setRoute({ page: "mine" }))} onLogin={() => setLogin({ reason: "", then: () => {} })} />}
+      {route.page === "subs" && <Subscriptions onBack={() => setRoute({ page: "home" })} onOpen={(id) => setRoute({ page: "item", id })} />}
+      {route.page === "home" && <Home onSubs={() => withLogin(t("Melde dich an, um deine Abos zu sehen."), () => setRoute({ page: "subs" }))} onOpen={(id) => setRoute({ page: "item", id })} onUpload={() => withLogin(t("Zum Hochladen brauchst du dein Minecraft-Konto."), () => setRoute({ page: "upload" }))} onMine={() => withLogin(t("Melde dich an, um deine Uploads zu sehen."), () => setRoute({ page: "mine" }))} onLogin={() => setLogin({ reason: "", then: () => {} })} />}
       {route.page === "item" && (
         <ItemPage
           id={route.id}
           onBack={() => setRoute({ page: "home" })}
+          onOpen={(id) => setRoute({ page: "item", id })}
           withLogin={withLogin}
           onOpenProject={onOpenProject}
           onEdit={(item) => setRoute({ page: "upload", item })}
@@ -142,7 +146,7 @@ function Unreachable({ error, onRetry }: { error: string; onRetry: () => void })
 
 // ---- Startseite ------------------------------------------------------------------
 
-function Home({ onOpen, onUpload, onMine, onLogin }: { onOpen: (id: string) => void; onUpload: () => void; onMine: () => void; onLogin: () => void }) {
+function Home({ onOpen, onUpload, onMine, onLogin, onSubs }: { onOpen: (id: string) => void; onUpload: () => void; onMine: () => void; onLogin: () => void; onSubs: () => void }) {
   const [kind, setKind] = useState<"mod" | "source">(() => (localStorage.getItem("anvil.ws.kind") === "source" ? "source" : "mod"));
   const [q, setQ] = useState("");
   const [mc, setMc] = useState("");
@@ -186,7 +190,11 @@ function Home({ onOpen, onUpload, onMine, onLogin }: { onOpen: (id: string) => v
           <p className="muted">{t("Mods aus der Community spielen – oder den Quellcode holen und selbst weiterbauen.")}</p>
         </div>
         <div className="row gap-6">
+          <NotificationBell onOpen={onOpen} />
           <AccountChip onLogin={onLogin} />
+          <button className="btn" onClick={onSubs}>
+            {t("Abonniert")}
+          </button>
           <button className="btn" onClick={onMine}>
             {t("Meine Uploads")}
           </button>
@@ -231,6 +239,7 @@ function Home({ onOpen, onUpload, onMine, onLogin }: { onOpen: (id: string) => v
         <select className="input" value={sort} onChange={(e) => setSort(e.target.value)} aria-label={t("Sortierung")}>
           <option value="">{t("Beliebt")}</option>
           <option value="new">{t("Neu")}</option>
+          <option value="rating">{t("Beste Bewertung")}</option>
           <option value="updated">{t("Zuletzt aktualisiert")}</option>
           <option value="name">{t("Name")}</option>
         </select>
@@ -305,6 +314,12 @@ function Home({ onOpen, onUpload, onMine, onLogin }: { onOpen: (id: string) => v
                 <div className="ws-card-summary">{it.summary}</div>
                 <div className="muted small row gap-6">
                   <DownloadIcon size={12} /> {it.downloads.toLocaleString(locale)}
+                  {!!it.rating?.count && (
+                    <>
+                      <span className="grow" />
+                      <Stars value={it.rating.avg} size={11} />
+                    </>
+                  )}
                 </div>
               </div>
             </button>
@@ -320,12 +335,14 @@ function Home({ onOpen, onUpload, onMine, onLogin }: { onOpen: (id: string) => v
 function ItemPage({
   id,
   onBack,
+  onOpen,
   withLogin,
   onOpenProject,
   onEdit,
 }: {
   id: string;
   onBack: () => void;
+  onOpen: (id: string) => void;
   withLogin: (reason: string, then: (p: McProfile) => void) => void;
   onOpenProject: (p: Project) => void;
   onEdit: (item: WsItem) => void;
@@ -444,6 +461,7 @@ function ItemPage({
             <h2>{t("Über diese Mod")}</h2>
             <div className="ws-description">{item.description || item.summary || t("Keine Beschreibung.")}</div>
           </section>
+          <Comments item={item} withLogin={(r, then) => withLogin(r, () => then())} />
         </div>
 
         <aside className="ws-detail-side">
@@ -453,6 +471,7 @@ function ItemPage({
               <div>
                 <h1 className="ws-title">{item.title}</h1>
                 <div className="muted">{t("von {name}", { name: item.owner.name })}</div>
+                <RatingSummary item={item} />
               </div>
             </div>
             <div className="row gap-6 wrap">
@@ -472,8 +491,11 @@ function ItemPage({
                 <button className="btn full" onClick={download}>
                   <DownloadIcon size={14} /> {t("Herunterladen (.jar, {size})", { size: fmtSize(item.modSize) })}
                 </button>
+                <SubscribeButton item={item} onChange={setItem} withLogin={(r, then) => withLogin(r, () => then())} />
               </>
             )}
+            <DependencyList item={item} onOpen={onOpen} />
+            <RateBox item={item} own={!!own} onChange={setItem} withLogin={(r, then) => withLogin(r, () => then())} />
             <dl className="ws-facts">
               <dt>{t("Version")}</dt>
               <dd>{item.modVersion || "–"}</dd>
@@ -541,7 +563,8 @@ function PlayDialog({ item, onClose }: { item: WsItem; onClose: () => void }) {
 
   const pct = step.total ? Math.round((step.done / step.total) * 100) : null;
   const stepIdx = state === "started" ? 3 : /Konto/.test(step.step) ? 1 : 2;
-  const translatedStep = t(step.step);
+  const depMatch = step.step.match(/^Abhängigkeit wird geladen: (.*)$/);
+  const translatedStep = depMatch ? t("Abhängigkeit wird geladen: {name}", { name: depMatch[1] }) : t(step.step);
   return (
     <div className="modal-backdrop">
       <div className="ws-play" role="dialog" aria-label={t("{name} spielen", { name: item.title })}>
@@ -622,6 +645,7 @@ function UploadPage({ projects, item, onBack, onDone }: { projects: Project[]; i
   const [description, setDescription] = useState(item?.description ?? "");
   const [categories, setCategories] = useState<string[]>(item?.categories ?? []);
   const [trailer, setTrailer] = useState(item?.trailerUrl ?? "");
+  const [deps, setDeps] = useState<{ id: string; title: string }[]>(() => (item?.dependencies ?? []).map((d) => ({ id: d.id, title: d.title })));
   const [images, setImages] = useState<string[]>([]);
   const [agree, setAgree] = useState(!!item);
   const [busy, setBusy] = useState(false);
@@ -661,7 +685,7 @@ function UploadPage({ projects, item, onBack, onDone }: { projects: Project[]; i
     setProgress({ step: "prepare", sent: 0, total: 0 });
     const un = await listen<{ step: string; sent: number; total: number }>("ws-upload-progress", (e) => setProgress(e.payload));
     try {
-      const r = await wsApi.upload({ projectId: project.id, itemId: item?.id ?? null, includeMod, includeSource, title, summary, description, categories, trailerUrl: trailer.trim(), images });
+      const r = await wsApi.upload({ projectId: project.id, itemId: item?.id ?? null, includeMod, includeSource, title, summary, description, categories, trailerUrl: trailer.trim(), images, dependencies: includeMod ? deps.map((d) => d.id) : [] });
       toast(r.status === "public" ? t("Veröffentlicht!") : t("Eingereicht – du siehst den Stand unter „Meine Uploads“."), "success");
       onDone();
     } catch (e) {
@@ -788,6 +812,14 @@ function UploadPage({ projects, item, onBack, onDone }: { projects: Project[]; i
                 </span>
                 <input className="input" placeholder="https://youtu.be/…" value={trailer} onChange={(e) => setTrailer(e.target.value)} />
               </label>
+              {includeMod && (
+                <div className="field">
+                  <span className="field-label">
+                    {t("Benötigte Mods")} <span className="muted">· {t("aus dem Workshop, werden beim Spielen mitgeladen")}</span>
+                  </span>
+                  <DependencyPicker value={deps} onChange={setDeps} selfId={item?.id} />
+                </div>
+              )}
               <div className="field">
                 <span className="field-label">
                   {t("Kategorien")} <span className="muted">· {t("bis zu 5")}</span>

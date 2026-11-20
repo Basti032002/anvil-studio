@@ -37,6 +37,8 @@ export const newBlock = (id: string): BlockDef => ({
   names: {},
   model: [],
   rotate: false,
+  workbenchRecipes: [],
+  machine: { fuel: true, recipes: [] },
 });
 
 const itemBase = {

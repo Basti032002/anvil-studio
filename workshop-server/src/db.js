@@ -66,7 +66,42 @@ export function openDb(dataDir) {
       count INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (item_id, day)
     );
+    CREATE TABLE IF NOT EXISTS ratings (
+      item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+      uuid TEXT NOT NULL,
+      stars INTEGER NOT NULL,
+      PRIMARY KEY (item_id, uuid)
+    );
+    CREATE TABLE IF NOT EXISTS comments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+      uuid TEXT NOT NULL,
+      name TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS comments_item ON comments(item_id, created_at);
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      uuid TEXT NOT NULL,
+      item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (uuid, item_id)
+    );
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      item_id TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL DEFAULT '',
+      text TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      read INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS notifications_user ON notifications(uuid, created_at);
   `);
+  // Spalten, die später dazukamen
+  const cols = db.prepare("PRAGMA table_info(items)").all().map((c) => c.name);
+  if (!cols.includes("dependencies")) db.exec("ALTER TABLE items ADD COLUMN dependencies TEXT NOT NULL DEFAULT '[]'");
   return db;
 }
 

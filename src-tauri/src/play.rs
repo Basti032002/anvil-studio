@@ -283,6 +283,8 @@ pub struct PlayRequest {
     item_id: String,
     title: String,
     mc_version: String,
+    /// vom Frontend mitgeschickt; maßgeblich ist die aktuelle Fassung auf dem Server
+    #[allow(dead_code)]
     mod_version: String,
 }
 
@@ -314,12 +316,35 @@ async fn prepare_and_launch(app: &AppHandle, req: &PlayRequest) -> Result<(), St
 
     // Spielordner mit genau dieser Mod
     prog("Mod wird geladen", 0, 0);
-    let jar = crate::workshop::fetch_mod(app, &req.item_id, &req.mod_version).await?;
+    // Immer die neueste Fassung (samt Abhängigkeiten) – bereits geladene bleiben im Zwischenspeicher
+    let item = crate::workshop::ws_item(app.clone(), req.item_id.clone()).await?;
     let game = base.join("instances").join(&req.item_id);
     let mods = game.join("mods");
     let _ = std::fs::remove_dir_all(&mods);
     std::fs::create_dir_all(&mods).map_err(err)?;
-    std::fs::copy(&jar, mods.join(format!("{}.jar", req.item_id))).map_err(err)?;
+    let mut queue = vec![item];
+    let mut done = std::collections::HashSet::new();
+    while let Some(it) = queue.pop() {
+        let id = it["id"].as_str().unwrap_or_default().to_string();
+        if id.is_empty() || !done.insert(id.clone()) || done.len() > 20 {
+            continue;
+        }
+        if id != req.item_id {
+            prog(&format!("Abhängigkeit wird geladen: {}", it["title"].as_str().unwrap_or(&id)), 0, 0);
+        }
+        let jar = crate::workshop::fetch_mod(app, &id, &crate::workshop::mod_key(&it)).await?;
+        std::fs::copy(&jar, mods.join(format!("{id}.jar"))).map_err(err)?;
+        for d in it["dependencies"].as_array().into_iter().flatten() {
+            let did = d["id"].as_str().unwrap_or_default().to_string();
+            if done.contains(&did) {
+                continue;
+            }
+            if !d["available"].as_bool().unwrap_or(false) {
+                return Err(format!("Die benötigte Mod „{}“ ist im Workshop gerade nicht verfügbar.", d["title"].as_str().unwrap_or(&did)));
+            }
+            queue.push(crate::workshop::ws_item(app.clone(), did).await?);
+        }
+    }
 
     let mem = crate::settings::load(app).play_memory_mb;
     let args = launch_args(&base, mc, &vanilla, &forge, &game, &profile.name, &profile.uuid, &token, mem)?;
