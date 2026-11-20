@@ -1739,11 +1739,8 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
         if m.spawn {
             let (min, max) = (m.group_min.clamp(1, 16), m.group_max.clamp(1, 16).max(m.group_min.clamp(1, 16)));
             let weight = m.weight.clamp(1, 1000);
-            let spawners = if api.props_tools {
-                json!([{ "data": { "type": format!("{modid}:{id}"), "minCount": min, "maxCount": max }, "weight": weight }])
-            } else {
-                json!({ "type": format!("{modid}:{id}"), "weight": weight, "minCount": min, "maxCount": max })
-            };
+            // NeoForge liest Gewicht und Gruppengröße in allen Versionen flach aus einem Objekt
+            let spawners = json!({ "type": format!("{modid}:{id}"), "weight": weight, "minCount": min, "maxCount": max });
             write_json(&modifier, &json!({ "type": "neoforge:add_spawns", "biomes": biome_target(&m.biomes), "spawners": spawners }))?;
         } else {
             remove_if_exists(modifier);
