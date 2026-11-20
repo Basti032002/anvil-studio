@@ -71,6 +71,8 @@ pub fn run() {
             settings::save_settings,
             updater::check_update,
             updater::install_update,
+            updater::patch_notes_pending,
+            updater::patch_notes_seen,
             admin::account_configured,
             admin::account_start_login,
             admin::account_poll_login,

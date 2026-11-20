@@ -275,3 +275,60 @@ mod tests {
         assert_eq!(compare(&v("0.4.0"), &v("0.4.0-dev.5")), Ordering::Greater);
     }
 }
+
+// ---- Patchnotes nach einem Update --------------------------------------------
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchNotes {
+    pub version: String,
+    pub title: String,
+    pub body: String,
+    pub date: String,
+    pub url: String,
+}
+
+fn seen_file(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(crate::util::data_dir(app)?.join("seen-version.txt"))
+}
+
+/// Patchnotes der installierten Version, falls sie noch nicht gezeigt wurden.
+#[tauri::command]
+pub async fn patch_notes_pending(app: AppHandle) -> Result<Option<PatchNotes>, String> {
+    let version = app.package_info().version.to_string();
+    let seen = std::fs::read_to_string(seen_file(&app)?).unwrap_or_default();
+    if seen.trim() == version {
+        return Ok(None);
+    }
+    let (repo, token) = if version.contains("-dev") {
+        match crate::admin::load_token() {
+            Some(t) => (DEV_REPO, Some(t)),
+            None => return Ok(None),
+        }
+    } else {
+        (RELEASE_REPO, None)
+    };
+    let mut req = client()?
+        .get(format!("https://api.github.com/repos/{repo}/releases/tags/v{version}"))
+        .header("Accept", "application/vnd.github+json");
+    if let Some(t) = &token {
+        req = req.bearer_auth(t);
+    }
+    // offline oder noch nicht veröffentlicht → beim nächsten Start erneut versuchen
+    let Ok(resp) = req.send().await else { return Ok(None) };
+    if !resp.status().is_success() {
+        return Ok(None);
+    }
+    let r: serde_json::Value = resp.json().await.map_err(err)?;
+    let s = |k: &str| r[k].as_str().unwrap_or("").to_string();
+    Ok(Some(PatchNotes { version, title: s("name"), body: s("body"), date: s("published_at"), url: s("html_url") }))
+}
+
+#[tauri::command]
+pub fn patch_notes_seen(app: AppHandle, version: String) -> Result<(), String> {
+    let f = seen_file(&app)?;
+    if let Some(dir) = f.parent() {
+        std::fs::create_dir_all(dir).map_err(err)?;
+    }
+    std::fs::write(f, version).map_err(err)
+}

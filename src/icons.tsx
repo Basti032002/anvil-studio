@@ -1,5 +1,17 @@
 // Icons: Phosphor (Bold) – klare, gleichmäßige Linien in der Textfarbe.
 import {
+  Graph,
+  GitFork,
+  Hourglass,
+  Repeat,
+  CloudLightning,
+  ChatText,
+  Hamburger,
+  Shovel,
+  Prohibit,
+  MagnifyingGlassPlus,
+  MagnifyingGlassMinus,
+  CornersOut,
   ArrowClockwise,
   ArrowCounterClockwise,
   ArrowLeft,
@@ -189,3 +201,15 @@ export const LightningIcon = ({ size = 16 }: P) => <Lightning size={size} weight
 export const LampIcon = ({ size = 16 }: P) => <Lamp size={size} weight="bold" aria-hidden="true" />;
 export const ChestIcon = ({ size = 16 }: P) => <Archive size={size} weight="bold" aria-hidden="true" />;
 export const FlaskIcon = ({ size = 16 }: P) => <Flask size={size} weight="bold" aria-hidden="true" />;
+export const BlueprintIcon = ({ size = 16 }: P) => <Graph size={size} weight="bold" aria-hidden="true" />;
+export const BranchIcon = ({ size = 16 }: P) => <GitFork size={size} weight="bold" aria-hidden="true" />;
+export const DelayIcon = ({ size = 16 }: P) => <Hourglass size={size} weight="bold" aria-hidden="true" />;
+export const RepeatIcon = ({ size = 16 }: P) => <Repeat size={size} weight="bold" aria-hidden="true" />;
+export const WeatherIcon = ({ size = 16 }: P) => <CloudLightning size={size} weight="bold" aria-hidden="true" />;
+export const ChatIcon = ({ size = 16 }: P) => <ChatText size={size} weight="bold" aria-hidden="true" />;
+export const FoodIcon = ({ size = 16 }: P) => <Hamburger size={size} weight="bold" aria-hidden="true" />;
+export const ShovelIcon = ({ size = 16 }: P) => <Shovel size={size} weight="bold" aria-hidden="true" />;
+export const CancelIcon = ({ size = 16 }: P) => <Prohibit size={size} weight="bold" aria-hidden="true" />;
+export const ZoomInIcon = ({ size = 16 }: P) => <MagnifyingGlassPlus size={size} weight="bold" aria-hidden="true" />;
+export const ZoomOutIcon = ({ size = 16 }: P) => <MagnifyingGlassMinus size={size} weight="bold" aria-hidden="true" />;
+export const FitIcon = ({ size = 16 }: P) => <CornersOut size={size} weight="bold" aria-hidden="true" />;

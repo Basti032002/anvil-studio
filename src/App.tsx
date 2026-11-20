@@ -1,5 +1,6 @@
 import { t, takeReturnNav } from "./i18n";
 import { ContextMenuHost, DialogHost } from "./components/Overlay";
+import PatchNotesDialog from "./components/PatchNotes";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { restoreSession, useAccount } from "./admin";
@@ -215,6 +216,7 @@ export default function App() {
       <CommandPalette open={palette} onClose={() => setPalette(false)} commands={commands} />
       <Toasts />
       <DialogHost />
+      <PatchNotesDialog />
       <ContextMenuHost editLabels={EDIT_LABELS} />
     </div>
   );

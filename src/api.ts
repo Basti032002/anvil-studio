@@ -106,7 +106,11 @@ export const settingsApi = {
   save: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
   checkUpdate: (channel: UpdateChannel) => invoke<UpdateInfo | null>("check_update", { channel }),
   installUpdate: (info: UpdateInfo) => invoke<void>("install_update", { info }),
+  patchNotesPending: () => invoke<PatchNotes | null>("patch_notes_pending"),
+  patchNotesSeen: (version: string) => invoke<void>("patch_notes_seen", { version }),
 };
+
+export type PatchNotes = { version: string; title: string; body: string; date: string; url: string };
 
 // ---- Inhalte, Mods, Dateien, Import (0.5) --------------------------------
 
@@ -215,6 +219,7 @@ export type Content = {
   tabName: string;
   brewing: BrewDef[];
   events: EventDef[];
+  blueprints: Blueprint[];
 };
 export type BrewDef = { input: string; ingredient: string; output: string };
 export type EventTrigger = "right_click_block" | "right_click_item" | "break_block" | "place_block" | "use_item" | "entity_hurt" | "entity_killed";
@@ -297,3 +302,23 @@ import type { McIconDef } from "./iconRender";
 export type CatalogEntry = { id: string; name: string; nameEn: string; kind: "block" | "item"; icon: McIconDef };
 export type Catalog = { format: number; version: string; entries: CatalogEntry[]; textures: Record<string, string> };
 export const mcCatalog = (version: string) => invoke<Catalog>("mc_catalog", { version });
+
+// ---- Blueprints (Knoten-Graphen) -------------------------------------------
+export interface BpNode {
+  id: string;
+  kind: string;
+  x: number;
+  y: number;
+  props: Record<string, string>;
+}
+export interface BpLink {
+  from: string;
+  out: string;
+  to: string;
+}
+export interface Blueprint {
+  name: string;
+  enabled: boolean;
+  nodes: BpNode[];
+  links: BpLink[];
+}

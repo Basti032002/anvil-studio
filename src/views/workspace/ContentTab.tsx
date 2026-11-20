@@ -1,22 +1,25 @@
 import { t } from "../../i18n";
 import { confirmDialog, contextMenu, MenuItem } from "../../components/Overlay";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArmorSlot, BlockDef, Content, contentApi, ItemDef, MobDef, Project, Recipe } from "../../api";
+import { ArmorSlot, BlockDef, Blueprint, Content, contentApi, ItemDef, MobDef, Project, Recipe } from "../../api";
 import { useCatalog } from "../../catalog";
 import { Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
 import McIcon from "../../components/McIcon";
-import { BoxIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, FlaskIcon, GemIcon, LampIcon, LightningIcon, PencilIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TagIcon, TrashIcon } from "../../icons";
+import { BlueprintIcon, BoxIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, FlaskIcon, GemIcon, LampIcon, LightningIcon, PencilIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TagIcon, TrashIcon } from "../../icons";
 import { toast } from "../../state";
 import PixelEditor from "./PixelEditor";
 import { ArmorForm, BlockExtras, Field, ItemKindSwitch, ToolForm } from "./ContentForms";
 import MobEditor from "./MobEditor";
+import BlueprintEditor from "./BlueprintEditor";
+import CreateMenu, { CreateChoice, CreateGroup } from "./CreateMenu";
+import { TEMPLATES } from "./blueprints";
 import { BrewEditor, brewLabel, EventEditor, eventLabel, NamesField, newBrew, newEvent } from "./LogicEditors";
-import { armorPreset, eggDataUrl, newMob, normalizeMob, newBlock, newItem, normalizeBlock, normalizeItem, SLOT_DE, SLOT_EN, variantIds } from "./contentDefaults";
+import { armorPreset, toolPreset, eggDataUrl, newMob, normalizeMob, newBlock, newItem, normalizeBlock, normalizeItem, SLOT_DE, SLOT_EN, variantIds } from "./contentDefaults";
 
-const normalize = (c: Content): Content => ({ ...c, blocks: c.blocks.map(normalizeBlock), items: c.items.map(normalizeItem), mobs: (c.mobs ?? []).map(normalizeMob), brewing: c.brewing ?? [], events: (c.events ?? []).map((e) => ({ ...e, actions: e.actions ?? [] })), generatedMobs: c.generatedMobs ?? [], tabIcon: c.tabIcon ?? "", tabName: c.tabName ?? "" });
+const normalize = (c: Content): Content => ({ ...c, blocks: c.blocks.map(normalizeBlock), items: c.items.map(normalizeItem), mobs: (c.mobs ?? []).map(normalizeMob), brewing: c.brewing ?? [], events: (c.events ?? []).map((e) => ({ ...e, actions: e.actions ?? [] })), blueprints: c.blueprints ?? [], generatedMobs: c.generatedMobs ?? [], tabIcon: c.tabIcon ?? "", tabName: c.tabName ?? "" });
 
-type Sel = { kind: "block" | "item" | "mob" | "event" | "brew"; index: number } | null;
+type Sel = { kind: "block" | "item" | "mob" | "event" | "brew" | "blueprint"; index: number } | null;
 
 export default function ContentTab({ project }: { project: Project }) {
   const [content, setContent] = useState<Content | null>(null);
@@ -26,6 +29,7 @@ export default function ContentTab({ project }: { project: Project }) {
   const [hint, setHint] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [textures, setTextures] = useState<Record<string, string>>({});
+  const [createGroup, setCreateGroup] = useState<CreateGroup | null>(null);
 
   const loadTextures = useCallback(
     async (c: Content) => {
@@ -144,6 +148,76 @@ export default function ContentTab({ project }: { project: Project }) {
     setFilter("");
   }
 
+
+  const TOOL_NAMES: Record<string, [string, string, string]> = {
+    sword: ["neues_schwert", t("Neues Schwert"), "New Sword"],
+    pickaxe: ["neue_spitzhacke", t("Neue Spitzhacke"), "New Pickaxe"],
+    axe: ["neue_axt", t("Neue Axt"), "New Axe"],
+    shovel: ["neue_schaufel", t("Neue Schaufel"), "New Shovel"],
+    hoe: ["neue_hacke", t("Neue Hacke"), "New Hoe"],
+  };
+
+  /** Auswahl aus dem Erstellen-Menü umsetzen */
+  function create(choice: CreateChoice) {
+    if (!content) return;
+    setCreateGroup(null);
+    setFilter("");
+    const ids = new Set(allIds);
+    const uid = (base: string) => {
+      let id = base;
+      let n = 2;
+      while (ids.has(id)) id = `${base}_${n++}`;
+      ids.add(id);
+      return id;
+    };
+    if (choice.kind === "block") {
+      const v = choice.variant;
+      const b = newBlock(uid(v === "ore" ? "neues_erz" : v === "lamp" ? "neue_lampe" : v === "storage" ? "neue_truhe" : "neuer_block"));
+      if (v === "ore") Object.assign(b, { nameDe: t("Neues Erz"), nameEn: "New Ore", hardness: 3, resistance: 3, tier: "stone", ore: { ...b.ore, enabled: true } });
+      if (v === "lamp") Object.assign(b, { nameDe: t("Neue Lampe"), nameEn: "New Lamp", kind: "lamp", material: "glass", hardness: 0.3, resistance: 0.3, tool: "none" });
+      if (v === "storage") Object.assign(b, { nameDe: t("Neue Truhe"), nameEn: "New Chest", kind: "storage", material: "wood", hardness: 2.5, resistance: 2.5, tool: "axe", rows: 3 });
+      if (v === "shapes") Object.assign(b, { shapes: ["stairs", "slab", "wall"] });
+      setContent({ ...content, blocks: [...content.blocks, b] });
+      setSel({ kind: "block", index: content.blocks.length });
+    } else if (choice.kind === "item") {
+      const v = choice.variant;
+      const added: ItemDef[] = [];
+      if (v === "basic") added.push(newItem(uid("neues_item")));
+      else if (v === "food") added.push({ ...newItem(uid("neue_nahrung")), nameDe: t("Neue Nahrung"), nameEn: "New Food", food: true, nutrition: 6, saturation: 0.6 });
+      else if (v === "toolset") {
+        for (const type of ["sword", "pickaxe", "axe", "shovel", "hoe"] as const) {
+          const [id, de, en] = TOOL_NAMES[type];
+          added.push({ ...newItem(uid(id), "tool"), ...toolPreset(type, "iron"), nameDe: de, nameEn: en });
+        }
+      } else if (v === "armor" || v === "armorset") {
+        const mat = uid("neues_material");
+        const slots: ArmorSlot[] = v === "armor" ? ["helmet"] : ["helmet", "chestplate", "leggings", "boots"];
+        for (const slot of slots)
+          added.push({ ...newItem(uid(`${mat}_${slot}`), "armor"), ...armorPreset("iron", slot), armorMaterial: mat, nameDe: `${t("Neue Rüstung")} – ${SLOT_DE[slot]}`, nameEn: `New ${SLOT_EN[slot]}` });
+      } else {
+        const [id, de, en] = TOOL_NAMES[v];
+        added.push({ ...newItem(uid(id), "tool"), ...toolPreset(v, "iron"), nameDe: de, nameEn: en });
+      }
+      setContent({ ...content, items: [...content.items, ...added] });
+      setSel({ kind: "item", index: content.items.length });
+      if (added.length > 1) toast(t("{n} Items hinzugefügt.", { n: added.length }), "success");
+    } else if (choice.kind === "mob") {
+      const m = newMob(uid(`neue_kreatur_${choice.model}`), choice.model);
+      setContent({ ...content, mobs: [...content.mobs, m] });
+      setSel({ kind: "mob", index: content.mobs.length });
+    } else if (choice.kind === "blueprint") {
+      const bp: Blueprint = (TEMPLATES.find((x) => x.id === choice.template) ?? TEMPLATES[0]).build();
+      setContent({ ...content, blueprints: [...content.blueprints, bp] });
+      setSel({ kind: "blueprint", index: content.blueprints.length });
+    } else if (choice.kind === "event") {
+      setContent({ ...content, events: [...content.events, newEvent(content.blocks[0]?.id ?? "")] });
+      setSel({ kind: "event", index: content.events.length });
+    } else {
+      setContent({ ...content, brewing: [...content.brewing, newBrew()] });
+      setSel({ kind: "brew", index: content.brewing.length });
+    }
+  }
+
   function createArmorSet(from: ItemDef) {
     if (!content) return;
     const mat = from.armorMaterial || "material";
@@ -190,6 +264,13 @@ export default function ContentTab({ project }: { project: Project }) {
 
   async function remove(target: Sel = sel) {
     if (!content || !target) return;
+    if (target.kind === "blueprint") {
+      const bp = content.blueprints[target.index];
+      if (bp.nodes.length > 1 && !(await confirmDialog(t("„{name}“ entfernen?", { name: bp.name }), t("Der Blueprint mit allen Knoten wird gelöscht."), t("Entfernen"), t("Abbrechen"), true))) return;
+      setContent((c) => (c ? { ...c, blueprints: c.blueprints.filter((_, i) => i !== target.index) } : c));
+      setSel(null);
+      return;
+    }
     if (target.kind === "event" || target.kind === "brew") {
       const key = target.kind === "event" ? "events" : "brewing";
       setContent((c) => (c ? { ...c, [key]: (c[key] as unknown[]).filter((_, i) => i !== target.index) } : c));
@@ -250,7 +331,7 @@ export default function ContentTab({ project }: { project: Project }) {
         <div className="content-list-scroll">
           <div className="content-list-head">
             <span>{t("Blöcke ·")}{" "}{content.blocks.length}</span>
-            <button className="icon-btn" onClick={() => addBlock()} aria-label={t("Block hinzufügen")} data-tip={t("Block hinzufügen")}>
+            <button className="icon-btn" onClick={() => setCreateGroup("block")} aria-label={t("Block hinzufügen")} data-tip={t("Block hinzufügen")}>
               <PlusIcon size={15} />
             </button>
           </div>
@@ -279,17 +360,9 @@ export default function ContentTab({ project }: { project: Project }) {
           {content.blocks.length === 0 && <p className="muted small pad">{t("Noch keine Blöcke.")}</p>}
           <div className="content-list-head">
             <span>{t("Items ·")}{" "}{content.items.length}</span>
-            <span className="row gap-2">
-              <button className="icon-btn" onClick={() => addItem(undefined, "tool")} aria-label={t("Werkzeug hinzufügen")} data-tip={t("Werkzeug / Waffe")}>
-                <SwordIcon size={15} />
-              </button>
-              <button className="icon-btn" onClick={() => addItem(undefined, "armor")} aria-label={t("Rüstung hinzufügen")} data-tip={t("Rüstung")}>
-                <ChestplateIcon size={15} />
-              </button>
-              <button className="icon-btn" onClick={() => addItem()} aria-label={t("Item hinzufügen")} data-tip={t("Item")}>
-                <PlusIcon size={15} />
-              </button>
-            </span>
+            <button className="icon-btn" onClick={() => setCreateGroup("item")} aria-label={t("Item hinzufügen")} data-tip={t("Item")}>
+              <PlusIcon size={15} />
+            </button>
           </div>
           {content.items.map((it, i) =>
             matches(it) ? (
@@ -311,7 +384,7 @@ export default function ContentTab({ project }: { project: Project }) {
           {content.items.length === 0 && <p className="muted small pad">{t("Noch keine Items.")}</p>}
           <div className="content-list-head">
             <span>{t("Kreaturen ·")}{" "}{content.mobs.length}</span>
-            <button className="icon-btn" onClick={() => addMob()} aria-label={t("Kreatur hinzufügen")} data-tip={t("Kreatur")}>
+            <button className="icon-btn" onClick={() => setCreateGroup("mob")} aria-label={t("Kreatur hinzufügen")} data-tip={t("Kreatur")}>
               <PlusIcon size={15} />
             </button>
           </div>
@@ -333,13 +406,41 @@ export default function ContentTab({ project }: { project: Project }) {
           )}
           {content.mobs.length === 0 && <p className="muted small pad">{t("Noch keine Kreaturen.")}</p>}
           <div className="content-list-head">
+            <span>{t("Blueprints ·")}{" "}{content.blueprints.length}</span>
+            <button className="icon-btn" onClick={() => setCreateGroup("logic")} aria-label={t("Blueprint hinzufügen")} data-tip={t("Blueprint")}>
+              <PlusIcon size={15} />
+            </button>
+          </div>
+          {content.blueprints.map((b, i) =>
+            !q || b.name.toLowerCase().includes(q) ? (
+              <button
+                key={`bp${i}`}
+                className={sel?.kind === "blueprint" && sel.index === i ? "entry active" : "entry"}
+                onClick={() => setSel({ kind: "blueprint", index: i })}
+                {...contextMenu(() => [
+                  { label: t("Bearbeiten"), icon: <PencilIcon size={15} />, onClick: () => setSel({ kind: "blueprint", index: i }) },
+                  { label: t("Duplizieren"), icon: <CopyIcon size={15} />, onClick: () => setContent({ ...content, blueprints: [...content.blueprints, { ...structuredClone(b), name: `${b.name} (${t("Kopie")})` }] }) },
+                  { label: b.enabled ? t("Ausschalten") : t("Einschalten"), icon: <LightningIcon size={15} />, onClick: () => setContent({ ...content, blueprints: content.blueprints.map((x, j) => (j === i ? { ...x, enabled: !x.enabled } : x)) }) },
+                  "separator",
+                  { label: t("Entfernen"), icon: <TrashIcon size={15} />, danger: true, onClick: () => remove({ kind: "blueprint", index: i }) },
+                ])}
+              >
+                <span className={b.enabled ? "logic-icon" : "logic-icon off"}>
+                  <BlueprintIcon size={14} />
+                </span>
+                <span className="entry-text">
+                  <span className="entry-name">{b.name || t("Blueprint")}</span>
+                  <span className="entry-id">{b.enabled ? t("{n} Knoten", { n: b.nodes.length }) : t("ausgeschaltet")}</span>
+                </span>
+              </button>
+            ) : null,
+          )}
+          {content.blueprints.length === 0 && <p className="muted small pad">{t("Noch keine Blueprints.")}</p>}
+          <div className="content-list-head">
             <span>{t("Ereignisse ·")}{" "}{content.events.length}</span>
             <button
               className="icon-btn"
-              onClick={() => {
-                setContent({ ...content, events: [...content.events, newEvent(content.blocks[0]?.id ?? "")] });
-                setSel({ kind: "event", index: content.events.length });
-              }}
+              onClick={() => setCreateGroup("logic")}
               aria-label={t("Ereignis hinzufügen")}
               data-tip={t("Ereignis")}
             >
@@ -372,10 +473,7 @@ export default function ContentTab({ project }: { project: Project }) {
             <span>{t("Brau-Rezepte ·")}{" "}{content.brewing.length}</span>
             <button
               className="icon-btn"
-              onClick={() => {
-                setContent({ ...content, brewing: [...content.brewing, newBrew()] });
-                setSel({ kind: "brew", index: content.brewing.length });
-              }}
+              onClick={() => setCreateGroup("logic")}
               aria-label={t("Brau-Rezept hinzufügen")}
               data-tip={t("Brau-Rezept")}
             >
@@ -418,7 +516,21 @@ export default function ContentTab({ project }: { project: Project }) {
             </div>
           </div>
         )}
-        {sel?.kind === "event" && content.events[sel.index] ? (
+        {sel?.kind === "blueprint" && content.blueprints[sel.index] ? (
+          <BlueprintEditor
+            key={`bp-${sel.index}`}
+            project={project}
+            content={content}
+            bp={content.blueprints[sel.index]}
+            own={own}
+            onChange={(b) => setContent((c) => (c ? { ...c, blueprints: c.blueprints.map((x, i) => (i === sel.index ? b : x)) } : c))}
+            onDuplicate={() => {
+              setContent({ ...content, blueprints: [...content.blueprints, { ...structuredClone(content.blueprints[sel.index]), name: `${content.blueprints[sel.index].name} (${t("Kopie")})` }] });
+              setSel({ kind: "blueprint", index: content.blueprints.length });
+            }}
+            onRemove={() => remove()}
+          />
+        ) : sel?.kind === "event" && content.events[sel.index] ? (
           <EventEditor
             key={`event-${sel.index}`}
             project={project}
@@ -464,17 +576,17 @@ export default function ContentTab({ project }: { project: Project }) {
               {t("Lege Inhalte per Formular an. Beim Speichern erzeugt Anvil Studio Java-Code, Modelle, Loot-Tabellen, Rezepte und Übersetzungen – passend für Minecraft")}{" "}{project.mcVersion}.
             </p>
             <div className="row center">
-              <button className="btn primary" onClick={() => addBlock()}>
+              <button className="btn primary" onClick={() => setCreateGroup("block")}>
                 <PlusIcon size={15} />{" "}{t("Block")}
               </button>
-              <button className="btn" onClick={() => addItem()}>
+              <button className="btn" onClick={() => setCreateGroup("item")}>
                 <BoxIcon size={15} />{" "}{t("Item")}
               </button>
-              <button className="btn" onClick={() => addItem(undefined, "tool")}>
-                <SwordIcon size={15} />{" "}{t("Werkzeug")}
+              <button className="btn" onClick={() => setCreateGroup("mob")}>
+                <SwordIcon size={15} />{" "}{t("Kreatur")}
               </button>
-              <button className="btn" onClick={() => addItem(undefined, "armor")}>
-                <ChestplateIcon size={15} />{" "}{t("Rüstung")}
+              <button className="btn" onClick={() => setCreateGroup("logic")}>
+                <BlueprintIcon size={15} />{" "}{t("Blueprint")}
               </button>
             </div>
           </div>
@@ -687,6 +799,7 @@ export default function ContentTab({ project }: { project: Project }) {
           </div>
         )}
       </section>
+      {createGroup && <CreateMenu group={createGroup} onPick={create} onClose={() => setCreateGroup(null)} />}
     </div>
   );
 }

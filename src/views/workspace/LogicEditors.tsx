@@ -63,13 +63,13 @@ const ACTIONS: { id: ActionKind; label: string }[] = [
   { id: "launch", label: t("In die Luft schleudern") },
 ];
 
-const EFFECTS = [
+export const EFFECTS = [
   "speed", "slowness", "haste", "mining_fatigue", "strength", "instant_health", "instant_damage", "jump_boost", "nausea", "regeneration",
   "resistance", "fire_resistance", "water_breathing", "invisibility", "blindness", "night_vision", "hunger", "weakness", "poison", "wither",
   "health_boost", "absorption", "saturation", "glowing", "levitation", "luck", "slow_falling", "conduit_power", "dolphins_grace", "darkness",
 ];
 
-const SOUNDS = [
+export const SOUNDS = [
   "entity.experience_orb.pickup", "entity.player.levelup", "block.note_block.pling", "block.anvil.land", "entity.generic.explode",
   "block.bell.use", "entity.firework_rocket.launch", "block.amethyst_block.chime", "entity.enderman.teleport", "ui.toast.challenge_complete",
 ];
