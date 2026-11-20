@@ -306,7 +306,7 @@ function WorkshopSection() {
         </Row>
         <Row
           title={t("Minecraft-Konto")}
-          desc={ws.profile ? t("Angemeldet als {name}. Wird zum Spielen und Hochladen im Workshop benutzt.", { name: ws.profile.name }) : t("Zum Spielen und Hochladen im Workshop. Anmeldung über Microsoft.")}
+          desc={ws.profile ? (ws.profile.kind === "xbox" ? t("Angemeldet als {name} (Xbox-Konto). Der Workshop funktioniert schon – Spielen geht erst, wenn Mojang die Minecraft-Anmeldung für Anvil Studio freigeschaltet hat. Danach einmal ab- und wieder anmelden.", { name: ws.profile.name }) : t("Angemeldet als {name}. Wird zum Spielen und Hochladen im Workshop benutzt.", { name: ws.profile.name })) : t("Zum Spielen und Hochladen im Workshop. Anmeldung über Microsoft.")}
         >
           {ws.profile ? (
             <button className="btn ghost" onClick={() => mcLogout()}>

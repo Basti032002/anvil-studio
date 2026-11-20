@@ -1,4 +1,7 @@
 //! Anmeldung mit dem Minecraft-Konto (Microsoft → Xbox Live → XSTS → Minecraft).
+//! Solange Mojang die Azure-App noch nicht freigeschaltet hat, gibt es eine
+//! Übergangs-Anmeldung über das Xbox-Konto (Gamertag) – damit geht der Workshop,
+//! nur Spielen braucht das echte Minecraft-Token.
 //! Der Refresh-Token liegt in der Windows-Anmeldeinformationsverwaltung; das
 //! Minecraft-Token nur im Speicher.
 
@@ -21,14 +24,26 @@ pub struct McProfile {
     pub uuid: String,
     pub name: String,
     pub skin_url: Option<String>,
+    /// "minecraft" oder "xbox" (Übergangs-Anmeldung)
+    pub kind: String,
 }
 
 #[derive(Clone)]
 struct Session {
-    token: String,
+    mc_token: Option<String>,
+    /// (uhs, XSTS-Token für xboxlive.com) – zum Nachweis des Xbox-Kontos beim Workshop
+    xbox: Option<(String, String)>,
     expires_at: u64,
     profile: McProfile,
 }
+
+/// Anmeldedaten für den Workshop
+pub struct Credentials {
+    pub mc_token: Option<String>,
+    pub xbox: Option<(String, String)>,
+}
+
+const NOT_APPROVED: &str = "Anvil Studio ist bei Microsoft noch nicht für die Minecraft-Anmeldung freigeschaltet. Das ist beantragt – bitte etwas Geduld.";
 
 static SESSION: Mutex<Option<Session>> = Mutex::new(None);
 
@@ -86,15 +101,26 @@ async fn minecraft_from_ms(ms_token: &str) -> Result<Session, String> {
     let xbl_token = xbl["Token"].as_str().ok_or(format!("Xbox-Live-Anmeldung fehlgeschlagen (HTTP {s})."))?;
     let uhs = xbl["DisplayClaims"]["xui"][0]["uhs"].as_str().unwrap_or_default().to_string();
 
-    let (s, xsts) = post_json(
-        "https://xsts.auth.xboxlive.com/xsts/authorize",
-        &json!({
+    let xsts_for = |rp: &'static str| {
+        let body = json!({
             "Properties": { "SandboxId": "RETAIL", "UserTokens": [xbl_token] },
-            "RelyingParty": "rp://api.minecraftservices.com/",
+            "RelyingParty": rp,
             "TokenType": "JWT"
-        }),
-    )
-    .await?;
+        });
+        async move { post_json("https://xsts.auth.xboxlive.com/xsts/authorize", &body).await }
+    };
+    // Xbox-Identität (Gamertag + XUID) – für die Übergangs-Anmeldung im Workshop
+    let xbox_id = match xsts_for("http://xboxlive.com").await {
+        Ok((_, v)) => {
+            let c = &v["DisplayClaims"]["xui"][0];
+            match (v["Token"].as_str(), c["uhs"].as_str(), c["xid"].as_str(), c["gtg"].as_str()) {
+                (Some(t), Some(u), Some(x), Some(g)) => Some((u.to_string(), t.to_string(), x.to_string(), g.to_string())),
+                _ => None,
+            }
+        }
+        Err(_) => None,
+    };
+    let (s, xsts) = xsts_for("rp://api.minecraftservices.com/").await?;
     if let Some(code) = xsts["XErr"].as_u64() {
         return Err(match code {
             2148916233 => "Zu diesem Microsoft-Konto gibt es noch kein Xbox-Profil. Melde dich einmal auf minecraft.net an und versuche es erneut.".into(),
@@ -114,7 +140,16 @@ async fn minecraft_from_ms(ms_token: &str) -> Result<Session, String> {
     let Some(token) = mc["access_token"].as_str() else {
         let msg = mc["errorMessage"].as_str().or(mc["error"].as_str()).unwrap_or("");
         if s == 403 || msg.to_lowercase().contains("invalid app registration") {
-            return Err("Anvil Studio ist bei Microsoft noch nicht für die Minecraft-Anmeldung freigeschaltet. Das ist beantragt – bitte etwas Geduld.".into());
+            // Übergang: mit dem Xbox-Konto weiter (Workshop ja, Spielen nein)
+            if let Some((uhs, tok, xid, gtg)) = xbox_id {
+                return Ok(Session {
+                    mc_token: None,
+                    xbox: Some((uhs, tok)),
+                    expires_at: crate::util::now() + 4 * 3600,
+                    profile: McProfile { uuid: format!("xbox-{xid}"), name: gtg, skin_url: None, kind: "xbox".into() },
+                });
+            }
+            return Err(NOT_APPROVED.into());
         }
         return Err(format!("Minecraft-Anmeldung fehlgeschlagen (HTTP {s}) {msg}"));
     };
@@ -134,15 +169,35 @@ async fn minecraft_from_ms(ms_token: &str) -> Result<Session, String> {
         uuid: p["id"].as_str().unwrap_or_default().to_string(),
         name: p["name"].as_str().unwrap_or_default().to_string(),
         skin_url: p["skins"].as_array().and_then(|s| s.iter().find(|x| x["state"] == "ACTIVE")).and_then(|x| x["url"].as_str()).map(|s| s.to_string()),
+        kind: "minecraft".into(),
     };
-    Ok(Session { token: token.to_string(), expires_at: crate::util::now() + expires.saturating_sub(300), profile })
+    Ok(Session {
+        mc_token: Some(token.to_string()),
+        xbox: xbox_id.map(|(u, t, _, _)| (u, t)),
+        expires_at: crate::util::now() + expires.saturating_sub(300),
+        profile,
+    })
 }
 
-/// Gültiges Minecraft-Token (erneuert es bei Bedarf über den Refresh-Token)
+/// Gültiges Minecraft-Token zum Spielen (erneuert es bei Bedarf)
 pub async fn token() -> Result<(String, McProfile), String> {
+    let s = current().await?;
+    match s.mc_token {
+        Some(t) => Ok((t, s.profile)),
+        None => Err("Spielen geht erst, wenn Mojang die Minecraft-Anmeldung für Anvil Studio freigeschaltet hat. Im Workshop bist du so lange mit deinem Xbox-Konto angemeldet.".into()),
+    }
+}
+
+/// Anmeldedaten für den Workshop (Minecraft oder übergangsweise Xbox)
+pub async fn credentials() -> Result<Credentials, String> {
+    let s = current().await?;
+    Ok(Credentials { mc_token: s.mc_token, xbox: s.xbox })
+}
+
+async fn current() -> Result<Session, String> {
     if let Some(s) = SESSION.lock().unwrap().clone() {
         if s.expires_at > crate::util::now() {
-            return Ok((s.token, s.profile));
+            return Ok(s);
         }
     }
     let refresh = load_refresh().ok_or("Bitte melde dich mit deinem Minecraft-Konto an.")?;
@@ -161,7 +216,7 @@ pub async fn token() -> Result<(String, McProfile), String> {
     }
     let s = minecraft_from_ms(ms).await?;
     *SESSION.lock().unwrap() = Some(s.clone());
-    Ok((s.token, s.profile))
+    Ok(s)
 }
 
 #[tauri::command]
@@ -237,8 +292,8 @@ pub async fn mc_account() -> Result<Option<McProfile>, String> {
     if load_refresh().is_none() && SESSION.lock().unwrap().is_none() {
         return Ok(None);
     }
-    match token().await {
-        Ok((_, p)) => Ok(Some(p)),
+    match current().await {
+        Ok(s) => Ok(Some(s.profile)),
         Err(e) if e.contains("anmelden") || e.contains("abgelaufen") => Ok(None),
         Err(e) => Err(e),
     }

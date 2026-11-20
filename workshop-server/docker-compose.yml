@@ -10,6 +10,10 @@ services:
       # Admins: Minecraft-Namen oder UUIDs (ohne Bindestriche), mit Komma getrennt
       ADMIN_NAMES: "Sebigames"
       ADMIN_UUIDS: ""
+      # Übergangs-Anmeldung mit dem Xbox-Konto (Gamertag), solange Mojang die
+      # Minecraft-Anmeldung noch nicht freigeschaltet hat. "0" = aus.
+      # Gamertags können wie Minecraft-Namen in ADMIN_NAMES stehen.
+      XBOX_LOGIN: "1"
       # Kontakt/Impressum auf der Startseite (leer = wird nicht angezeigt).
       # Eigene Werte am besten in docker-compose.override.yml eintragen.
       CONTACT_EMAIL: ""

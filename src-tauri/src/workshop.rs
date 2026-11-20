@@ -18,15 +18,16 @@ fn base(app: &AppHandle) -> String {
     crate::settings::load(app).workshop_url
 }
 
-/// Workshop-Sitzung über das Minecraft-Konto holen
+/// Workshop-Sitzung über das Minecraft-Konto (oder übergangsweise Xbox) holen
 async fn session(app: &AppHandle) -> Result<String, String> {
     if let Some(t) = TOKEN.lock().unwrap().clone() {
         return Ok(t);
     }
-    let (mc, _) = crate::minecraft::token().await?;
+    let c = crate::minecraft::credentials().await?;
+    let (uhs, xbox) = c.xbox.unwrap_or_default();
     let r = http_client()?
         .post(format!("{}/api/auth", base(app)))
-        .json(&json!({ "minecraftToken": mc }))
+        .json(&json!({ "minecraftToken": c.mc_token, "xboxUhs": uhs, "xboxToken": xbox }))
         .send()
         .await
         .map_err(|e| unreachable_msg(app, &e))?;
@@ -161,10 +162,21 @@ pub async fn ws_upload(app: AppHandle, req: UploadRequest) -> Result<Value, Stri
         "mcVersion": p.mc_version, "modVersion": settings.version, "modId": p.mod_id, "license": settings.license,
     });
     let mut form = reqwest::multipart::Form::new().text("meta", meta.to_string());
+    // Cloudflare (Free) lässt höchstens 100 MB pro Anfrage durch
+    const MAX_TOTAL: u64 = 95 * 1024 * 1024;
+    let mut total: u64 = 0;
+    let mut add = |n: usize, what: &str| -> Result<(), String> {
+        total += n as u64;
+        if total > MAX_TOTAL {
+            return Err(format!("Der Upload ist zu groß (über 95 MB, zuletzt: {what}). Lass Bilder weg oder lade Mod und Quellcode getrennt hoch."));
+        }
+        Ok(())
+    };
     if req.include_mod {
         let jars = crate::export::export_jars(app.clone(), req.project_id.clone())?;
         let jar = jars.first().ok_or("Es gibt noch keine fertige Mod-Datei. Baue sie zuerst (Export → Mod-Datei bauen).")?;
         let bytes = std::fs::read(&jar.path).map_err(err)?;
+        add(bytes.len(), "Mod-Datei")?;
         form = form.part("mod", reqwest::multipart::Part::bytes(bytes).file_name(jar.name.clone()));
     }
     if req.include_source {
@@ -174,14 +186,18 @@ pub async fn ws_upload(app: AppHandle, req: UploadRequest) -> Result<Value, Stri
         tauri::async_runtime::spawn_blocking(move || crate::export::zip_project(&r2, &t2)).await.map_err(err)??;
         let bytes = std::fs::read(&tmp).map_err(err)?;
         let _ = std::fs::remove_file(&tmp);
+        add(bytes.len(), "Quellcode")?;
         form = form.part("source", reqwest::multipart::Part::bytes(bytes).file_name("source.zip"));
     }
     let logo = root.join("src/main/resources/logo.png");
     if logo.exists() {
-        form = form.part("icon", reqwest::multipart::Part::bytes(std::fs::read(&logo).map_err(err)?).file_name("icon.png"));
+        let bytes = std::fs::read(&logo).map_err(err)?;
+        add(bytes.len(), "Logo")?;
+        form = form.part("icon", reqwest::multipart::Part::bytes(bytes).file_name("icon.png"));
     }
     for img in req.images.iter().take(8) {
         let bytes = std::fs::read(img).map_err(|e| format!("Bild „{img}“ kann nicht gelesen werden: {e}"))?;
+        add(bytes.len(), "Bilder")?;
         let name = PathBuf::from(img).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or("bild.png".into());
         form = form.part("images", reqwest::multipart::Part::bytes(bytes).file_name(name));
     }

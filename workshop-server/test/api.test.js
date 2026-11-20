@@ -104,5 +104,28 @@ test("workshop flow", async () => {
   // Löschen durch Admin
   assert.equal((await json(`/api/items/${id}`, { method: "DELETE", headers: auth(admin) })).body.ok, true);
   assert.equal(fs.existsSync(path.join(dir, "files", id)), false);
+});
+
+test("Xbox-Übergangsanmeldung und Übernahme aufs Minecraft-Konto", async () => {
+  const post = (body) => json("/api/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  let r = await post({ xboxUhs: "1", xboxToken: "devxbox:Gamer Tag" });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.user.kind, "xbox");
+  assert.equal(r.body.user.name, "Gamer Tag");
+  const xuid = r.body.user.uuid;
+  const fd = new FormData();
+  fd.append("meta", JSON.stringify({ title: "Xbox-Mod", mcVersion: "1.21.1" }));
+  fd.append("source", new Blob([zip]), "src.zip");
+  const up = await json("/api/items", { method: "POST", headers: auth(r.body.token), body: fd });
+  assert.equal(up.status, 200, JSON.stringify(up.body));
+  assert.equal(up.body.owner.uuid, xuid);
+
+  // Später mit Minecraft (+ Xbox-Nachweis) → Upload gehört jetzt dem Minecraft-Konto
+  r = await post({ minecraftToken: "dev:Spieler", xboxUhs: "1", xboxToken: "devxbox:Gamer Tag" });
+  assert.equal(r.body.user.kind, "minecraft");
+  const mine = await json("/api/me/items", { headers: auth(r.body.token) });
+  assert.ok(mine.body.items.some((i) => i.id === up.body.id && i.owner.name === "Spieler"), JSON.stringify(mine.body));
+
+  assert.equal((await post({})).status, 400);
   await app.close();
 });

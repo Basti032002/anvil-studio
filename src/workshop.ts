@@ -3,7 +3,8 @@ import { useSyncExternalStore } from "react";
 import { t } from "./i18n";
 import type { Project } from "./api";
 
-export type McProfile = { uuid: string; name: string; skinUrl: string | null };
+/** kind "xbox" = Übergangs-Anmeldung, solange Mojang die App noch nicht freigeschaltet hat */
+export type McProfile = { uuid: string; name: string; skinUrl: string | null; kind?: "minecraft" | "xbox" };
 export type McDeviceCode = { deviceCode: string; userCode: string; verificationUri: string; interval: number; expiresIn: number };
 export type McPoll = { status: "pending" | "slow_down" | "done" | "denied" | "expired"; profile: McProfile | null };
 export type WsStatus = "pending" | "public" | "rejected" | "blocked";

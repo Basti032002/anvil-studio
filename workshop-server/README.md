@@ -33,6 +33,9 @@ In Anvil Studio unter **Einstellungen → Workshop** die Adresse eintragen
 | `ADMIN_UUIDS` | alternativ Minecraft-UUIDs (sicherer, Namen können sich ändern) |
 | `DATA_DIR` | Speicherort für Datenbank und Dateien (im Container `/data`) |
 | `PORT` | Port (Standard 8787) |
+| `XBOX_LOGIN` | `1` (Standard): Übergangs-Anmeldung mit dem Xbox-Gamertag erlaubt, solange Mojang die Minecraft-Anmeldung noch nicht freigeschaltet hat. Uploads wandern automatisch aufs Minecraft-Konto, sobald man sich damit anmeldet. `0` = aus |
+| `CONTACT_EMAIL` | Kontaktadresse auf der Startseite (optional) |
+| `IMPRINT_NAME`, `IMPRINT_ADDRESS`, `IMPRINT_EMAIL` | Impressum auf der Startseite (optional, Adresszeilen mit `\|` trennen) |
 
 Ob neue Mods und neuer Quellcode erst freigegeben werden müssen, stellst du in Anvil Studio
 unter **Admin → Workshop** ein.

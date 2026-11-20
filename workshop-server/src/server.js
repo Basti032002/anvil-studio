@@ -16,7 +16,10 @@ const DATA_DIR = process.env.DATA_DIR || "./data";
 const ADMINS = (process.env.ADMIN_UUIDS || "").split(",").map((s) => s.trim().toLowerCase().replace(/-/g, "")).filter(Boolean);
 const ADMIN_NAMES = (process.env.ADMIN_NAMES || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
 const DEV_AUTH = process.env.WORKSHOP_DEV_AUTH === "1";
-const LIMITS = { mod: 64 * 1024 * 1024, source: 128 * 1024 * 1024, image: 5 * 1024 * 1024, images: 8 };
+// Übergangs-Anmeldung mit dem Xbox-Konto (solange die Minecraft-Anmeldung noch nicht freigeschaltet ist)
+const XBOX_LOGIN = process.env.XBOX_LOGIN !== "0";
+// Quellcode bis 95 MB: Cloudflare (Free) lässt höchstens 100 MB pro Anfrage durch
+const LIMITS = { mod: 64 * 1024 * 1024, source: 95 * 1024 * 1024, image: 5 * 1024 * 1024, images: 8 };
 const CATEGORIES = ["adventure", "dimension", "ores", "tech", "deco", "creatures", "minigame", "magic", "tools", "food", "other"];
 
 const FILES = path.join(DATA_DIR, "files");
@@ -52,6 +55,22 @@ export function buildServer() {
     return { uuid: String(p.id).toLowerCase().replace(/-/g, ""), name: String(p.name) };
   }
 
+  async function xboxProfile(uhs, token) {
+    if (DEV_AUTH && token.startsWith("devxbox:")) {
+      const name = token.slice(8).replace(/[^A-Za-z0-9_ ]/g, "").slice(0, 16) || "DevXbox";
+      return { uuid: "xbox-" + crypto.createHash("md5").update(name).digest("hex").slice(0, 16), name };
+    }
+    const r = await fetch("https://profile.xboxlive.com/users/me/profile/settings?settings=Gamertag", {
+      headers: { Authorization: `XBL3.0 x=${uhs};${token}`, "x-xbl-contract-version": "2", Accept: "application/json" },
+    });
+    if (r.status === 401 || r.status === 403) throw fail(401, "Die Xbox-Anmeldung ist abgelaufen. Bitte melde dich neu an.");
+    if (!r.ok) throw fail(502, `Xbox Live antwortet nicht (HTTP ${r.status}).`);
+    const u = (await r.json())?.profileUsers?.[0];
+    const name = u?.settings?.find((x) => x.id === "Gamertag")?.value;
+    if (!u?.id || !name) throw fail(502, "Xbox Live hat kein Profil geliefert.");
+    return { uuid: "xbox-" + String(u.id), name: String(name) };
+  }
+
   function userOf(req) {
     const h = req.headers.authorization || "";
     const token = h.startsWith("Bearer ") ? h.slice(7) : "";
@@ -72,14 +91,31 @@ export function buildServer() {
 
   app.post("/api/auth", async (req) => {
     const token = String(req.body?.minecraftToken || "");
-    if (!token) throw fail(400, "Minecraft-Token fehlt.");
-    const p = await minecraftProfile(token);
+    const xToken = String(req.body?.xboxToken || "");
+    const xUhs = String(req.body?.xboxUhs || "");
+    let p;
+    if (token) {
+      p = await minecraftProfile(token);
+      // Uploads aus der Xbox-Übergangszeit auf das Minecraft-Konto übertragen
+      if (xToken) {
+        const x = await xboxProfile(xUhs, xToken).catch(() => null);
+        if (x) {
+          db.prepare("UPDATE items SET owner_uuid = ? WHERE owner_uuid = ?").run(p.uuid, x.uuid);
+          db.prepare("UPDATE reports SET reporter_uuid = ? WHERE reporter_uuid = ?").run(p.uuid, x.uuid);
+          db.prepare("DELETE FROM sessions WHERE uuid = ?").run(x.uuid);
+        }
+      }
+    } else if (xToken && XBOX_LOGIN) {
+      p = await xboxProfile(xUhs, xToken);
+    } else {
+      throw fail(400, xToken ? "Die Anmeldung mit dem Xbox-Konto ist auf diesem Server abgeschaltet." : "Minecraft-Token fehlt.");
+    }
     const session = crypto.randomBytes(32).toString("hex");
     db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(now());
     db.prepare("INSERT INTO sessions(token, uuid, name, expires_at) VALUES(?, ?, ?, ?)").run(session, p.uuid, p.name, now() + 30 * 86400);
     // Namen in eigenen Uploads aktuell halten
     db.prepare("UPDATE items SET owner_name = ? WHERE owner_uuid = ?").run(p.name, p.uuid);
-    return { token: session, user: { ...p, admin: isAdmin(p) } };
+    return { token: session, user: { ...p, kind: p.uuid.startsWith("xbox-") ? "xbox" : "minecraft", admin: isAdmin(p) } };
   });
 
   app.get("/api/me", async (req) => {

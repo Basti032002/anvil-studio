@@ -112,7 +112,7 @@ function AccountChip({ onLogin }: { onLogin: () => void }) {
       onContextMenu={(e) => openMenu(e, [{ label: t("Abmelden"), icon: <LogoutIcon size={15} />, onClick: () => mcLogout().then(() => toast(t("Abgemeldet."), "info")) }])}
       aria-label={t("Konto: {name}", { name: ws.profile.name })}
     >
-      <img src={`https://mc-heads.net/avatar/${ws.profile.uuid}/24`} alt="" onError={(e) => (e.currentTarget.style.visibility = "hidden")} />
+      {ws.profile.kind !== "xbox" && <img src={`https://mc-heads.net/avatar/${ws.profile.uuid}/24`} alt="" onError={(e) => (e.currentTarget.style.visibility = "hidden")} />}
       <span>{ws.profile.name}</span>
       {ws.me?.admin && <span className="badge-mini">{t("Admin")}</span>}
     </button>
@@ -563,11 +563,11 @@ function PlayDialog({ item, onClose }: { item: WsItem; onClose: () => void }) {
         <div className="ws-play-body">
           {ws.profile && (
             <div className="ws-account-card">
-              <img src={`https://mc-heads.net/avatar/${ws.profile.uuid}/40`} alt="" />
+              {ws.profile.kind !== "xbox" && <img src={`https://mc-heads.net/avatar/${ws.profile.uuid}/40`} alt="" />}
               <div className="grow">
                 <div style={{ fontWeight: 600 }}>{ws.profile.name}</div>
                 <div className="small" style={{ color: "var(--accent)" }}>
-                  {t("Minecraft: Java Edition · angemeldet")}
+                  {ws.profile.kind === "xbox" ? t("Xbox-Konto · Spielen erst nach Freischaltung") : t("Minecraft: Java Edition · angemeldet")}
                 </div>
               </div>
             </div>
@@ -809,7 +809,7 @@ function UploadPage({ projects, item, onBack, onDone }: { projects: Project[]; i
               <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} style={{ marginTop: 3 }} />
               <span className="small">{t("Die Inhalte sind von mir oder ich darf sie teilen. Ich halte mich an die Workshop-Regeln.")}</span>
             </label>
-            <div className="muted small">{t("Hochladen als {name} (Minecraft-Konto)", { name: ws.profile?.name ?? "…" })}</div>
+            <div className="muted small">{ws.profile?.kind === "xbox" ? t("Hochladen als {name} (Xbox-Konto)", { name: ws.profile.name }) : t("Hochladen als {name} (Minecraft-Konto)", { name: ws.profile?.name ?? "…" })}</div>
             <button className={busy ? "btn primary lg full loading" : "btn primary lg full"} disabled={!canSubmit} onClick={submit}>
               <UploadIcon size={15} /> {item ? t("Aktualisieren") : t("Hochladen")}
             </button>
