@@ -23,7 +23,7 @@ function Markdown({ text }: { text: string }) {
   };
   for (const raw of text.replace(/\r/g, "").split("\n")) {
     const line = raw.trimEnd();
-    if (/^\s*<sub>.*<\/sub>\s*$/.test(line)) continue;
+    if (/^\s*<sub>.*<\/sub>\s*$/.test(line) || /^(Co-Authored-By|Claude-Session|Signed-off-by):/i.test(line)) continue;
     const h = line.match(/^(#{1,4})\s+(.*)$/);
     const li = line.match(/^\s*[-*]\s+(.*)$/);
     if (h) {
