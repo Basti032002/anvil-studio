@@ -1,6 +1,7 @@
 mod admin;
 mod blueprint;
 mod content;
+mod dimension;
 mod export;
 mod fsx;
 mod i18n;

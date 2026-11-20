@@ -289,6 +289,15 @@ impl<'a> Gen<'a> {
                 }
                 c + &next(stack)
             }
+            "travel" => {
+                let dim = prop(p, "dim");
+                (if id_ok(dim) {
+                    let back = if prop(p, "mode") == "toggle" { "true" } else { "false" };
+                    format!("{ind}if (player != null) anvilTravel(level, player, \"{}\", {back});\n", rid(self.api, dim))
+                } else {
+                    String::new()
+                }) + &next(stack)
+            }
             "firework" => format!("{ind}anvilRun(level, null, x, y, z, \"summon firework_rocket ~ ~1 ~ {{LifeTime:20}}\");\n") + &next(stack),
             "spawnpoint" => run("spawnpoint @s ~ ~ ~".into()) + &next(stack),
             "feed" => run("effect give @s saturation 1 20 true".into()) + &next(stack),
@@ -594,6 +603,9 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
         "net.neoforged.neoforge.event.entity.player.ItemEntityPickupEvent",
         "net.neoforged.neoforge.event.entity.player.PlayerXpEvent",
         "net.minecraft.world.scores.Objective",
+        "net.minecraft.resources.ResourceKey",
+        "net.minecraft.core.registries.Registries",
+        "net.minecraft.world.level.levelgen.Heightmap",
         "net.minecraft.world.scores.ScoreHolder",
         "net.minecraft.world.scores.Scoreboard",
         "net.minecraft.world.scores.criteria.ObjectiveCriteria",
@@ -630,6 +642,20 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
 
     private static EntityType<?> anvilEntity(String id) {{
         return BuiltInRegistries.ENTITY_TYPE.{get}(ResourceLocation.parse(id));
+    }}
+
+    /** In eine Dimension reisen (sicher auf der Oberfläche landen); back = schon dort → zurück in die Oberwelt */
+    private static void anvilTravel(ServerLevel level, Player player, String dim, boolean back) {{
+        ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(dim));
+        if (back && level.dimension() == key) key = Level.OVERWORLD;
+        ServerLevel to = level.getServer().getLevel(key);
+        if (to == null) return;
+        int bx = (int) Math.floor(player.getX()), bz = (int) Math.floor(player.getZ());
+        int by = to.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, bx, bz);
+        if (by < -60 || key == Level.NETHER) by = 70;
+        if (key == Level.END) {{ bx = 100; by = 50; bz = 0; }}
+        if (to.getBlockState(new BlockPos(bx, by - 1, bz)).isAir()) to.setBlockAndUpdate(new BlockPos(bx, by - 1, bz), net.minecraft.world.level.block.Blocks.STONE.defaultBlockState());
+        anvilRun(level, player, player.getX(), player.getY(), player.getZ(), "execute in " + key.location() + " run tp @s " + (bx + 0.5) + " " + by + " " + (bz + 0.5));
     }}
 
     private static Objective anvilObj(ServerLevel level, String name) {{

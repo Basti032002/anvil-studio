@@ -286,6 +286,8 @@ pub struct Content {
     /// Ereignisse ohne Code: Auslöser → Aktionen
     pub events: Vec<EventDef>,
     pub blueprints: Vec<crate::blueprint::Blueprint>,
+    pub dimensions: Vec<crate::dimension::DimDef>,
+    pub generated_dims: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -342,6 +344,8 @@ impl Default for Content {
             brewing: vec![],
             events: vec![],
             blueprints: vec![],
+            dimensions: vec![],
+            generated_dims: vec![],
         }
     }
 }
@@ -915,6 +919,7 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
         let mut own: std::collections::HashSet<String> = all_variants(c).iter().map(|v| v.id.clone()).collect();
         own.extend(c.items.iter().map(|i| i.id.clone()));
         own.extend(c.mobs.iter().map(|m| m.id.clone()));
+        own.extend(c.dimensions.iter().map(|d| d.id.clone()));
         let bp_api = crate::blueprint::BpApi { get_value: api.materials_v2, modid: p.mod_id.clone(), own };
         let (bi, bc, bm) = crate::blueprint::generate(&c.blueprints, &bp_api);
         imports.extend(bi);
@@ -2332,9 +2337,42 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
         merge_tag(&itags.join(format!("{tag}.json")), &item_ids_where(&|i| i.kind == "armor" && i.armor_slot == slot), &all_ours)?;
     }
 
+    // Dimensionen
+    let dim_ids: Vec<String> = c.dimensions.iter().filter(|d| valid_id(&d.id)).map(|d| d.id.clone()).collect();
+    for id in c.generated_dims.iter().filter(|id| !dim_ids.contains(id)) {
+        remove_if_exists(data.join(format!("dimension_type/{id}.json")));
+        remove_if_exists(data.join(format!("worldgen/noise_settings/{id}.json")));
+        remove_if_exists(data.join(format!("dimension/{id}.json")));
+    }
+    {
+        let own_blocks: Vec<String> = variants.iter().map(|v| v.id.clone()).collect();
+        let resolve = |s: &str| -> String {
+            if let Some(dim) = s.strip_prefix('#') {
+                format!("{modid}:{dim}")
+            } else if s.contains(':') {
+                s.to_string()
+            } else if own_blocks.iter().any(|b| b == s) {
+                format!("{modid}:{s}")
+            } else {
+                format!("minecraft:{s}")
+            }
+        };
+        let at_least = |v: (u32, u32, u32)| mc_at_least(&p.mc_version, v);
+        for d in c.dimensions.iter().filter(|d| valid_id(&d.id)) {
+            for (rel, v) in crate::dimension::files(d, &at_least, &resolve) {
+                let path = data.join(rel);
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent).map_err(err)?;
+                }
+                write_json(&path, &v)?;
+            }
+        }
+    }
+
     c.generated_blocks = block_ids;
     c.generated_items = item_ids;
     c.generated_mobs = mob_ids;
+    c.generated_dims = dim_ids;
     c.generator_version = GENERATOR_VERSION;
     save_file(p, c)?;
     LAST_JAVA_CHANGED.store(java_changed, std::sync::atomic::Ordering::SeqCst);
@@ -2508,6 +2546,7 @@ pub fn content_save(app: AppHandle, project_id: String, content: Content) -> Res
     c.generated_blocks = old.generated_blocks;
     c.generated_items = old.generated_items;
     c.generated_mobs = old.generated_mobs;
+    c.generated_dims = old.generated_dims;
     let registration = generate(&p, &mut c)?;
     let java_changed = LAST_JAVA_CHANGED.load(std::sync::atomic::Ordering::SeqCst);
     Ok(SaveResult { content: c, registration, java_changed })
@@ -2714,6 +2753,22 @@ mod tests {
         ] {
             c.events.push(EventDef { trigger: trigger.into(), target: target.into(), cancel: trigger == "break_block", actions: all.clone() });
         }
+        // Eigene Dimensionen
+        c.dimensions.push(crate::dimension::DimDef {
+            id: "traumland".into(),
+            name_de: "Traumland".into(),
+            name_en: "Dreamland".into(),
+            top_block: "ruby_block".into(),
+            fill_block: "minecraft:clay".into(),
+            stone_block: "ruby_ore".into(),
+            fluid: "water".into(),
+            biome: "overworld".into(),
+            time: "normal".into(),
+            sky: "overworld".into(),
+            ambient_light: 0.1,
+            sea_level: 63,
+        });
+        c.dimensions.push(crate::dimension::DimDef { id: "lavawelt".into(), fluid: "lava".into(), biome: "minecraft:desert".into(), time: "night".into(), sky: "nether".into(), sea_level: 40, ..Default::default() });
         // Blueprint mit allen Knoten
         {
             use crate::blueprint::{BpLink, BpNode, Blueprint, EVENT_KINDS};
@@ -2766,6 +2821,7 @@ mod tests {
                 ("spawnpoint", vec![]),
                 ("feed", vec![]),
                 ("enchant", vec![("enchant", "sharpness"), ("level", "2")]),
+                ("travel", vec![("dim", "traumland"), ("mode", "toggle")]),
             ];
             let conds = [
                 ("chance", "30"), ("sneaking", ""), ("raining", ""), ("thundering", ""), ("day", ""), ("night", ""), ("creative", ""),
