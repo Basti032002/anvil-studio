@@ -10,6 +10,17 @@ services:
       # Admins: Minecraft-Namen oder UUIDs (ohne Bindestriche), mit Komma getrennt
       ADMIN_NAMES: "Sebigames"
       ADMIN_UUIDS: ""
+      # Kontakt/Impressum auf der Startseite (leer = wird nicht angezeigt).
+      # Eigene Werte am besten in docker-compose.override.yml eintragen.
+      CONTACT_EMAIL: ""
+      IMPRINT_NAME: ""
+      IMPRINT_ADDRESS: ""   # Zeilen mit | trennen, z. B. "Musterstr. 1|12345 Musterstadt"
+      IMPRINT_EMAIL: ""
+    logging:                # Logs (mit IP-Adressen) nur kurz aufheben
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     volumes:
       - workshop-data:/data
 volumes:

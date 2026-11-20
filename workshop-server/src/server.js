@@ -2,6 +2,7 @@
 // Nutzer melden sich mit ihrem Minecraft-Konto an (der Server prüft das Token
 // bei Mojang), laden fertige Mods und/oder Quellcode hoch, Admins prüfen,
 // bearbeiten, sperren und löschen.
+import { landingPage } from "./landing.js";
 import Fastify from "fastify";
 import multipart from "@fastify/multipart";
 import crypto from "node:crypto";
@@ -524,19 +525,20 @@ export function buildServer() {
 
   app.get("/api/health", async () => ({ ok: true, categories: CATEGORIES }));
 
-  // Kleine Startseite für Besucher im Browser – der Workshop selbst läuft in der App
+  // Öffentliche Startseite für Browser-Besucher – der Workshop selbst läuft in der App
   app.get("/", async (req, reply) => {
-    const n = db.prepare("SELECT COUNT(*) AS n FROM items WHERE status = 'public'").get().n;
-    reply.type("text/html; charset=utf-8");
-    return `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Anvil Studio Workshop</title><style>
-body{margin:0;min-height:100vh;display:grid;place-items:center;background:#111317;color:#e7e9ee;font-family:system-ui,sans-serif}
-main{max-width:460px;padding:32px;text-align:center}h1{font-size:28px;margin:0 0 8px}p{color:#9aa1ad;line-height:1.5}
-.n{font-size:40px;font-weight:700;color:#f59e0b;margin:24px 0 4px}.ok{display:inline-block;margin-top:20px;padding:4px 12px;border-radius:99px;background:#16341f;color:#4ade80;font-size:13px}
-</style></head><body><main><h1>⚒ Anvil Studio Workshop</h1>
-<p>Hier teilen Modder ihre Minecraft-Mods und Quellcodes. Stöbern, herunterladen und spielen geht direkt in der Anvil-Studio-App.</p>
-<div class="n">${n}</div><p>veröffentlichte ${n === 1 ? "Projekt" : "Projekte"}</p><span class="ok">● Server online</span></main></body></html>`;
+    const one = (sql) => db.prepare(sql).get().n || 0;
+    const stats = {
+      items: one("SELECT COUNT(*) AS n FROM items WHERE status = 'public'"),
+      creators: one("SELECT COUNT(DISTINCT owner_uuid) AS n FROM items WHERE status = 'public'"),
+      downloads: one("SELECT COALESCE(SUM(downloads), 0) AS n FROM items WHERE status = 'public'"),
+    };
+    const latest = db.prepare("SELECT id, title, summary, owner_name, mc_version FROM items WHERE status = 'public' ORDER BY created_at DESC LIMIT 6").all();
+    reply.type("text/html; charset=utf-8").header("cache-control", "public, max-age=60");
+    return landingPage({ stats, latest });
   });
+  app.get("/privacy", async (req, reply) => reply.redirect("/#privacy"));
+  app.get("/datenschutz", async (req, reply) => reply.redirect("/#privacy"));
   return app;
 }
 
