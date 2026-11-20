@@ -1,13 +1,13 @@
 import { t } from "../i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Catalog, McIconDef } from "../api";
+import { Catalog, McIconDef, BlockShape } from "../api";
 import { COMMON_TAGS, useCatalog } from "../catalog";
 import { CheckIcon, CloseIcon, SearchIcon } from "../icons";
 import McIcon from "./McIcon";
 import { shapeIcon } from "../views/workspace/contentDefaults";
 
-export type OwnEntry = { id: string; name: string; kind: "block" | "item"; texture?: string; shape?: "block" | "deepslate" | "stairs" | "slab" | "wall" | "fence" };
+export type OwnEntry = { id: string; name: string; kind: "block" | "item"; texture?: string; shape?: "block" | "deepslate" | BlockShape };
 type Cat = "all" | "block" | "item" | "own" | "tags";
 
 export type Resolved = { name: string; icon?: McIconDef; textures?: Record<string, string> };

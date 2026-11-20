@@ -75,6 +75,10 @@ import {
   X,
   Minus,
   Square,
+  Lightning,
+  Lamp,
+  Archive,
+  Flask,
 } from "@phosphor-icons/react";
 
 type P = { size?: number };
@@ -181,3 +185,7 @@ export const MountainsIcon = ({ size = 16 }: P) => <Mountains size={size} weight
 export const MinimizeIcon = ({ size = 12 }: P) => <Minus size={size} weight="regular" aria-hidden="true" />;
 export const MaximizeIcon = ({ size = 12 }: P) => <Square size={size} weight="regular" aria-hidden="true" />;
 export const HeartIcon = ({ size = 16 }: P) => <Heart size={size} weight="bold" aria-hidden="true" />;
+export const LightningIcon = ({ size = 16 }: P) => <Lightning size={size} weight="bold" aria-hidden="true" />;
+export const LampIcon = ({ size = 16 }: P) => <Lamp size={size} weight="bold" aria-hidden="true" />;
+export const ChestIcon = ({ size = 16 }: P) => <Archive size={size} weight="bold" aria-hidden="true" />;
+export const FlaskIcon = ({ size = 16 }: P) => <Flask size={size} weight="bold" aria-hidden="true" />;

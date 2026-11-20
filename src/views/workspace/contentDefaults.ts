@@ -32,6 +32,9 @@ export const newBlock = (id: string): BlockDef => ({
   recipe: emptyRecipe(),
   shapes: [],
   ore: defaultOre(),
+  kind: "normal",
+  rows: 3,
+  names: {},
 });
 
 const itemBase = {
@@ -59,6 +62,7 @@ export const newItem = (id: string, kind: ItemDef["kind"] = "basic"): ItemDef =>
   id,
   nameDe: kind === "tool" ? t("Neues Werkzeug") : kind === "armor" ? t("Neue Rüstung") : t("Neues Item"),
   nameEn: kind === "tool" ? t("New Tool") : kind === "armor" ? t("New Armor") : t("New Item"),
+  names: {},
   recipe: emptyRecipe(),
   kind,
   ...itemBase,
@@ -68,10 +72,10 @@ export const newItem = (id: string, kind: ItemDef["kind"] = "basic"): ItemDef =>
 
 /** Ergänzt Felder, die ältere Inhalte noch nicht haben. */
 export function normalizeBlock(b: BlockDef): BlockDef {
-  return { ...newBlock(b.id), ...b, shapes: b.shapes ?? [], ore: { ...defaultOre(), ...(b.ore ?? {}) } };
+  return { ...newBlock(b.id), ...b, shapes: b.shapes ?? [], ore: { ...defaultOre(), ...(b.ore ?? {}) }, names: b.names ?? {} };
 }
 export function normalizeItem(i: ItemDef): ItemDef {
-  return { ...itemBase, ...i, kind: i.kind ?? "basic" };
+  return { ...itemBase, ...i, kind: i.kind ?? "basic", names: i.names ?? {} };
 }
 
 // ---- Vorlagen wie Vanilla --------------------------------------------------
@@ -137,6 +141,25 @@ export const SHAPES: { id: BlockShape; label: string; en: string }[] = [
   { id: "slab", label: t("Stufe"), en: "Slab" },
   { id: "wall", label: t("Mauer"), en: "Wall" },
   { id: "fence", label: t("Zaun"), en: "Fence" },
+  { id: "button", label: t("Knopf"), en: "Button" },
+  { id: "pressure_plate", label: t("Druckplatte"), en: "Pressure Plate" },
+];
+
+/** Weitere Sprachen für Namen in der Mod (Deutsch und Englisch haben eigene Felder). */
+export const EXTRA_NAME_LANGS: { id: string; label: string }[] = [
+  { id: "fr", label: "Français" },
+  { id: "es", label: "Español" },
+  { id: "pl", label: "Polski" },
+  { id: "nl", label: "Nederlands" },
+  { id: "tr", label: "Türkçe" },
+  { id: "ru", label: "Русский" },
+];
+
+/** Vanilla-Tränke für Brau-Rezepte */
+export const POTIONS: string[] = [
+  "water", "awkward", "mundane", "thick", "night_vision", "invisibility", "leaping", "fire_resistance", "swiftness", "slowness",
+  "water_breathing", "healing", "harming", "poison", "regeneration", "strength", "weakness", "luck", "slow_falling", "turtle_master",
+  "long_night_vision", "long_invisibility", "long_swiftness", "long_fire_resistance", "strong_healing", "strong_strength", "strong_regeneration",
 ];
 
 export function variantIds(b: BlockDef): { id: string; shape: BlockShape | "block" | "deepslate"; name: string }[] {
@@ -157,6 +180,10 @@ export function shapeIcon(shape: BlockShape | "block" | "deepslate", tex: string
   switch (shape) {
     case "stairs":
       return { kind: "model", elements: [all([0, 0, 0], [16, 8, 16]), all([8, 8, 0], [16, 16, 16])] };
+    case "button":
+      return { kind: "model", elements: [all([5, 0, 6], [11, 2, 10])], gui: [30, 225, 0] };
+    case "pressure_plate":
+      return { kind: "model", elements: [all([1, 0, 1], [15, 1, 15])] };
     case "slab":
       return { kind: "model", elements: [all([0, 0, 0], [16, 8, 16])] };
     case "wall":
@@ -190,6 +217,7 @@ export const newMob = (id: string, model: MobModel = "cow"): MobDef => {
     id,
     nameDe: "Neue Kreatur",
     nameEn: "New Creature",
+    names: {},
     model,
     health: m.health,
     speed: m.speed,
@@ -208,7 +236,7 @@ export const newMob = (id: string, model: MobModel = "cow"): MobDef => {
 };
 
 export function normalizeMob(m: MobDef): MobDef {
-  return { ...newMob(m.id, m.model ?? "cow"), ...m };
+  return { ...newMob(m.id, m.model ?? "cow"), ...m, names: m.names ?? {} };
 }
 
 export const BIOMES: { id: string; label: string }[] = [

@@ -3,19 +3,20 @@ import { confirmDialog, contextMenu, MenuItem } from "../../components/Overlay";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArmorSlot, BlockDef, Content, contentApi, ItemDef, MobDef, Project, Recipe } from "../../api";
 import { useCatalog } from "../../catalog";
-import { Segmented, Toggle } from "../../components/Chrome";
+import { Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
 import McIcon from "../../components/McIcon";
-import { BoxIcon, ChestplateIcon, GemIcon, CloseIcon, CopyIcon, CubeIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TrashIcon, PencilIcon, TagIcon } from "../../icons";
+import { BoxIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, FlaskIcon, GemIcon, LampIcon, LightningIcon, PencilIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TagIcon, TrashIcon } from "../../icons";
 import { toast } from "../../state";
 import PixelEditor from "./PixelEditor";
 import { ArmorForm, BlockExtras, Field, ItemKindSwitch, ToolForm } from "./ContentForms";
 import MobEditor from "./MobEditor";
+import { BrewEditor, brewLabel, EventEditor, eventLabel, NamesField, newBrew, newEvent } from "./LogicEditors";
 import { armorPreset, eggDataUrl, newMob, normalizeMob, newBlock, newItem, normalizeBlock, normalizeItem, SLOT_DE, SLOT_EN, variantIds } from "./contentDefaults";
 
-const normalize = (c: Content): Content => ({ ...c, blocks: c.blocks.map(normalizeBlock), items: c.items.map(normalizeItem), mobs: (c.mobs ?? []).map(normalizeMob), generatedMobs: c.generatedMobs ?? [], tabIcon: c.tabIcon ?? "", tabName: c.tabName ?? "" });
+const normalize = (c: Content): Content => ({ ...c, blocks: c.blocks.map(normalizeBlock), items: c.items.map(normalizeItem), mobs: (c.mobs ?? []).map(normalizeMob), brewing: c.brewing ?? [], events: (c.events ?? []).map((e) => ({ ...e, actions: e.actions ?? [] })), generatedMobs: c.generatedMobs ?? [], tabIcon: c.tabIcon ?? "", tabName: c.tabName ?? "" });
 
-type Sel = { kind: "block" | "item" | "mob"; index: number } | null;
+type Sel = { kind: "block" | "item" | "mob" | "event" | "brew"; index: number } | null;
 
 export default function ContentTab({ project }: { project: Project }) {
   const [content, setContent] = useState<Content | null>(null);
@@ -189,6 +190,12 @@ export default function ContentTab({ project }: { project: Project }) {
 
   async function remove(target: Sel = sel) {
     if (!content || !target) return;
+    if (target.kind === "event" || target.kind === "brew") {
+      const key = target.kind === "event" ? "events" : "brewing";
+      setContent((c) => (c ? { ...c, [key]: (c[key] as unknown[]).filter((_, i) => i !== target.index) } : c));
+      setSel(null);
+      return;
+    }
     const name = target.kind === "block" ? content.blocks[target.index].id : target.kind === "mob" ? content.mobs[target.index].id : content.items[target.index].id;
     if (!(await confirmDialog(t("„{name}“ entfernen?", { name: name }), t("Die erzeugten Dateien werden beim Speichern gelöscht, die Textur bleibt erhalten."), t("Entfernen"), t("Abbrechen"), true))) return;
     setContent((c) =>
@@ -325,6 +332,72 @@ export default function ContentTab({ project }: { project: Project }) {
             ) : null,
           )}
           {content.mobs.length === 0 && <p className="muted small pad">{t("Noch keine Kreaturen.")}</p>}
+          <div className="content-list-head">
+            <span>{t("Ereignisse ·")}{" "}{content.events.length}</span>
+            <button
+              className="icon-btn"
+              onClick={() => {
+                setContent({ ...content, events: [...content.events, newEvent(content.blocks[0]?.id ?? "")] });
+                setSel({ kind: "event", index: content.events.length });
+              }}
+              aria-label={t("Ereignis hinzufügen")}
+              data-tip={t("Ereignis")}
+            >
+              <PlusIcon size={15} />
+            </button>
+          </div>
+          {content.events.map((e, i) => (
+            <button
+              key={`e${i}`}
+              className={sel?.kind === "event" && sel.index === i ? "entry active" : "entry"}
+              onClick={() => setSel({ kind: "event", index: i })}
+              {...contextMenu(() => [
+                { label: t("Bearbeiten"), icon: <PencilIcon size={15} />, onClick: () => setSel({ kind: "event", index: i }) },
+                { label: t("Duplizieren"), icon: <CopyIcon size={15} />, onClick: () => setContent({ ...content, events: [...content.events, structuredClone(e)] }) },
+                "separator",
+                { label: t("Entfernen"), icon: <TrashIcon size={15} />, danger: true, onClick: () => remove({ kind: "event", index: i }) },
+              ])}
+            >
+              <span className="logic-icon">
+                <LightningIcon size={14} />
+              </span>
+              <span className="entry-text">
+                <span className="entry-name">{eventLabel(e)}</span>
+                <span className="entry-id">{e.target || "–"}</span>
+              </span>
+            </button>
+          ))}
+          {content.events.length === 0 && <p className="muted small pad">{t("Noch keine Ereignisse.")}</p>}
+          <div className="content-list-head">
+            <span>{t("Brau-Rezepte ·")}{" "}{content.brewing.length}</span>
+            <button
+              className="icon-btn"
+              onClick={() => {
+                setContent({ ...content, brewing: [...content.brewing, newBrew()] });
+                setSel({ kind: "brew", index: content.brewing.length });
+              }}
+              aria-label={t("Brau-Rezept hinzufügen")}
+              data-tip={t("Brau-Rezept")}
+            >
+              <PlusIcon size={15} />
+            </button>
+          </div>
+          {content.brewing.map((b, i) => (
+            <button
+              key={`b${i}`}
+              className={sel?.kind === "brew" && sel.index === i ? "entry active" : "entry"}
+              onClick={() => setSel({ kind: "brew", index: i })}
+              {...contextMenu(() => [{ label: t("Entfernen"), icon: <TrashIcon size={15} />, danger: true, onClick: () => remove({ kind: "brew", index: i }) }])}
+            >
+              <span className="logic-icon">
+                <FlaskIcon size={14} />
+              </span>
+              <span className="entry-text">
+                <span className="entry-name">{brewLabel(b)}</span>
+                <span className="entry-id">{b.ingredient || "–"}</span>
+              </span>
+            </button>
+          ))}
         </div>
         <div className="content-save">
           <button className={busy ? "btn primary full loading" : "btn primary full"} disabled={busy || (!dirty && content.generatorVersion > 0)} onClick={save}>
@@ -345,7 +418,30 @@ export default function ContentTab({ project }: { project: Project }) {
             </div>
           </div>
         )}
-        {mob ? (
+        {sel?.kind === "event" && content.events[sel.index] ? (
+          <EventEditor
+            key={`event-${sel.index}`}
+            project={project}
+            content={content}
+            event={content.events[sel.index]}
+            own={own}
+            onChange={(ev) => setContent({ ...content, events: content.events.map((x, i) => (i === sel.index ? ev : x)) })}
+            onDuplicate={() => {
+              setContent({ ...content, events: [...content.events, structuredClone(content.events[sel.index])] });
+              setSel({ kind: "event", index: content.events.length });
+            }}
+            onRemove={() => remove()}
+          />
+        ) : sel?.kind === "brew" && content.brewing[sel.index] ? (
+          <BrewEditor
+            key={`brew-${sel.index}`}
+            project={project}
+            brew={content.brewing[sel.index]}
+            own={own}
+            onChange={(b) => setContent({ ...content, brewing: content.brewing.map((x, i) => (i === sel.index ? b : x)) })}
+            onRemove={() => remove()}
+          />
+        ) : mob ? (
           <MobEditor
             key={`mob-${sel!.index}`}
             project={project}
@@ -419,6 +515,7 @@ export default function ContentTab({ project }: { project: Project }) {
                 <Field label={t("Name (Englisch)")}>
                   <input className="input" value={current.nameEn} onChange={(e) => (block ? updBlock({ nameEn: e.target.value }) : updItem({ nameEn: e.target.value }))} />
                 </Field>
+                <NamesField names={current.names ?? {}} onChange={(names) => (block ? updBlock({ names }) : updItem({ names }))} />
 
                 {block && (
                   <>
@@ -549,6 +646,20 @@ export default function ContentTab({ project }: { project: Project }) {
                   />
                 </div>
               )}
+              {savedIds.includes(current.id) && block?.kind === "lamp" && (
+                <div className="texture-sub">
+                  <div className="texture-sub-head">
+                    <LampIcon size={16} />
+                    <span className="panel-title-lg">{t("Eingeschaltet (leuchtend)")}</span>
+                  </div>
+                  <PixelEditor
+                    projectId={project.id}
+                    kind="block"
+                    id={`${block.id}_on`}
+                    onSaved={(dataUrl) => setTextures((t) => ({ ...t, [`${block.id}_on`]: dataUrl }))}
+                  />
+                </div>
+              )}
               {savedIds.includes(current.id) && item?.kind === "armor" && item.armorMaterial && savedContent?.items.some((x) => x.kind === "armor" && x.armorMaterial === item.armorMaterial) && (
                 <div className="texture-sub">
                   <div className="texture-sub-head">
@@ -597,8 +708,10 @@ function RecipeEditor({
   const kind = recipe.kind ?? "crafting";
   const [picking, setPicking] = useState<number | null>(null);
   const { catalog } = useCatalog(project.mcVersion, recipe.enabled);
-  const mode = kind === "smelting" ? "smelting" : recipe.shaped ? "shaped" : "shapeless";
-  const cells = kind === "smelting" ? [0] : [0, 1, 2, 3, 4, 5, 6, 7, 8];
+  const cooking = ["smelting", "blasting", "smoking", "campfire"].includes(kind);
+  const mode = kind === "crafting" ? (recipe.shaped ? "shaped" : "shapeless") : kind;
+  const cells = cooking || kind === "stonecutting" ? [0] : kind === "smithing" ? [0, 1, 2] : [0, 1, 2, 3, 4, 5, 6, 7, 8];
+  const cellLabel = (i: number) => (kind === "smithing" ? [t("Vorlage"), t("Basis"), t("Zusatz")][i] : undefined);
   const resultInfo = resolveItem(resultId, catalog, own, project.modId);
 
   const setCell = (i: number, v: string) => {
@@ -613,21 +726,29 @@ function RecipeEditor({
         <Toggle label={t("Rezept")} checked={recipe.enabled} onChange={(v) => onChange({ ...recipe, enabled: v, grid, kind })} />
         <span className="panel-title-lg">{t("Rezept")}</span>
         {recipe.enabled && (
-          <Segmented
-            label={t("Rezeptart")}
+          <select
+            className="input recipe-kind"
+            aria-label={t("Rezeptart")}
             value={mode}
-            onChange={(v) => onChange({ ...recipe, grid, kind: v === "smelting" ? "smelting" : "crafting", shaped: v !== "shapeless" })}
-            options={[
-              { value: "shaped", label: t("Werkbank") },
-              { value: "shapeless", label: t("Ohne Form") },
-              { value: "smelting", label: t("Ofen") },
-            ]}
-          />
+            onChange={(e) => {
+              const v = e.target.value;
+              onChange({ ...recipe, grid, kind: v === "shaped" || v === "shapeless" ? "crafting" : v, shaped: v !== "shapeless" });
+            }}
+          >
+            <option value="shaped">{t("Werkbank")}</option>
+            <option value="shapeless">{t("Werkbank ohne Form")}</option>
+            <option value="smelting">{t("Ofen")}</option>
+            <option value="blasting">{t("Schmelzofen")}</option>
+            <option value="smoking">{t("Räucherofen")}</option>
+            <option value="campfire">{t("Lagerfeuer")}</option>
+            <option value="stonecutting">{t("Steinsäge")}</option>
+            <option value="smithing">{t("Schmiedetisch")}</option>
+          </select>
         )}
       </div>
       {recipe.enabled && (
         <div className="recipe-body">
-          <div className={kind === "smelting" ? "craft-grid one" : "craft-grid"}>
+          <div className={cells.length === 1 ? "craft-grid one" : cells.length === 3 ? "craft-grid three" : "craft-grid"}>
             {cells.map((i) => {
               const id = grid[i];
               const info = resolveItem(id, catalog, own, project.modId);
@@ -636,7 +757,7 @@ function RecipeEditor({
                   key={i}
                   type="button"
                   className={id ? "slot-btn filled" : "slot-btn"}
-                  title={id ? `${info.name}\n${id}` : t("Item wählen")}
+                  title={id ? `${info.name}\n${id}` : cellLabel(i) ?? t("Item wählen")}
                   aria-label={id ? t("Feld {v0}: {name}", { v0: i + 1, name: info.name }) : t("Feld {v0}: leer", { v0: i + 1 })}
                   onClick={() => setPicking(i)}
                   {...contextMenu(() => [
@@ -651,6 +772,7 @@ function RecipeEditor({
                   ) : (
                     <span className="slot-plus">
                       <PlusIcon size={14} />
+                      {cellLabel(i) && <span className="slot-label">{cellLabel(i)}</span>}
                     </span>
                   )}
                   {id && (
@@ -676,11 +798,11 @@ function RecipeEditor({
             </svg>
             <div className="result-slot" title={resultInfo.name}>
               <McIcon icon={resultInfo.icon} textures={resultInfo.textures} size={40} fallback={resultInfo.name} />
-              {kind !== "smelting" && recipe.count > 1 && <span className="result-count">{recipe.count}</span>}
+              {!cooking && recipe.count > 1 && <span className="result-count">{recipe.count}</span>}
             </div>
           </div>
           <div className="recipe-options">
-            {kind === "smelting" ? (
+            {cooking ? (
               <>
                 <Field label={t("Erfahrung")}>
                   <input className="input" type="number" min={0} step={0.1} value={recipe.experience ?? 0.1} onChange={(e) => onChange({ ...recipe, experience: Number(e.target.value) })} />

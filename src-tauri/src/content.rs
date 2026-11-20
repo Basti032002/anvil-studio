@@ -1291,6 +1291,7 @@ fn generate_java(p: &Project, c: &Content) -> String {
         "net.minecraft.world.item.crafting.Ingredient",
         "net.minecraft.world.level.block.*",
         "net.minecraft.world.level.block.state.BlockBehaviour",
+        "net.minecraft.world.level.block.state.properties.BlockSetType",
         "net.minecraft.world.level.material.MapColor",
         "net.neoforged.bus.api.IEventBus",
         "net.neoforged.neoforge.registries.DeferredBlock",

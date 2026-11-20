@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+import { NamesField } from "./LogicEditors";
 import { useState } from "react";
 import { contentApi, mcEntityTexture, MobDef, MobModel, Project } from "../../api";
 import { Toggle } from "../../components/Chrome";
@@ -116,6 +117,7 @@ export default function MobEditor({
           <Field label={t("Name (Englisch)")}>
             <input className="input" value={mob.nameEn} onChange={(e) => onChange({ nameEn: e.target.value })} />
           </Field>
+          <NamesField names={mob.names ?? {}} onChange={(names) => onChange({ names })} />
 
           <div className="field span-2">
             <span className="field-label">{t("Körper & Verhalten wie")}</span>

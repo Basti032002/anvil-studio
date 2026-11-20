@@ -5,7 +5,7 @@ import { useCatalog } from "../../catalog";
 import { Segmented, Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
 import McIcon from "../../components/McIcon";
-import { BoxIcon, ChestplateIcon, CloseIcon, GemIcon, GlobeIcon, LayersIcon, PickaxeIcon, PlusIcon, SwordIcon } from "../../icons";
+import { BoxIcon, ChestIcon, ChestplateIcon, CloseIcon, CubeIcon, GemIcon, GlobeIcon, LampIcon, LayersIcon, PickaxeIcon, PlusIcon, SwordIcon } from "../../icons";
 import { armorPreset, ArmorTier, SHAPES, shapeIcon, SLOT_LABEL, Tier, TOOL_LABEL, toolPreset } from "./contentDefaults";
 
 export function Field({ label, hint, children, span }: { label: string; hint?: string; children: React.ReactNode; span?: boolean }) {
@@ -96,6 +96,36 @@ export function BlockExtras({
   return (
     <>
       <div className="sub-section">
+        <SectionHead icon={<LampIcon size={16} />} title={t("Funktion")} sub={t("Was der Block kann")} />
+        <div className="kind-switch">
+          {(
+            [
+              { k: "normal", label: t("Normaler Block"), icon: <CubeIcon size={16} /> },
+              { k: "lamp", label: t("Redstone-Lampe"), icon: <LampIcon size={16} /> },
+              { k: "storage", label: t("Lager-Truhe"), icon: <ChestIcon size={16} /> },
+            ] as const
+          ).map((x) => (
+            <button
+              key={x.k}
+              type="button"
+              className={block.kind === x.k ? "kind-card active" : "kind-card"}
+              aria-pressed={block.kind === x.k}
+              onClick={() => onChange({ kind: x.k, ...(x.k !== "normal" && block.ore.enabled ? { ore: { ...block.ore, enabled: false } } : {}) })}
+            >
+              {x.icon}
+              <span>{x.label}</span>
+            </button>
+          ))}
+        </div>
+        {block.kind === "lamp" && <div className="muted small">{t("Leuchtet, sobald Redstone-Strom anliegt. Die Leuchtkraft oben gilt im eingeschalteten Zustand (0 = 15). Nach dem Speichern kannst du rechts eine eigene Textur für „an“ malen.")}</div>}
+        {block.kind === "storage" && (
+          <Field label={t("Reihen · {rows} × 9 = {slots} Plätze", { rows: block.rows, slots: block.rows * 9 })} hint={t("Truhe 3 · Doppeltruhe 6")}>
+            <input type="range" className="range full" min={1} max={6} value={block.rows} onChange={(e) => onChange({ rows: Number(e.target.value) })} />
+          </Field>
+        )}
+      </div>
+
+      <div className="sub-section">
         <SectionHead icon={<LayersIcon size={16} />} title={t("Weitere Formen")} sub={t("Aus demselben Material – mit Rezept, Tags und Modellen")} />
         <div className="shape-grid">
           {SHAPES.map((s) => {
@@ -114,7 +144,7 @@ export function BlockExtras({
         </div>
       </div>
 
-      <div className="sub-section">
+      {block.kind === "normal" && <div className="sub-section">
         <SectionHead
           icon={<GemIcon size={16} />}
           title={t("Erz & Weltgenerierung")}
@@ -180,7 +210,7 @@ export function BlockExtras({
             <div className="span-2 muted small">{t("Tipp: Erze erscheinen nur in neu erzeugten Chunks. Zum Testen am besten eine neue Welt anlegen.")}</div>
           </div>
         )}
-      </div>
+      </div>}
     </>
   );
 }

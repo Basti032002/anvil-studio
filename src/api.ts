@@ -112,7 +112,7 @@ export const settingsApi = {
 
 export type Recipe = {
   enabled: boolean;
-  kind: "crafting" | "smelting";
+  kind: string; // crafting | smelting | blasting | smoking | campfire | stonecutting | smithing
   shaped: boolean;
   grid: string[];
   count: number;
@@ -132,8 +132,11 @@ export type BlockDef = {
   recipe: Recipe;
   shapes: BlockShape[];
   ore: OreDef;
+  kind: "normal" | "lamp" | "storage";
+  rows: number;
+  names: Record<string, string>;
 };
-export type BlockShape = "stairs" | "slab" | "wall" | "fence";
+export type BlockShape = "stairs" | "slab" | "wall" | "fence" | "button" | "pressure_plate";
 export type OreDef = {
   enabled: boolean;
   drop: string;
@@ -154,6 +157,7 @@ export type ItemDef = {
   id: string;
   nameDe: string;
   nameEn: string;
+  names: Record<string, string>;
   stackSize: number;
   rarity: "common" | "uncommon" | "rare" | "epic";
   food: boolean;
@@ -181,6 +185,7 @@ export type MobDef = {
   id: string;
   nameDe: string;
   nameEn: string;
+  names: Record<string, string>;
   model: MobModel;
   health: number;
   speed: number;
@@ -208,7 +213,14 @@ export type Content = {
   generatedMobs: string[];
   tabIcon: string;
   tabName: string;
+  brewing: BrewDef[];
+  events: EventDef[];
 };
+export type BrewDef = { input: string; ingredient: string; output: string };
+export type EventTrigger = "right_click_block" | "right_click_item" | "break_block" | "place_block" | "use_item" | "entity_hurt" | "entity_killed";
+export type ActionKind = "effect" | "give_item" | "message" | "sound" | "explode" | "fire" | "xp" | "heal" | "launch";
+export type ActionDef = { kind: ActionKind; value: string; amount: number; duration: number; to: "player" | "target" };
+export type EventDef = { trigger: EventTrigger; target: string; cancel: boolean; actions: ActionDef[] };
 export type ModEntry = {
   projectId: string;
   slug: string;
