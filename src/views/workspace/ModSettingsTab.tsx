@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Content, contentApi, ModSettings, modSettingsApi, Project } from "../../api";
+import { api, changeMcVersion, Content, contentApi, ModSettings, modSettingsApi, Project } from "../../api";
+import { listen } from "@tauri-apps/api/event";
+import { confirmDialog, showDialog } from "../../components/Overlay";
+import { useRunning } from "../../store";
 import { OwnEntry } from "../../components/ItemPicker";
 import McIcon from "../../components/McIcon";
-import { ImageIcon, InfoIcon, SaveIcon, TagIcon, TrashIcon, UploadIcon, UserIcon } from "../../icons";
+import { ImageIcon, InfoIcon, SaveIcon, SwapIcon, TagIcon, TrashIcon, UploadIcon, UserIcon } from "../../icons";
 import { toast } from "../../state";
 import { Field } from "./ContentForms";
 import { shapeIcon, variantIds } from "./contentDefaults";
@@ -106,13 +109,15 @@ export default function ModSettingsTab({ project, onSaved }: { project: Project;
             <Field label="Mod-ID" hint="fest, wird überall verwendet">
               <input className="input mono" readOnly value={project.modId} />
             </Field>
-            <Field label="Minecraft">
-              <input className="input mono" readOnly value={`${project.mcVersion} · NeoForge`} />
+            <Field label="Loader">
+              <input className="input mono" readOnly value="NeoForge" />
             </Field>
           </div>
         </div>
 
         <div className="ms-side">
+          <VersionPanel project={project} onChanged={onSaved} />
+
           <div className="panel">
             <div className="sub-head">
               <span className="sub-icon">
@@ -191,6 +196,80 @@ export default function ModSettingsTab({ project, onSaved }: { project: Project;
           <SaveIcon size={14} /> {dirty ? "Speichern" : "Gespeichert"}
         </button>
       </div>
+    </div>
+  );
+}
+
+function VersionPanel({ project, onChanged }: { project: Project; onChanged?: () => void }) {
+  const [versions, setVersions] = useState<string[]>([]);
+  const [target, setTarget] = useState(project.mcVersion);
+  const [step, setStep] = useState<string | null>(null);
+  const running = useRunning(project.id);
+
+  useEffect(() => {
+    api.supportedVersions().then((v) => setVersions(v.versions)).catch(() => {});
+  }, []);
+  useEffect(() => setTarget(project.mcVersion), [project.mcVersion]);
+
+  async function change() {
+    const ok = await confirmDialog(
+      `Auf Minecraft ${target} umstellen?`,
+      "Die Gradle-Dateien werden durch die NeoForge-Vorlage der neuen Version ersetzt (mit Sicherung). Dein Code, Texturen und Inhalte bleiben erhalten; Blöcke und Items werden neu erzeugt.",
+      "Umstellen",
+      "Abbrechen",
+    );
+    if (!ok) return;
+    const un = await listen<{ step: string }>("create-progress", (e) => setStep(e.payload.step));
+    setStep("…");
+    try {
+      const notes = await changeMcVersion(project.id, target);
+      onChanged?.();
+      await showDialog({
+        title: `Jetzt Minecraft ${target}`,
+        icon: <SwapIcon size={20} />,
+        message: (
+          <ul className="dialog-list">
+            {notes.map((n) => (
+              <li key={n}>{n}</li>
+            ))}
+          </ul>
+        ),
+        actions: [{ label: "OK", value: "ok", kind: "primary" }],
+      });
+    } catch (e) {
+      toast(String(e), "error");
+    } finally {
+      un();
+      setStep(null);
+    }
+  }
+
+  return (
+    <div className="panel">
+      <div className="sub-head">
+        <span className="sub-icon">
+          <SwapIcon size={16} />
+        </span>
+        <div className="grow">
+          <div className="panel-title-lg">Minecraft-Version</div>
+          <div className="muted small">Projekt auf eine andere Version umstellen</div>
+        </div>
+      </div>
+      <div className="row">
+        <select className="input grow" value={target} onChange={(e) => setTarget(e.target.value)} disabled={!!step}>
+          {versions.map((v) => (
+            <option key={v} value={v}>
+              Minecraft {v}
+              {v === project.mcVersion ? " (aktuell)" : ""}
+            </option>
+          ))}
+        </select>
+        <button className={step ? "btn primary loading" : "btn primary"} disabled={!!step || !!running || target === project.mcVersion} onClick={change}>
+          <SwapIcon size={14} /> Umstellen
+        </button>
+      </div>
+      {step && <div className="muted small">{step}</div>}
+      {running && <div className="muted small">Erst den laufenden Vorgang beenden.</div>}
     </div>
   );
 }

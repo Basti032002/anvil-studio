@@ -415,3 +415,119 @@ mod tests {
         assert!(std::fs::read_to_string(target.join("build.gradle")).unwrap().contains("anvilWorld"));
     }
 }
+
+/// Liest einfache key=value-Paare (ohne Kommentare) roh – ohne Unescaping.
+fn raw_properties(file: &Path) -> Vec<(String, String)> {
+    std::fs::read_to_string(file)
+        .unwrap_or_default()
+        .lines()
+        .filter(|l| !l.trim_start().starts_with('#'))
+        .filter_map(|l| l.split_once('=').map(|(k, v)| (k.trim().to_string(), v.to_string())))
+        .collect()
+}
+
+/// Stellt ein Projekt auf eine andere Minecraft-Version um: Gradle-Dateien
+/// kommen aus der neuen NeoForge-Vorlage, Quellcode und Ressourcen bleiben.
+/// Vorher wird alles Ersetzte in .anvil/backups gesichert.
+#[tauri::command]
+pub async fn change_mc_version(app: AppHandle, project_id: String, version: String) -> Result<Vec<String>, String> {
+    use crate::i18n::{tr, trf};
+    let p = projects::get(&app, &project_id)?;
+    if !VERSIONS.contains(&version.as_str()) {
+        return Err(trf("Minecraft {v} wird noch nicht unterstützt.", &[("v", &version)]));
+    }
+    if p.mc_version == version {
+        return Ok(vec![]);
+    }
+    let root = PathBuf::from(&p.path);
+    let step = |s: String| {
+        let _ = app.emit("create-progress", Progress { step: s });
+    };
+
+    step(tr("NeoForge-Vorlage wird heruntergeladen …"));
+    let bytes = download_mdk(&version).await?;
+    let tmp = std::env::temp_dir().join(format!("anvil-switch-{}-{}", p.mod_id, now()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).map_err(err)?;
+    extract_strip(&bytes, &tmp)?;
+
+    // Sichern
+    step(tr("Sicherung wird angelegt …"));
+    let backup = root.join(".anvil").join("backups").join(format!("mc-{}-{}", p.mc_version, now()));
+    std::fs::create_dir_all(&backup).map_err(err)?;
+    let files = ["build.gradle", "settings.gradle", "gradle.properties", "gradlew", "gradlew.bat"];
+    for f in files {
+        if root.join(f).exists() {
+            std::fs::copy(root.join(f), backup.join(f)).map_err(err)?;
+        }
+    }
+    for e in walkdir::WalkDir::new(root.join("gradle")).into_iter().flatten().filter(|e| e.file_type().is_file()) {
+        let rel = e.path().strip_prefix(&root).unwrap_or(e.path());
+        let to = backup.join(rel);
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent).map_err(err)?;
+        }
+        std::fs::copy(e.path(), to).map_err(err)?;
+    }
+
+    step(tr("Gradle-Dateien werden ersetzt …"));
+    // Eigene Werte aus gradle.properties übernehmen
+    let keep = ["mod_id", "mod_name", "mod_license", "mod_version", "mod_group_id", "mod_authors", "mod_description"];
+    let old_props = raw_properties(&root.join("gradle.properties"));
+    for f in ["build.gradle", "settings.gradle", "gradle.properties", "gradlew", "gradlew.bat"] {
+        if tmp.join(f).exists() {
+            std::fs::copy(tmp.join(f), root.join(f)).map_err(err)?;
+        }
+    }
+    let _ = std::fs::remove_dir_all(root.join("gradle"));
+    if tmp.join("gradle").exists() {
+        for e in walkdir::WalkDir::new(tmp.join("gradle")).into_iter().flatten().filter(|e| e.file_type().is_file()) {
+            let rel = e.path().strip_prefix(&tmp).unwrap_or(e.path());
+            let to = root.join(rel);
+            if let Some(parent) = to.parent() {
+                std::fs::create_dir_all(parent).map_err(err)?;
+            }
+            std::fs::copy(e.path(), to).map_err(err)?;
+        }
+    }
+    let props_file = root.join("gradle.properties");
+    let text = std::fs::read_to_string(&props_file).map_err(err)?;
+    let new_text: Vec<String> = text
+        .lines()
+        .map(|l| {
+            if let Some((k, _)) = l.split_once('=') {
+                let k = k.trim();
+                if keep.contains(&k) {
+                    if let Some((_, v)) = old_props.iter().find(|(ok, _)| ok == k) {
+                        return format!("{k}={v}");
+                    }
+                }
+            }
+            l.to_string()
+        })
+        .collect();
+    std::fs::write(&props_file, new_text.join("\n") + "\n").map_err(err)?;
+    let build = root.join("build.gradle");
+    let mut build_text = std::fs::read_to_string(&build).map_err(err)?;
+    if !build_text.contains("anvilWorld") {
+        build_text.push_str(GRADLE_SNIPPET);
+        std::fs::write(&build, build_text).map_err(err)?;
+    }
+    let _ = std::fs::remove_dir_all(&tmp);
+    // Alte Build-Ausgaben passen nicht mehr
+    let _ = std::fs::remove_dir_all(root.join("build"));
+
+    projects::update(&app, &project_id, |pr| pr.mc_version = version.clone())?;
+    let p = projects::get(&app, &project_id)?;
+
+    step(tr("Inhalte werden für die neue Version erzeugt …"));
+    let mut notes = vec![trf("Sicherung der alten Gradle-Dateien: {path}", &[("path", &backup.display())])];
+    let (mut content, _) = crate::content::load(&p)?;
+    if !content.blocks.is_empty() || !content.items.is_empty() {
+        crate::content::generate(&p, &mut content)?;
+        notes.push(tr("Blöcke & Items wurden im Format der neuen Version neu erzeugt."));
+    }
+    notes.push(tr("Mitgeladene Mods passen eventuell nicht mehr – unter „Mods“ auf „Alle aktualisieren“ klicken."));
+    notes.push(tr("Eigener Java-Code wird nicht angepasst. Prüfe mit „Bauen“, ob er mit der neuen Version kompiliert."));
+    Ok(notes)
+}

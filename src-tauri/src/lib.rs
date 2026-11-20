@@ -30,6 +30,7 @@ pub fn run() {
             projects::remove_project,
             projects::import_project,
             content::content_load,
+            template::change_mc_version,
             i18n::set_language_cmd,
             modsettings::mod_settings_get,
             modsettings::mod_settings_save,

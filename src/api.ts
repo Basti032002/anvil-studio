@@ -242,6 +242,8 @@ export const modSettingsApi = {
   save: (projectId: string, settings: ModSettings) => invoke<void>("mod_settings_save", { projectId, settings }),
 };
 
+export const changeMcVersion = (projectId: string, version: string) => invoke<string[]>("change_mc_version", { projectId, version });
+
 export const importProject = (path: string, setupWorld: boolean) => invoke<Project>("import_project", { path, setupWorld });
 
 /** Windows-Ordnerauswahl. Gibt null zurück, wenn abgebrochen. */
