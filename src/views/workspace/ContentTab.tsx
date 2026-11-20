@@ -6,7 +6,7 @@ import { useCatalog } from "../../catalog";
 import { Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
 import McIcon from "../../components/McIcon";
-import { GlobeIcon, BlueprintIcon, BoxIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, FlaskIcon, GemIcon, LampIcon, LightningIcon, PencilIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TagIcon, TrashIcon } from "../../icons";
+import { ChevronIcon, GridIcon, PawIcon, GlobeIcon, BlueprintIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, FlaskIcon, GemIcon, LampIcon, LightningIcon, PencilIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TagIcon, TrashIcon } from "../../icons";
 import { toast } from "../../state";
 import { useRunning } from "../../store";
 import PixelEditor from "./PixelEditor";
@@ -21,6 +21,42 @@ import { BrewEditor, brewLabel, EventEditor, eventLabel, NamesField, newBrew, ne
 import { armorPreset, toolPreset, eggDataUrl, newMob, normalizeMob, newBlock, newItem, normalizeBlock, normalizeItem, SLOT_DE, SLOT_EN, variantIds } from "./contentDefaults";
 
 const normalize = (c: Content): Content => ({ ...c, blocks: c.blocks.map(normalizeBlock), items: c.items.map(normalizeItem), mobs: (c.mobs ?? []).map(normalizeMob), brewing: c.brewing ?? [], events: (c.events ?? []).map((e) => ({ ...e, actions: e.actions ?? [] })), blueprints: c.blueprints ?? [], dimensions: c.dimensions ?? [], generatedMobs: c.generatedMobs ?? [], tabIcon: c.tabIcon ?? "", tabName: c.tabName ?? "" });
+
+/** Einklappbare Gruppe in der Inhalte-Liste (Zustand bleibt gespeichert) */
+function ListGroup({ id, label, icon, count, forceOpen, children }: { id: string; label: string; icon: React.ReactNode; count: number; forceOpen: boolean; children: React.ReactNode }) {
+  const key = `anvil.content.group.${id}`;
+  const [open, setOpen] = useState(() => {
+    try {
+      const v = localStorage.getItem(key);
+      return v === null ? true : v === "1";
+    } catch {
+      return true;
+    }
+  });
+  const shown = forceOpen || open;
+  return (
+    <div className="list-group">
+      <button
+        className="list-group-head"
+        aria-expanded={shown}
+        onClick={() => {
+          setOpen(!open);
+          try {
+            localStorage.setItem(key, open ? "0" : "1");
+          } catch {}
+        }}
+      >
+        <span className={shown ? "list-group-chev open" : "list-group-chev"}>
+          <ChevronIcon size={11} />
+        </span>
+        {icon}
+        <span className="grow">{label}</span>
+        <span className="list-group-count">{count}</span>
+      </button>
+      {shown && <div className="list-group-body">{count === 0 ? <p className="muted small pad">{t("Noch leer")}</p> : children}</div>}
+    </div>
+  );
+}
 
 type Sel = { kind: "block" | "item" | "mob" | "event" | "brew" | "blueprint" | "dimension"; index: number } | null;
 
@@ -55,13 +91,23 @@ export default function ContentTab({ project }: { project: Project }) {
         setContent(c);
         setSaved(JSON.stringify(c));
         loadTextures(c);
-        if (c.blocks.length) setSel({ kind: "block", index: 0 });
-        else if (c.items.length) setSel({ kind: "item", index: 0 });
       })
       .catch((e) => toast(String(e), "error"));
   }, [project.id, loadTextures]);
 
   const dirty = content ? JSON.stringify(content) !== saved : false;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "n") {
+        // im Inhalte-Tab heißt Strg+N „neuer Inhalt“ (statt neues Projekt)
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setCreateGroup("all");
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
   const savedContent = useMemo(() => (saved ? (JSON.parse(saved) as Content) : null), [saved]);
   const savedIds = useMemo(() => [...(savedContent?.generatedBlocks ?? []), ...(savedContent?.generatedItems ?? [])], [savedContent]);
 
@@ -375,210 +421,175 @@ export default function ContentTab({ project }: { project: Project }) {
             </label>
             <input id="cfilter" placeholder={t("Inhalte durchsuchen …")} value={filter} onChange={(e) => setFilter(e.target.value)} />
           </div>
+          <button className="btn primary content-add" onClick={() => setCreateGroup("all")} aria-label={t("Neuer Inhalt")} data-tip={t("Neuer Inhalt (Strg+N)")}>
+            <PlusIcon size={16} />
+          </button>
         </div>
         <div className="content-list-scroll">
-          <div className="content-list-head">
-            <span>{t("Blöcke ·")}{" "}{content.blocks.length}</span>
-            <button className="icon-btn" onClick={() => setCreateGroup("block")} aria-label={t("Block hinzufügen")} data-tip={t("Block hinzufügen")}>
-              <PlusIcon size={15} />
-            </button>
-          </div>
-          {content.blocks.map((b, i) =>
-            matches(b) ? (
-              <button
-                key={`b${i}`}
-                className={sel?.kind === "block" && sel.index === i ? "entry active" : "entry"}
-                onClick={() => setSel({ kind: "block", index: i })}
-                {...contextMenu(() => entryMenu("block", i))}
-              >
-                {entryIcon("block", b.id, b.nameDe || b.id)}
-                <span className="entry-text">
-                  <span className="entry-name">{b.nameDe || b.id}</span>
-                  <span className="entry-id">{b.id}</span>
-                </span>
-                {(b.ore.enabled || b.shapes.length > 0) && (
-                  <span className="entry-badges">
-                    {b.ore.enabled && <span className="badge-mini">{t("Erz")}</span>}
-                    {b.shapes.length > 0 && <span className="badge-mini">+{b.shapes.length}</span>}
+          <button className={sel ? "entry overview-entry" : "entry overview-entry active"} onClick={() => setSel(null)}>
+            <span className="logic-icon">
+              <GridIcon size={14} />
+            </span>
+            <span className="entry-text">
+              <span className="entry-name">{t("Übersicht")}</span>
+            </span>
+          </button>
+          <ListGroup id="blocks" label={t("Blöcke")} icon={<CubeIcon size={13} />} count={content.blocks.length} forceOpen={!!q}>
+            {content.blocks.map((b, i) =>
+              matches(b) ? (
+                <button
+                  key={`b${i}`}
+                  className={sel?.kind === "block" && sel.index === i ? "entry active" : "entry"}
+                  onClick={() => setSel({ kind: "block", index: i })}
+                  {...contextMenu(() => entryMenu("block", i))}
+                >
+                  {entryIcon("block", b.id, b.nameDe || b.id)}
+                  <span className="entry-text">
+                    <span className="entry-name">{b.nameDe || b.id}</span>
+                    <span className="entry-id">{b.id}</span>
                   </span>
-                )}
-              </button>
-            ) : null,
-          )}
-          {content.blocks.length === 0 && <p className="muted small pad">{t("Noch keine Blöcke.")}</p>}
-          <div className="content-list-head">
-            <span>{t("Items ·")}{" "}{content.items.length}</span>
-            <button className="icon-btn" onClick={() => setCreateGroup("item")} aria-label={t("Item hinzufügen")} data-tip={t("Item")}>
-              <PlusIcon size={15} />
-            </button>
-          </div>
-          {content.items.map((it, i) =>
-            matches(it) ? (
+                  {(b.ore.enabled || b.shapes.length > 0) && (
+                    <span className="entry-badges">
+                      {b.ore.enabled && <span className="badge-mini">{t("Erz")}</span>}
+                      {b.shapes.length > 0 && <span className="badge-mini">+{b.shapes.length}</span>}
+                    </span>
+                  )}
+                </button>
+              ) : null,
+            )}
+          </ListGroup>
+          <ListGroup id="items" label={t("Items")} icon={<GemIcon size={13} />} count={content.items.length} forceOpen={!!q}>
+            {content.items.map((it, i) =>
+              matches(it) ? (
+                <button
+                  key={`i${i}`}
+                  className={sel?.kind === "item" && sel.index === i ? "entry active" : "entry"}
+                  onClick={() => setSel({ kind: "item", index: i })}
+                  {...contextMenu(() => entryMenu("item", i))}
+                >
+                  {entryIcon("item", it.id, it.nameDe || it.id)}
+                  <span className="entry-text">
+                    <span className="entry-name">{it.nameDe || it.id}</span>
+                    <span className="entry-id">{it.id}</span>
+                  </span>
+                  {it.kind !== "basic" && <span className="entry-badges">{it.kind === "tool" ? <SwordIcon size={12} /> : <ChestplateIcon size={12} />}</span>}
+                </button>
+              ) : null,
+            )}
+          </ListGroup>
+          <ListGroup id="mobs" label={t("Kreaturen")} icon={<PawIcon size={13} />} count={content.mobs.length} forceOpen={!!q}>
+            {content.mobs.map((m, i) =>
+              matches(m) ? (
+                <button
+                  key={`m${i}`}
+                  className={sel?.kind === "mob" && sel.index === i ? "entry active" : "entry"}
+                  onClick={() => setSel({ kind: "mob", index: i })}
+                  {...contextMenu(() => entryMenu("mob", i))}
+                >
+                  <img className="egg-icon" src={eggDataUrl(m.eggPrimary, m.eggSecondary)} alt="" />
+                  <span className="entry-text">
+                    <span className="entry-name">{m.nameDe || m.id}</span>
+                    <span className="entry-id">{m.id}</span>
+                  </span>
+                </button>
+              ) : null,
+            )}
+          </ListGroup>
+          <ListGroup id="world" label={t("Welt")} icon={<GlobeIcon size={13} />} count={content.dimensions.length} forceOpen={!!q}>
+            {content.dimensions.map((d, i) =>
+              !q || `${d.id} ${d.nameDe} ${d.nameEn}`.toLowerCase().includes(q) ? (
+                <button
+                  key={`dim${i}`}
+                  className={sel?.kind === "dimension" && sel.index === i ? "entry active" : "entry"}
+                  onClick={() => setSel({ kind: "dimension", index: i })}
+                  {...contextMenu(() => [
+                    { label: t("Bearbeiten"), icon: <PencilIcon size={15} />, onClick: () => setSel({ kind: "dimension", index: i }) },
+                    {
+                      label: t("ID kopieren"),
+                      icon: <TagIcon size={15} />,
+                      hint: `${project.modId}:${d.id}`,
+                      onClick: () => navigator.clipboard.writeText(`${project.modId}:${d.id}`).then(() => toast(t("ID kopiert."), "success")),
+                    },
+                    "separator",
+                    { label: t("Entfernen"), icon: <TrashIcon size={15} />, danger: true, onClick: () => remove({ kind: "dimension", index: i }) },
+                  ])}
+                >
+                  <span className="logic-icon">
+                    <GlobeIcon size={14} />
+                  </span>
+                  <span className="entry-text">
+                    <span className="entry-name">{d.nameDe || d.id}</span>
+                    <span className="entry-id">{d.id}</span>
+                  </span>
+                </button>
+              ) : null,
+            )}
+          </ListGroup>
+          <ListGroup id="logic" label={t("Logik")} icon={<BlueprintIcon size={13} />} count={content.blueprints.length + content.events.length} forceOpen={!!q}>
+            {content.blueprints.map((b, i) =>
+              !q || b.name.toLowerCase().includes(q) ? (
+                <button
+                  key={`bp${i}`}
+                  className={sel?.kind === "blueprint" && sel.index === i ? "entry active" : "entry"}
+                  onClick={() => setSel({ kind: "blueprint", index: i })}
+                  {...contextMenu(() => [
+                    { label: t("Bearbeiten"), icon: <PencilIcon size={15} />, onClick: () => setSel({ kind: "blueprint", index: i }) },
+                    { label: t("Duplizieren"), icon: <CopyIcon size={15} />, onClick: () => setContent({ ...content, blueprints: [...content.blueprints, { ...structuredClone(b), name: `${b.name} (${t("Kopie")})` }] }) },
+                    { label: b.enabled ? t("Ausschalten") : t("Einschalten"), icon: <LightningIcon size={15} />, onClick: () => setContent({ ...content, blueprints: content.blueprints.map((x, j) => (j === i ? { ...x, enabled: !x.enabled } : x)) }) },
+                    "separator",
+                    { label: t("Entfernen"), icon: <TrashIcon size={15} />, danger: true, onClick: () => remove({ kind: "blueprint", index: i }) },
+                  ])}
+                >
+                  <span className={b.enabled ? "logic-icon" : "logic-icon off"}>
+                    <BlueprintIcon size={14} />
+                  </span>
+                  <span className="entry-text">
+                    <span className="entry-name">{b.name || t("Blueprint")}</span>
+                    <span className="entry-id">{b.enabled ? t("{n} Knoten", { n: b.nodes.length }) : t("ausgeschaltet")}</span>
+                  </span>
+                </button>
+              ) : null,
+            )}
+            {content.events.map((e, i) => (
               <button
-                key={`i${i}`}
-                className={sel?.kind === "item" && sel.index === i ? "entry active" : "entry"}
-                onClick={() => setSel({ kind: "item", index: i })}
-                {...contextMenu(() => entryMenu("item", i))}
-              >
-                {entryIcon("item", it.id, it.nameDe || it.id)}
-                <span className="entry-text">
-                  <span className="entry-name">{it.nameDe || it.id}</span>
-                  <span className="entry-id">{it.id}</span>
-                </span>
-                {it.kind !== "basic" && <span className="entry-badges">{it.kind === "tool" ? <SwordIcon size={12} /> : <ChestplateIcon size={12} />}</span>}
-              </button>
-            ) : null,
-          )}
-          {content.items.length === 0 && <p className="muted small pad">{t("Noch keine Items.")}</p>}
-          <div className="content-list-head">
-            <span>{t("Kreaturen ·")}{" "}{content.mobs.length}</span>
-            <button className="icon-btn" onClick={() => setCreateGroup("mob")} aria-label={t("Kreatur hinzufügen")} data-tip={t("Kreatur")}>
-              <PlusIcon size={15} />
-            </button>
-          </div>
-          {content.mobs.map((m, i) =>
-            matches(m) ? (
-              <button
-                key={`m${i}`}
-                className={sel?.kind === "mob" && sel.index === i ? "entry active" : "entry"}
-                onClick={() => setSel({ kind: "mob", index: i })}
-                {...contextMenu(() => entryMenu("mob", i))}
-              >
-                <img className="egg-icon" src={eggDataUrl(m.eggPrimary, m.eggSecondary)} alt="" />
-                <span className="entry-text">
-                  <span className="entry-name">{m.nameDe || m.id}</span>
-                  <span className="entry-id">{m.id}</span>
-                </span>
-              </button>
-            ) : null,
-          )}
-          {content.mobs.length === 0 && <p className="muted small pad">{t("Noch keine Kreaturen.")}</p>}
-          <div className="content-list-head">
-            <span>{t("Dimensionen ·")}{" "}{content.dimensions.length}</span>
-            <button className="icon-btn" onClick={() => setCreateGroup("world")} aria-label={t("Dimension hinzufügen")} data-tip={t("Dimension")}>
-              <PlusIcon size={15} />
-            </button>
-          </div>
-          {content.dimensions.map((d, i) =>
-            !q || `${d.id} ${d.nameDe} ${d.nameEn}`.toLowerCase().includes(q) ? (
-              <button
-                key={`dim${i}`}
-                className={sel?.kind === "dimension" && sel.index === i ? "entry active" : "entry"}
-                onClick={() => setSel({ kind: "dimension", index: i })}
+                key={`e${i}`}
+                className={sel?.kind === "event" && sel.index === i ? "entry active" : "entry"}
+                onClick={() => setSel({ kind: "event", index: i })}
                 {...contextMenu(() => [
-                  { label: t("Bearbeiten"), icon: <PencilIcon size={15} />, onClick: () => setSel({ kind: "dimension", index: i }) },
-                  {
-                    label: t("ID kopieren"),
-                    icon: <TagIcon size={15} />,
-                    hint: `${project.modId}:${d.id}`,
-                    onClick: () => navigator.clipboard.writeText(`${project.modId}:${d.id}`).then(() => toast(t("ID kopiert."), "success")),
-                  },
+                  { label: t("Bearbeiten"), icon: <PencilIcon size={15} />, onClick: () => setSel({ kind: "event", index: i }) },
+                  { label: t("Duplizieren"), icon: <CopyIcon size={15} />, onClick: () => setContent({ ...content, events: [...content.events, structuredClone(e)] }) },
                   "separator",
-                  { label: t("Entfernen"), icon: <TrashIcon size={15} />, danger: true, onClick: () => remove({ kind: "dimension", index: i }) },
+                  { label: t("Entfernen"), icon: <TrashIcon size={15} />, danger: true, onClick: () => remove({ kind: "event", index: i }) },
                 ])}
               >
                 <span className="logic-icon">
-                  <GlobeIcon size={14} />
+                  <LightningIcon size={14} />
                 </span>
                 <span className="entry-text">
-                  <span className="entry-name">{d.nameDe || d.id}</span>
-                  <span className="entry-id">{d.id}</span>
+                  <span className="entry-name">{eventLabel(e)}</span>
+                  <span className="entry-id">{e.target || "–"}</span>
                 </span>
               </button>
-            ) : null,
-          )}
-          {content.dimensions.length === 0 && <p className="muted small pad">{t("Noch keine Dimensionen.")}</p>}
-          <div className="content-list-head">
-            <span>{t("Blueprints ·")}{" "}{content.blueprints.length}</span>
-            <button className="icon-btn" onClick={() => setCreateGroup("logic")} aria-label={t("Blueprint hinzufügen")} data-tip={t("Blueprint")}>
-              <PlusIcon size={15} />
-            </button>
-          </div>
-          {content.blueprints.map((b, i) =>
-            !q || b.name.toLowerCase().includes(q) ? (
+            ))}
+          </ListGroup>
+          <ListGroup id="brew" label={t("Brauen")} icon={<FlaskIcon size={13} />} count={content.brewing.length} forceOpen={!!q}>
+            {content.brewing.map((b, i) => (
               <button
-                key={`bp${i}`}
-                className={sel?.kind === "blueprint" && sel.index === i ? "entry active" : "entry"}
-                onClick={() => setSel({ kind: "blueprint", index: i })}
-                {...contextMenu(() => [
-                  { label: t("Bearbeiten"), icon: <PencilIcon size={15} />, onClick: () => setSel({ kind: "blueprint", index: i }) },
-                  { label: t("Duplizieren"), icon: <CopyIcon size={15} />, onClick: () => setContent({ ...content, blueprints: [...content.blueprints, { ...structuredClone(b), name: `${b.name} (${t("Kopie")})` }] }) },
-                  { label: b.enabled ? t("Ausschalten") : t("Einschalten"), icon: <LightningIcon size={15} />, onClick: () => setContent({ ...content, blueprints: content.blueprints.map((x, j) => (j === i ? { ...x, enabled: !x.enabled } : x)) }) },
-                  "separator",
-                  { label: t("Entfernen"), icon: <TrashIcon size={15} />, danger: true, onClick: () => remove({ kind: "blueprint", index: i }) },
-                ])}
+                key={`b${i}`}
+                className={sel?.kind === "brew" && sel.index === i ? "entry active" : "entry"}
+                onClick={() => setSel({ kind: "brew", index: i })}
+                {...contextMenu(() => [{ label: t("Entfernen"), icon: <TrashIcon size={15} />, danger: true, onClick: () => remove({ kind: "brew", index: i }) }])}
               >
-                <span className={b.enabled ? "logic-icon" : "logic-icon off"}>
-                  <BlueprintIcon size={14} />
+                <span className="logic-icon">
+                  <FlaskIcon size={14} />
                 </span>
                 <span className="entry-text">
-                  <span className="entry-name">{b.name || t("Blueprint")}</span>
-                  <span className="entry-id">{b.enabled ? t("{n} Knoten", { n: b.nodes.length }) : t("ausgeschaltet")}</span>
+                  <span className="entry-name">{brewLabel(b)}</span>
+                  <span className="entry-id">{b.ingredient || "–"}</span>
                 </span>
               </button>
-            ) : null,
-          )}
-          {content.blueprints.length === 0 && <p className="muted small pad">{t("Noch keine Blueprints.")}</p>}
-          <div className="content-list-head">
-            <span>{t("Ereignisse ·")}{" "}{content.events.length}</span>
-            <button
-              className="icon-btn"
-              onClick={() => setCreateGroup("logic")}
-              aria-label={t("Ereignis hinzufügen")}
-              data-tip={t("Ereignis")}
-            >
-              <PlusIcon size={15} />
-            </button>
-          </div>
-          {content.events.map((e, i) => (
-            <button
-              key={`e${i}`}
-              className={sel?.kind === "event" && sel.index === i ? "entry active" : "entry"}
-              onClick={() => setSel({ kind: "event", index: i })}
-              {...contextMenu(() => [
-                { label: t("Bearbeiten"), icon: <PencilIcon size={15} />, onClick: () => setSel({ kind: "event", index: i }) },
-                { label: t("Duplizieren"), icon: <CopyIcon size={15} />, onClick: () => setContent({ ...content, events: [...content.events, structuredClone(e)] }) },
-                "separator",
-                { label: t("Entfernen"), icon: <TrashIcon size={15} />, danger: true, onClick: () => remove({ kind: "event", index: i }) },
-              ])}
-            >
-              <span className="logic-icon">
-                <LightningIcon size={14} />
-              </span>
-              <span className="entry-text">
-                <span className="entry-name">{eventLabel(e)}</span>
-                <span className="entry-id">{e.target || "–"}</span>
-              </span>
-            </button>
-          ))}
-          {content.events.length === 0 && <p className="muted small pad">{t("Noch keine Ereignisse.")}</p>}
-          <div className="content-list-head">
-            <span>{t("Brau-Rezepte ·")}{" "}{content.brewing.length}</span>
-            <button
-              className="icon-btn"
-              onClick={() => setCreateGroup("logic")}
-              aria-label={t("Brau-Rezept hinzufügen")}
-              data-tip={t("Brau-Rezept")}
-            >
-              <PlusIcon size={15} />
-            </button>
-          </div>
-          {content.brewing.map((b, i) => (
-            <button
-              key={`b${i}`}
-              className={sel?.kind === "brew" && sel.index === i ? "entry active" : "entry"}
-              onClick={() => setSel({ kind: "brew", index: i })}
-              {...contextMenu(() => [{ label: t("Entfernen"), icon: <TrashIcon size={15} />, danger: true, onClick: () => remove({ kind: "brew", index: i }) }])}
-            >
-              <span className="logic-icon">
-                <FlaskIcon size={14} />
-              </span>
-              <span className="entry-text">
-                <span className="entry-name">{brewLabel(b)}</span>
-                <span className="entry-id">{b.ingredient || "–"}</span>
-              </span>
-            </button>
-          ))}
+            ))}
+          </ListGroup>
         </div>
         <div className="content-save">
           <button className={busy ? "btn primary full loading" : "btn primary full"} disabled={busy || (!dirty && content.generatorVersion > 0)} onClick={save}>
@@ -670,29 +681,7 @@ export default function ContentTab({ project }: { project: Project }) {
             onRemove={() => remove()}
           />
         ) : !current ? (
-          <div className="content-empty">
-            <div className="empty-icon">
-              <CubeIcon size={26} />
-            </div>
-            <h2>{t("Blöcke & Items ohne Code")}</h2>
-            <p className="muted">
-              {t("Lege Inhalte per Formular an. Beim Speichern erzeugt Anvil Studio Java-Code, Modelle, Loot-Tabellen, Rezepte und Übersetzungen – passend für Minecraft")}{" "}{project.mcVersion}.
-            </p>
-            <div className="row center">
-              <button className="btn primary" onClick={() => setCreateGroup("block")}>
-                <PlusIcon size={15} />{" "}{t("Block")}
-              </button>
-              <button className="btn" onClick={() => setCreateGroup("item")}>
-                <BoxIcon size={15} />{" "}{t("Item")}
-              </button>
-              <button className="btn" onClick={() => setCreateGroup("mob")}>
-                <SwordIcon size={15} />{" "}{t("Kreatur")}
-              </button>
-              <button className="btn" onClick={() => setCreateGroup("logic")}>
-                <BlueprintIcon size={15} />{" "}{t("Blueprint")}
-              </button>
-            </div>
-          </div>
+          <ContentOverview project={project} content={content} textures={textures} dirty={dirty} onCreate={(g) => setCreateGroup(g)} onSelect={setSel} onSave={save} />
         ) : (
           <div className="editor-grid" key={`${sel!.kind}-${sel!.index}`}>
             <div className="panel form-panel">
@@ -1064,6 +1053,100 @@ function RecipeEditor({
             setPicking(null);
           }}
         />
+      )}
+    </div>
+  );
+}
+
+type Todo = { text: string; tone: "warn" | "info"; action: string; run: () => void };
+
+/** Startseite des Inhalte-Tabs: Bereiche mit Anzahl und was noch offen ist */
+function ContentOverview({
+  project,
+  content,
+  textures,
+  dirty,
+  onCreate,
+  onSelect,
+  onSave,
+}: {
+  project: Project;
+  content: Content;
+  textures: Record<string, string>;
+  dirty: boolean;
+  onCreate: (g: CreateGroup) => void;
+  onSelect: (s: Sel) => void;
+  onSave: () => void;
+}) {
+  const tiles: { g: CreateGroup; label: string; desc: string; icon: React.ReactNode; n: number }[] = [
+    { g: "block", label: t("Blöcke"), desc: t("Bauen, Erze, Truhen, Werkbänke, Maschinen"), icon: <CubeIcon size={17} />, n: content.blocks.length },
+    { g: "item", label: t("Items"), desc: t("Materialien, Werkzeuge, Rüstung, Essen"), icon: <GemIcon size={17} />, n: content.items.length },
+    { g: "mob", label: t("Kreaturen"), desc: t("Tiere und Monster mit eigenem Verhalten"), icon: <PawIcon size={17} />, n: content.mobs.length },
+    { g: "world", label: t("Welt"), desc: t("Eigene Dimensionen und Weltgenerierung"), icon: <GlobeIcon size={17} />, n: content.dimensions.length },
+    { g: "logic", label: t("Logik"), desc: t("Blueprints und Ereignisse: Wenn … dann …"), icon: <BlueprintIcon size={17} />, n: content.blueprints.length + content.events.length },
+    { g: "logic", label: t("Brauen"), desc: t("Eigene Tränke im Braustand"), icon: <FlaskIcon size={17} />, n: content.brewing.length },
+  ];
+  const todos: Todo[] = [];
+  if (dirty) todos.push({ text: t("Es gibt ungespeicherte Änderungen."), tone: "info", action: t("Speichern"), run: onSave });
+  content.blocks.forEach((b, i) => {
+    const name = b.nameDe || b.id;
+    if (content.generatedBlocks.includes(b.id) && !textures[b.id] && !b.model.length) todos.push({ text: t("„{name}“ hat noch keine eigene Textur", { name }), tone: "warn", action: t("Öffnen"), run: () => onSelect({ kind: "block", index: i }) });
+    if (b.kind === "workbench" && !(b.workbenchRecipes ?? []).length) todos.push({ text: t("Werkbank „{name}“ hat noch keine eigenen Rezepte", { name }), tone: "warn", action: t("Öffnen"), run: () => onSelect({ kind: "block", index: i }) });
+    if (b.kind === "machine" && !(b.machine?.recipes ?? []).length) todos.push({ text: t("Maschine „{name}“ hat noch kein Rezept", { name }), tone: "warn", action: t("Öffnen"), run: () => onSelect({ kind: "block", index: i }) });
+    if (!b.nameEn.trim()) todos.push({ text: t("„{name}“ hat noch keinen englischen Namen", { name }), tone: "info", action: t("Öffnen"), run: () => onSelect({ kind: "block", index: i }) });
+  });
+  content.items.forEach((it, i) => {
+    const name = it.nameDe || it.id;
+    if (content.generatedItems.includes(it.id) && !textures[it.id]) todos.push({ text: t("„{name}“ hat noch keine eigene Textur", { name }), tone: "warn", action: t("Öffnen"), run: () => onSelect({ kind: "item", index: i }) });
+    if (!it.nameEn.trim()) todos.push({ text: t("„{name}“ hat noch keinen englischen Namen", { name }), tone: "info", action: t("Öffnen"), run: () => onSelect({ kind: "item", index: i }) });
+  });
+  content.blueprints.forEach((b, i) => {
+    if (b.nodes.length <= 1) todos.push({ text: t("Blueprint „{name}“ ist noch leer", { name: b.name }), tone: "info", action: t("Öffnen"), run: () => onSelect({ kind: "blueprint", index: i }) });
+  });
+  const total = content.blocks.length + content.items.length + content.mobs.length + content.dimensions.length + content.blueprints.length + content.events.length + content.brewing.length;
+  return (
+    <div className="content-overview">
+      <header className="overview-head">
+        <div className="grow">
+          <h1>{t("Inhalte")}</h1>
+          <p className="muted">
+            {total
+              ? t("Alles, was deine Mod ins Spiel bringt. Wähle links etwas aus oder lege mit + Neues an.")
+              : t("Lege Inhalte per Formular an. Beim Speichern erzeugt Anvil Studio Java-Code, Modelle, Loot-Tabellen, Rezepte und Übersetzungen – passend für Minecraft {v}.", { v: project.mcVersion })}
+          </p>
+        </div>
+        <button className="btn primary" onClick={() => onCreate("all")}>
+          <PlusIcon size={15} /> {t("Neuer Inhalt")}
+        </button>
+      </header>
+      <div className="overview-tiles">
+        {tiles.map((x) => (
+          <button key={x.label} className="overview-tile" onClick={() => onCreate(x.g)}>
+            <span className="overview-tile-top">
+              <span className="overview-tile-icon">{x.icon}</span>
+              <span className="overview-tile-label">{x.label}</span>
+              <span className="overview-tile-n">{x.n}</span>
+            </span>
+            <span className="muted small">{x.desc}</span>
+          </button>
+        ))}
+      </div>
+      {todos.length > 0 && (
+        <section className="overview-todos">
+          <h2>{t("Noch offen")}</h2>
+          <ul>
+            {todos.slice(0, 10).map((x, i) => (
+              <li key={i}>
+                <span className={`todo-dot ${x.tone}`} />
+                <span className="grow">{x.text}</span>
+                <button className="btn small" onClick={x.run}>
+                  {x.action}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {todos.length > 10 && <span className="muted small">{t("… und {n} weitere", { n: todos.length - 10 })}</span>}
+        </section>
       )}
     </div>
   );

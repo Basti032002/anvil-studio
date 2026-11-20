@@ -17,6 +17,7 @@ import {
   LayersIcon,
   LightningIcon,
   PawIcon,
+  SearchIcon,
   PickaxeIcon,
   ShovelIcon,
   SkullIcon,
@@ -26,7 +27,7 @@ import {
 import { MOB_MODELS } from "./contentDefaults";
 import { TEMPLATES } from "./blueprints";
 
-export type CreateGroup = "block" | "item" | "mob" | "world" | "logic";
+export type CreateGroup = "all" | "block" | "item" | "mob" | "world" | "logic";
 export type CreateChoice =
   | { kind: "block"; variant: "normal" | "ore" | "lamp" | "storage" | "shapes" | "workbench" | "machine" }
   | { kind: "item"; variant: "basic" | "food" | "sword" | "pickaxe" | "axe" | "shovel" | "hoe" | "toolset" | "armor" | "armorset" }
@@ -44,6 +45,7 @@ interface Card {
 }
 
 const GROUPS: { id: CreateGroup; label: string; icon: React.ReactNode }[] = [
+  { id: "all", label: t("Alle"), icon: <SparkIcon size={15} /> },
   { id: "block", label: t("Blöcke"), icon: <CubeIcon size={15} /> },
   { id: "item", label: t("Items"), icon: <GemIcon size={15} /> },
   { id: "mob", label: t("Kreaturen"), icon: <PawIcon size={15} /> },
@@ -53,6 +55,11 @@ const GROUPS: { id: CreateGroup; label: string; icon: React.ReactNode }[] = [
 
 function cards(group: CreateGroup): { title: string; cards: Card[] }[] {
   switch (group) {
+    case "all":
+      return (["block", "item", "mob", "world", "logic"] as CreateGroup[]).flatMap((g) => {
+        const label = GROUPS.find((x) => x.id === g)!.label;
+        return cards(g).map((sec, i) => ({ title: i === 0 && sec.title !== label ? `${label} · ${sec.title}` : sec.title, cards: sec.cards }));
+      });
     case "block":
       return [
         {
@@ -141,8 +148,14 @@ function cards(group: CreateGroup): { title: string; cards: Card[] }[] {
   }
 }
 
-export default function CreateMenu({ group, onPick, onClose }: { group: CreateGroup; onPick: (c: CreateChoice) => void; onClose: () => void }) {
+export default function CreateMenu({ group = "all", onPick, onClose }: { group?: CreateGroup; onPick: (c: CreateChoice) => void; onClose: () => void }) {
   const [tab, setTab] = useState<CreateGroup>(group);
+  const [q, setQ] = useState("");
+  const query = q.trim().toLowerCase();
+  const sections = (query ? cards("all") : cards(tab))
+    .map((sec) => ({ ...sec, cards: query ? sec.cards.filter((c) => `${c.title} ${c.desc} ${sec.title}`.toLowerCase().includes(query)) : sec.cards }))
+    .filter((sec) => sec.cards.length > 0);
+  const first = sections[0]?.cards[0];
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -156,6 +169,17 @@ export default function CreateMenu({ group, onPick, onClose }: { group: CreateGr
             <div className="panel-title-lg">{t("Was möchtest du erstellen?")}</div>
             <div className="muted small">{t("Wähle eine Vorlage – alles lässt sich danach anpassen.")}</div>
           </div>
+          <div className="search create-search">
+            <SearchIcon size={13} />
+            <input
+              autoFocus
+              placeholder={t("Suchen: Schwert, Erz, Dimension …")}
+              aria-label={t("Vorlagen suchen")}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && first && onPick(first.choice)}
+            />
+          </div>
           <button className="icon-btn" onClick={onClose} aria-label={t("Schließen")} data-tip={t("Schließen")}>
             <CloseIcon size={14} />
           </button>
@@ -163,13 +187,14 @@ export default function CreateMenu({ group, onPick, onClose }: { group: CreateGr
         <div className="create-body">
           <nav className="create-tabs">
             {GROUPS.map((g) => (
-              <button key={g.id} className={tab === g.id ? "create-tab active" : "create-tab"} onClick={() => setTab(g.id)}>
+              <button key={g.id} className={tab === g.id && !query ? "create-tab active" : "create-tab"} onClick={() => (setTab(g.id), setQ(""))}>
                 {g.icon} {g.label}
               </button>
             ))}
           </nav>
           <div className="create-cards">
-            {cards(tab).map((sec) => (
+            {sections.length === 0 && <p className="muted">{t("Nichts gefunden.")}</p>}
+            {sections.map((sec) => (
               <section key={sec.title}>
                 <div className="create-sec">{sec.title}</div>
                 <div className="create-grid">
