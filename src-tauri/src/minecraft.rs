@@ -7,7 +7,9 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::sync::Mutex;
 
-/// Azure-App (Client-ID) – wird beim Build über die Umgebung gesetzt.
+/// Azure-App „Anvil Studio“ (öffentliche Client-ID, nicht geheim).
+const DEFAULT_CLIENT_ID: &str = "f488fb04-ce2c-41c1-88f6-b548849f7e24";
+/// Optional beim Build über die Umgebung überschreibbar.
 const BUILD_CLIENT_ID: Option<&str> = option_env!("ANVIL_MS_CLIENT_ID");
 const KEYRING_SERVICE: &str = "AnvilStudio";
 const KEYRING_USER: &str = "minecraft-refresh";
@@ -32,6 +34,7 @@ static SESSION: Mutex<Option<Session>> = Mutex::new(None);
 
 fn client_id() -> Option<String> {
     std::env::var("ANVIL_MS_CLIENT_ID").ok().filter(|s| !s.is_empty()).or(BUILD_CLIENT_ID.filter(|s| !s.is_empty()).map(|s| s.to_string()))
+        .or(Some(DEFAULT_CLIENT_ID.to_string()))
 }
 
 fn entry() -> Result<keyring::Entry, String> {
