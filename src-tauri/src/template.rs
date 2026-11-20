@@ -186,17 +186,25 @@ pub fn escape_property(value: &str) -> String {
 
 pub fn set_properties(file: &Path, values: &[(&str, &str)]) -> Result<(), String> {
     let content = std::fs::read_to_string(file).map_err(err)?;
-    let lines: Vec<String> = content
+    let mut seen = std::collections::HashSet::new();
+    let mut lines: Vec<String> = content
         .lines()
         .map(|line| {
-            for (key, value) in values {
-                if line.starts_with(&format!("{key}=")) {
-                    return format!("{key}={}", escape_property(value));
+            if !line.trim_start().starts_with('#') {
+                if let Some((k, _)) = line.split_once('=') {
+                    if let Some((key, value)) = values.iter().find(|(key, _)| *key == k.trim()) {
+                        seen.insert(key.to_string());
+                        return format!("{key}={}", escape_property(value));
+                    }
                 }
             }
             line.to_string()
         })
         .collect();
+    // fehlende Schlüssel anhängen (z. B. mod_authors im NeoForge-MDK)
+    for (key, value) in values.iter().filter(|(k, _)| !seen.contains(*k)) {
+        lines.push(format!("{key}={}", escape_property(value)));
+    }
     std::fs::write(file, lines.join("\n") + "\n").map_err(err)
 }
 

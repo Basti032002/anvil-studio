@@ -1,0 +1,16 @@
+# Workshop-Server für Anvil Studio
+# Start: docker compose up -d --build
+services:
+  workshop:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8787:8787"   # hinter einem Reverse-Proxy (nginx/Caddy) mit HTTPS betreiben
+    environment:
+      # Admins: Minecraft-Namen oder UUIDs (ohne Bindestriche), mit Komma getrennt
+      ADMIN_NAMES: "Sebigames"
+      ADMIN_UUIDS: ""
+    volumes:
+      - workshop-data:/data
+volumes:
+  workshop-data:

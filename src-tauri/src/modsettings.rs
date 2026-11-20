@@ -117,6 +117,67 @@ fn set_logo(p: &Project, png: &str) -> Result<(), String> {
     std::fs::write(&file, lines.join("\n") + "\n").map_err(err)
 }
 
+/// Autoren und Beschreibung direkt in neoforge.mods.toml eintragen
+/// (das NeoForge-MDK hat dafür keine Gradle-Eigenschaften).
+fn set_toml_meta(p: &Project, authors: &str, description: &str) -> Result<(), String> {
+    let Some(file) = toml_file(p) else { return Ok(()) };
+    let templated = file.to_string_lossy().replace('\\', "/").contains("/templates/");
+    const TQ: &str = "'''";
+    // TOML-Literalstrings kennen keine Escapes → störende Zeichen ersetzen
+    let clean = |v: &str, single_line: bool| {
+        let mut v = v.replace(TQ, "’’’");
+        if single_line {
+            v = v.replace('\'', "’").replace(['\n', '\r'], " ");
+        }
+        if templated {
+            v = v.replace('$', "${'$'}");
+        }
+        v
+    };
+    let text = std::fs::read_to_string(&file).map_err(err)?;
+    let mut out: Vec<String> = vec![];
+    let mut lines = text.lines();
+    let mut has_authors = false;
+    let mut has_desc = false;
+    let authors_line = if authors.is_empty() { "#authors=\"\"".to_string() } else { format!("authors='{}'", clean(authors, true)) };
+    let desc_line = format!("description={TQ}{}{TQ}", clean(if description.is_empty() { "Mod" } else { description }, false));
+    while let Some(line) = lines.next() {
+        let t = line.trim_start();
+        let bare = t.trim_start_matches('#').trim_start();
+        let is_key = |s: &str, key: &str| s.starts_with(key) && s[key.len()..].trim_start().starts_with('=');
+        if !has_authors && is_key(bare, "authors") {
+            has_authors = true;
+            out.push(authors_line.clone());
+        } else if !has_desc && !t.starts_with('#') && is_key(t, "description") {
+            has_desc = true;
+            let value = t.splitn(2, '=').nth(1).unwrap_or("").trim();
+            // mehrzeilige Strings bis zum Ende überspringen
+            for q in [TQ, "\"\"\""] {
+                if value.starts_with(q) && !value[3..].contains(q) {
+                    for rest in lines.by_ref() {
+                        if rest.contains(q) {
+                            break;
+                        }
+                    }
+                }
+            }
+            out.push(desc_line.clone());
+        } else {
+            out.push(line.to_string());
+        }
+    }
+    if !has_authors || !has_desc {
+        let at = out.iter().position(|l| l.trim_start().starts_with("displayName")).map(|i| i + 1).unwrap_or(out.len());
+        if !has_desc {
+            out.insert(at, desc_line);
+        }
+        if !has_authors {
+            out.insert(at, authors_line);
+        }
+    }
+    std::fs::write(&file, out.join("\n") + "\n").map_err(err)
+}
+
 #[tauri::command]
 pub fn mod_settings_save(app: AppHandle, project_id: String, settings: ModSettings) -> Result<(), String> {
     let p = crate::projects::get(&app, &project_id)?;
@@ -141,6 +202,7 @@ pub fn mod_settings_save(app: AppHandle, project_id: String, settings: ModSettin
     if let Some(logo) = &s.logo {
         set_logo(&p, logo)?;
     }
+    set_toml_meta(&p, s.authors.trim(), s.description.trim())?;
     let name = s.name.trim().to_string();
     crate::projects::update(&app, &project_id, |pr| pr.name = name)?;
     let p = crate::projects::get(&app, &project_id)?;
@@ -154,4 +216,35 @@ pub fn mod_settings_save(app: AppHandle, project_id: String, settings: ModSettin
         crate::content::generate(&p, &mut content)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn toml_meta_written() {
+        let src = std::path::Path::new("/tmp/mdkzip/MDK-1.21.1-ModDevGradle-main");
+        if !src.exists() {
+            return;
+        }
+        let dir = std::env::temp_dir().join("anvil-meta-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        let t = dir.join("src/main/templates/META-INF");
+        std::fs::create_dir_all(&t).unwrap();
+        std::fs::copy(src.join("src/main/templates/META-INF/neoforge.mods.toml"), t.join("neoforge.mods.toml")).unwrap();
+        std::fs::copy(src.join("gradle.properties"), dir.join("gradle.properties")).unwrap();
+        let p = Project { path: dir.to_string_lossy().to_string(), ..Default::default() };
+        set_toml_meta(&p, "Sebi, Max's Freund", "Zeile 1\nKostet $5 und hat '''Zitate'''").unwrap();
+        set_toml_meta(&p, "Sebi", "Neu").unwrap();
+        crate::template::set_properties(&dir.join("gradle.properties"), &[("mod_authors", "Sebi"), ("mod_name", "X")]).unwrap();
+        let toml = std::fs::read_to_string(t.join("neoforge.mods.toml")).unwrap();
+        println!("{toml}");
+        assert!(toml.contains("authors='Sebi'"));
+        assert!(toml.contains("description='''Neu'''"));
+        assert_eq!(toml.matches("description=").count(), 1);
+        assert!(!toml.contains("Example mod description"));
+        let props = std::fs::read_to_string(dir.join("gradle.properties")).unwrap();
+        assert!(props.contains("mod_authors=Sebi") && props.contains("mod_name=X"));
+    }
 }

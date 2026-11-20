@@ -14,7 +14,7 @@ pub struct LastRun {
     pub finished_at: u64,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
     pub id: String,
