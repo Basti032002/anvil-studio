@@ -10,7 +10,7 @@ import { ChevronIcon, GridIcon, PawIcon, GlobeIcon, BlueprintIcon, ChestplateIco
 import { toast } from "../../state";
 import { useRunning } from "../../store";
 import PixelEditor from "./PixelEditor";
-import { ArmorForm, BlockExtras, Field, ItemKindSwitch, ToolForm } from "./ContentForms";
+import { ArmorForm, BlockExtras, Field, ItemKindSwitch, SubTabs, ToolForm } from "./ContentForms";
 import MobEditor from "./MobEditor";
 import BlueprintEditor from "./BlueprintEditor";
 import { ModelPreview } from "./ModelEditor";
@@ -58,6 +58,9 @@ function ListGroup({ id, label, icon, count, forceOpen, children }: { id: string
   );
 }
 
+type BlockTab = "general" | "mining" | "function" | "model" | "shapes" | "recipe";
+type ItemTab = "general" | "function" | "recipe";
+
 type Sel = { kind: "block" | "item" | "mob" | "event" | "brew" | "blueprint" | "dimension"; index: number } | null;
 
 export default function ContentTab({ project }: { project: Project }) {
@@ -69,6 +72,8 @@ export default function ContentTab({ project }: { project: Project }) {
   const [filter, setFilter] = useState("");
   const [textures, setTextures] = useState<Record<string, string>>({});
   const [createGroup, setCreateGroup] = useState<CreateGroup | null>(null);
+  const [blockTab, setBlockTab] = useState<BlockTab>("general");
+  const [itemTab, setItemTab] = useState<ItemTab>("general");
   const running = useRunning(project.id);
   const gameRunning = !!running && (running.task === "runClient" || running.task === "runServer");
 
@@ -391,6 +396,7 @@ export default function ContentTab({ project }: { project: Project }) {
   const item = sel?.kind === "item" ? content.items[sel.index] : undefined;
   const mob = sel?.kind === "mob" ? content.mobs[sel.index] : undefined;
   const current = block ?? item;
+  const itemTabEff: ItemTab = item && itemTab === "function" && item.kind !== "tool" && item.kind !== "armor" ? "general" : itemTab;
   const q = filter.trim().toLowerCase();
   const matches = (d: { id: string; nameDe: string; nameEn: string }) => !q || `${d.id} ${d.nameDe} ${d.nameEn}`.toLowerCase().includes(q);
 
@@ -685,21 +691,43 @@ export default function ContentTab({ project }: { project: Project }) {
         ) : (
           <div className="editor-grid" key={`${sel!.kind}-${sel!.index}`}>
             <div className="panel form-panel">
-              <div className="panel-head">
-                <div className="row">
-                  {entryIcon(block ? "block" : "item", current.id, current.nameDe)}
-                  <div className="panel-title-lg">{block ? (block.ore.enabled ? t("Erz") : t("Block")) : item!.kind === "tool" ? t("Werkzeug") : item!.kind === "armor" ? t("Rüstung") : t("Item")}</div>
+              <div className="editor-head">
+                {entryIcon(block ? "block" : "item", current.id, current.nameDe)}
+                <div className="grow editor-head-text">
+                  <div className="editor-head-title">{current.nameDe || current.id}</div>
+                  <div className="editor-head-sub mono">
+                    {project.modId}:{current.id} · {block ? (block.ore.enabled ? t("Erz") : t("Block")) : item!.kind === "tool" ? t("Werkzeug") : item!.kind === "armor" ? t("Rüstung") : t("Item")}
+                  </div>
                 </div>
-                <div className="row gap-6">
-                  <button className="icon-btn" onClick={() => (block ? addBlock(block) : addItem(item))} aria-label={t("Duplizieren")} data-tip={t("Duplizieren")}>
-                    <CopyIcon size={15} />
-                  </button>
-                  <button className="icon-btn danger" onClick={() => remove()} aria-label={t("Entfernen")} data-tip={t("Entfernen")}>
-                    <TrashIcon size={15} />
-                  </button>
-                </div>
+                <button className="icon-btn" onClick={() => (block ? addBlock(block) : addItem(item))} aria-label={t("Duplizieren")} data-tip={t("Duplizieren")}>
+                  <CopyIcon size={15} />
+                </button>
+                <button className="icon-btn danger" onClick={() => remove()} aria-label={t("Entfernen")} data-tip={t("Entfernen")}>
+                  <TrashIcon size={15} />
+                </button>
               </div>
-              <div className="form-grid">
+              <SubTabs
+                value={block ? blockTab : itemTabEff}
+                onChange={(v) => (block ? setBlockTab(v as BlockTab) : setItemTab(v as ItemTab))}
+                tabs={
+                  block
+                    ? [
+                        ["general", t("Allgemein")],
+                        ["mining", t("Abbau & Erz")],
+                        ["function", t("Funktion")],
+                        ["model", t("3D-Form")],
+                        ["shapes", t("Formen")],
+                        ["recipe", t("Rezept")],
+                      ]
+                    : [
+                        ["general", t("Allgemein")],
+                        ...(item!.kind === "tool" ? ([["function", t("Werkzeug")]] as [string, string][]) : item!.kind === "armor" ? ([["function", t("Rüstung")]] as [string, string][]) : []),
+                        ["recipe", t("Rezept")],
+                      ]
+                }
+              />
+              {(block ? blockTab : itemTabEff) === "general" && (
+                <div className="form-grid">
                 <Field label={t("ID")} hint={savedIds.includes(current.id) ? t("ändern löscht die alten Dateien") : t("Kleinbuchstaben, _")}>
                   <input
                     className="input mono"
@@ -721,8 +749,8 @@ export default function ContentTab({ project }: { project: Project }) {
                 </Field>
                 <NamesField names={current.names ?? {}} onChange={(names) => (block ? updBlock({ names }) : updItem({ names }))} />
 
-                {block && (
-                  <>
+                  {block && (
+                    <>
                     <Field label={t("Material & Klang")}>
                       <select className="input" value={block.material} onChange={(e) => updBlock({ material: e.target.value as BlockDef["material"] })}>
                         <option value="stone">{t("Stein")}</option>
@@ -738,32 +766,8 @@ export default function ContentTab({ project }: { project: Project }) {
                     <Field label={t("Leuchtkraft · {light}", { light: block.light })}>
                       <input type="range" className="range full" min={0} max={15} value={block.light} onChange={(e) => updBlock({ light: Number(e.target.value) })} />
                     </Field>
-                    <Field label={t("Härte")} hint={t("Stein 1,5 · Eisenerz 3 · Obsidian 50")}>
-                      <input className="input" type="number" min={0} step={0.5} value={block.hardness} onChange={(e) => updBlock({ hardness: Number(e.target.value) })} />
-                    </Field>
-                    <Field label={t("Explosionsresistenz")} hint={t("Stein 6 · Obsidian 1200")}>
-                      <input className="input" type="number" min={0} step={1} value={block.resistance} onChange={(e) => updBlock({ resistance: Number(e.target.value) })} />
-                    </Field>
-                    <Field label={t("Abbauen mit")}>
-                      <select className="input" value={block.tool} onChange={(e) => updBlock({ tool: e.target.value as BlockDef["tool"] })}>
-                        <option value="none">{t("Beliebig (droppt immer)")}</option>
-                        <option value="pickaxe">{t("Spitzhacke")}</option>
-                        <option value="axe">{t("Axt")}</option>
-                        <option value="shovel">{t("Schaufel")}</option>
-                        <option value="hoe">{t("Hacke")}</option>
-                      </select>
-                    </Field>
-                    <Field label={t("Mindestens")}>
-                      <select className="input" value={block.tier} disabled={block.tool === "none"} onChange={(e) => updBlock({ tier: e.target.value as BlockDef["tier"] })}>
-                        <option value="wood">{t("Holz")}</option>
-                        <option value="stone">{t("Stein")}</option>
-                        <option value="iron">{t("Eisen")}</option>
-                        <option value="diamond">{t("Diamant")}</option>
-                      </select>
-                    </Field>
-                  </>
-                )}
-
+                    </>
+                  )}
                 {item && <ItemKindSwitch item={item} onChange={updItem} />}
                 {item && item.kind === "basic" && (
                   <>
@@ -800,9 +804,43 @@ export default function ContentTab({ project }: { project: Project }) {
                     </select>
                   </Field>
                 )}
-              </div>
-
-              {block && <BlockExtras project={project} block={block} own={own} texture={textures[block.id]} onChange={updBlock} />}
+                </div>
+              )}
+              {block && blockTab === "mining" && (
+                <>
+                  <div className="form-grid">
+                    <Field label={t("Härte")} hint={t("Stein 1,5 · Eisenerz 3 · Obsidian 50")}>
+                      <input className="input" type="number" min={0} step={0.5} value={block.hardness} onChange={(e) => updBlock({ hardness: Number(e.target.value) })} />
+                    </Field>
+                    <Field label={t("Explosionsresistenz")} hint={t("Stein 6 · Obsidian 1200")}>
+                      <input className="input" type="number" min={0} step={1} value={block.resistance} onChange={(e) => updBlock({ resistance: Number(e.target.value) })} />
+                    </Field>
+                    <Field label={t("Abbauen mit")}>
+                      <select className="input" value={block.tool} onChange={(e) => updBlock({ tool: e.target.value as BlockDef["tool"] })}>
+                        <option value="none">{t("Beliebig (droppt immer)")}</option>
+                        <option value="pickaxe">{t("Spitzhacke")}</option>
+                        <option value="axe">{t("Axt")}</option>
+                        <option value="shovel">{t("Schaufel")}</option>
+                        <option value="hoe">{t("Hacke")}</option>
+                      </select>
+                    </Field>
+                    <Field label={t("Mindestens")}>
+                      <select className="input" value={block.tier} disabled={block.tool === "none"} onChange={(e) => updBlock({ tier: e.target.value as BlockDef["tier"] })}>
+                        <option value="wood">{t("Holz")}</option>
+                        <option value="stone">{t("Stein")}</option>
+                        <option value="iron">{t("Eisen")}</option>
+                        <option value="diamond">{t("Diamant")}</option>
+                      </select>
+                    </Field>
+                  </div>
+                  <BlockExtras project={project} block={block} own={own} texture={textures[block.id]} onChange={updBlock} part="ore" />
+                </>
+              )}
+              {block && (blockTab === "function" || blockTab === "model" || blockTab === "shapes") && (
+                <BlockExtras project={project} block={block} own={own} texture={textures[block.id]} onChange={updBlock} part={blockTab} />
+              )}
+              {item && itemTabEff === "function" && (
+                <>
               {item?.kind === "tool" && <ToolForm project={project} item={item} own={own} onChange={updItem} />}
               {item?.kind === "armor" && (
                 <ArmorForm
@@ -817,6 +855,10 @@ export default function ContentTab({ project }: { project: Project }) {
                 />
               )}
 
+                </>
+              )}
+              {(block ? blockTab : itemTabEff) === "recipe" && (
+                <>
               <RecipeEditor
                 project={project}
                 recipe={current.recipe}
@@ -824,6 +866,8 @@ export default function ContentTab({ project }: { project: Project }) {
                 resultId={`${project.modId}:${current.id}`}
                 onChange={(recipe) => (block ? updBlock({ recipe }) : updItem({ recipe }))}
               />
+                </>
+              )}
             </div>
 
             <div className="panel texture-panel">

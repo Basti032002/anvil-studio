@@ -1,9 +1,10 @@
 import { t } from "../../i18n";
+import { useState } from "react";
 import { Blueprint, Content, DimDef, Project } from "../../api";
 import { OwnEntry } from "../../components/ItemPicker";
 import { Segmented } from "../../components/Chrome";
 import { BlueprintIcon, CopyIcon, GlobeIcon, TrashIcon } from "../../icons";
-import { Field, ItemField } from "./ContentForms";
+import { Field, ItemField, SubTabs } from "./ContentForms";
 import { makeNode } from "./blueprints";
 
 export const BIOMES = [
@@ -76,28 +77,38 @@ export default function DimensionEditor({
     </Field>
   );
 
+  const [tab, setTab] = useState<"general" | "blocks" | "sky" | "travel">("general");
   return (
     <div className="panel form-panel logic-panel">
-      <div className="panel-head">
-        <div className="row">
-          <span className="sub-icon">
-            <GlobeIcon size={16} />
-          </span>
-          <div>
-            <div className="panel-title-lg">{t("Dimension")}</div>
-            <div className="muted small">{t("Gelände wie die Oberwelt – mit deinen eigenen Blöcken.")}</div>
+      <div className="editor-head">
+        <span className="logic-icon">
+          <GlobeIcon size={18} />
+        </span>
+        <div className="grow editor-head-text">
+          <div className="editor-head-title">{dim.nameDe || dim.id}</div>
+          <div className="editor-head-sub mono">
+            {project.modId}:{dim.id} · {t("Dimension")}
           </div>
         </div>
-        <div className="row gap-6">
-          <button className="icon-btn" onClick={onDuplicate} aria-label={t("Duplizieren")} data-tip={t("Duplizieren")}>
-            <CopyIcon size={15} />
-          </button>
-          <button className="icon-btn danger" onClick={onRemove} aria-label={t("Entfernen")} data-tip={t("Entfernen")}>
-            <TrashIcon size={15} />
-          </button>
-        </div>
+        <button className="icon-btn" onClick={onDuplicate} aria-label={t("Duplizieren")} data-tip={t("Duplizieren")}>
+          <CopyIcon size={15} />
+        </button>
+        <button className="icon-btn danger" onClick={onRemove} aria-label={t("Entfernen")} data-tip={t("Entfernen")}>
+          <TrashIcon size={15} />
+        </button>
       </div>
+      <SubTabs
+        value={tab}
+        onChange={(v) => setTab(v as typeof tab)}
+        tabs={[
+          ["general", t("Allgemein")],
+          ["blocks", t("Blöcke")],
+          ["sky", t("Biome & Himmel")],
+          ["travel", t("Anreise")],
+        ]}
+      />
 
+      {tab === "general" && (
       <div className="form-grid">
         <Field label={t("ID")} hint={t("Kleinbuchstaben, _")}>
           <input className="input mono" value={dim.id} onChange={(e) => set({ id: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })} />
@@ -112,10 +123,9 @@ export default function DimensionEditor({
           <input className="input" value={dim.nameEn} onChange={(e) => set({ nameEn: e.target.value })} />
         </Field>
       </div>
+      )}
 
-      <div className="sub-head">
-        <div className="panel-title-lg">{t("Blöcke")}</div>
-      </div>
+      {tab === "blocks" && (
       <div className="form-grid">
         {blockField("topBlock", t("Oberfläche"), t("ersetzt Grasblöcke"), "grass_block")}
         {blockField("fillBlock", t("Darunter"), t("ersetzt Erde"), "dirt")}
@@ -136,10 +146,9 @@ export default function DimensionEditor({
           <input className="input" type="number" min={-60} max={250} value={dim.seaLevel} onChange={(e) => set({ seaLevel: Number(e.target.value) })} />
         </Field>
       </div>
+      )}
 
-      <div className="sub-head">
-        <div className="panel-title-lg">{t("Biome & Himmel")}</div>
-      </div>
+      {tab === "sky" && (
       <div className="form-grid">
         <Field label={t("Biome")} hint={t("Bäume, Pflanzen und Tiere kommen aus den Biomen")}>
           <select className="input" value={dim.biome} onChange={(e) => set({ biome: e.target.value })}>
@@ -179,7 +188,9 @@ export default function DimensionEditor({
           <input type="range" min={0} max={1} step={0.05} value={dim.ambientLight} onChange={(e) => set({ ambientLight: Number(e.target.value) })} />
         </Field>
       </div>
+      )}
 
+      {tab === "travel" && (
       <div className="callout">
         <BlueprintIcon size={18} />
         <div className="grow">
@@ -196,6 +207,7 @@ export default function DimensionEditor({
           </button>
         )}
       </div>
+      )}
     </div>
   );
 }

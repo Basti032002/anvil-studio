@@ -10,6 +10,20 @@ import { WorkbenchRecipes, MachineEditor } from "./StationEditors";
 import { BoxIcon, ChestIcon, GearIcon, HammerIcon, ChestplateIcon, CloseIcon, CubeIcon, GemIcon, GlobeIcon, LampIcon, LayersIcon, PickaxeIcon, PlusIcon, SwordIcon } from "../../icons";
 import { armorPreset, ArmorTier, SHAPES, shapeIcon, SLOT_LABEL, Tier, TOOL_LABEL, toolPreset } from "./contentDefaults";
 
+/** Unterreiter in einem Editor */
+export function SubTabs({ tabs, value, onChange }: { tabs: [string, string][]; value: string; onChange: (v: string) => void }) {
+  const active = tabs.some(([k]) => k === value) ? value : tabs[0][0];
+  return (
+    <div className="sub-tabs" role="tablist">
+      {tabs.map(([k, label]) => (
+        <button key={k} role="tab" aria-selected={active === k} className={active === k ? "sub-tab active" : "sub-tab"} onClick={() => onChange(k)}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function Field({ label, hint, children, span }: { label: string; hint?: string; children: React.ReactNode; span?: boolean }) {
   return (
     <label className={span ? "field span-2" : "field"}>
@@ -90,18 +104,23 @@ function SectionHead({ icon, title, sub, right }: { icon: React.ReactNode; title
 
 // ---- Block: Formen & Erz ----------------------------------------------------
 
+export type BlockPart = "function" | "model" | "shapes" | "ore";
+
 export function BlockExtras({
   project,
   block,
   own,
   texture,
   onChange,
+  part,
 }: {
   project: Project;
   block: BlockDef;
   own: OwnEntry[];
   texture?: string;
   onChange: (patch: Partial<BlockDef>) => void;
+  /** nur einen Bereich zeigen (Unterreiter) */
+  part?: BlockPart;
 }) {
   const [modelOpen, setModelOpen] = useState(false);
   const texFor = useTexFor(project, block, own, texture);
@@ -112,8 +131,10 @@ export function BlockExtras({
   const toggleShape = (s: (typeof SHAPES)[number]["id"]) =>
     onChange({ shapes: block.shapes.includes(s) ? block.shapes.filter((x) => x !== s) : [...block.shapes, s] });
 
+  const show = (x: BlockPart) => !part || part === x;
   return (
     <>
+      {show("function") && (
       <div className="sub-section">
         <SectionHead icon={<LampIcon size={16} />} title={t("Funktion")} sub={t("Was der Block kann")} />
         <div className="kind-switch">
@@ -147,8 +168,9 @@ export function BlockExtras({
           </Field>
         )}
       </div>
+      )}
 
-      {block.kind === "normal" && !block.ore.enabled && (
+      {show("model") && block.kind === "normal" && !block.ore.enabled && (
         <div className="sub-section">
           <SectionHead icon={<CubeIcon size={16} />} title={t("3D-Form")} sub={t("Eigene Form aus Quadern statt eines vollen Würfels")} />
           <div className="model-inline">
@@ -187,6 +209,10 @@ export function BlockExtras({
         </div>
       )}
 
+      {show("model") && block.kind === "normal" && block.ore.enabled && <p className="muted">{t("Erze sind immer volle Würfel.")}</p>}
+      {show("model") && block.kind !== "normal" && <p className="muted">{t("Eigene 3D-Formen gibt es für normale Blöcke. Truhen, Lampen, Werkbänke und Maschinen sind volle Würfel.")}</p>}
+
+      {show("shapes") && (
       <div className="sub-section">
         <SectionHead icon={<LayersIcon size={16} />} title={t("Weitere Formen")} sub={t("Aus demselben Material – mit Rezept, Tags und Modellen")} />
         <div className="shape-grid">
@@ -205,8 +231,9 @@ export function BlockExtras({
           })}
         </div>
       </div>
+      )}
 
-      {block.kind === "normal" && <div className="sub-section">
+      {show("ore") && block.kind === "normal" && <div className="sub-section">
         <SectionHead
           icon={<GemIcon size={16} />}
           title={t("Erz & Weltgenerierung")}
@@ -273,6 +300,7 @@ export function BlockExtras({
           </div>
         )}
       </div>}
+      {show("ore") && block.kind !== "normal" && <p className="muted">{t("Nur normale Blöcke können als Erz in der Welt erzeugt werden.")}</p>}
     </>
   );
 }

@@ -15,7 +15,7 @@ nächsten offenen Etappe weitermachen.
 
 1. [x] **Inhalte-Tab** (0.5.0-dev.14): eine Liste mit einklappbaren Gruppen, ein einziges Plus,
    Erstellen-Fenster mit „Alle“ + Suche (Strg+N), Übersicht mit Kacheln und „Noch offen“
-2. [ ] **Editoren mit Unterreitern**: Block, Item, Kreatur, Dimension – Kopf mit Name/ID,
+2. [x] **Editoren mit Unterreitern** (0.5.0-dev.15): Block, Item, Kreatur, Dimension – Kopf mit Name/ID,
    Reiter (Allgemein, Aussehen, Funktion, Abbau & Drops, Rezept, Formen …), Vorschau rechts
 3. [ ] **Localization-Tab** (oben in der Leiste): alle Texte der Mod in einer Tabelle,
    Sprachen hinzufügen (alle MC-Sprachen), Filter „nur fehlende“, Import/Export JSON

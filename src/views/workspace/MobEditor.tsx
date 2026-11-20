@@ -7,7 +7,7 @@ import { OwnEntry } from "../../components/ItemPicker";
 import { confirmDialog } from "../../components/Overlay";
 import { CopyIcon, GlobeIcon, HeartIcon, ImageIcon, PawIcon, SaveIcon, SkullIcon, SparkIcon, TrashIcon } from "../../icons";
 import { toast } from "../../state";
-import { Field, ItemField } from "./ContentForms";
+import { Field, ItemField, SubTabs } from "./ContentForms";
 import { BIOMES, eggDataUrl, MOB_MODELS } from "./contentDefaults";
 import PixelEditor from "./PixelEditor";
 
@@ -86,25 +86,37 @@ export default function MobEditor({
     }
   }
 
+  const [tab, setTab] = useState<"general" | "stats" | "spawn" | "loot">("general");
   return (
     <div className="editor-grid">
       <div className="panel form-panel">
-        <div className="panel-head">
-          <div className="row">
-            <img className="egg-icon lg" src={eggDataUrl(mob.eggPrimary, mob.eggSecondary)} alt="" />
-            <div className="panel-title-lg">{t("Kreatur")}</div>
+        <div className="editor-head">
+          <img className="egg-icon" src={eggDataUrl(mob.eggPrimary, mob.eggSecondary)} alt="" />
+          <div className="grow editor-head-text">
+            <div className="editor-head-title">{mob.nameDe || mob.id}</div>
+            <div className="editor-head-sub mono">
+              {project.modId}:{mob.id} · {t("Kreatur")} · {model.label}
+            </div>
           </div>
-          <div className="row gap-6">
-            <button className="icon-btn" onClick={onDuplicate} aria-label={t("Duplizieren")} data-tip={t("Duplizieren")}>
-              <CopyIcon size={15} />
-            </button>
-            <button className="icon-btn danger" onClick={onRemove} aria-label={t("Entfernen")} data-tip={t("Entfernen")}>
-              <TrashIcon size={15} />
-            </button>
-          </div>
+          <button className="icon-btn" onClick={onDuplicate} aria-label={t("Duplizieren")} data-tip={t("Duplizieren")}>
+            <CopyIcon size={15} />
+          </button>
+          <button className="icon-btn danger" onClick={onRemove} aria-label={t("Entfernen")} data-tip={t("Entfernen")}>
+            <TrashIcon size={15} />
+          </button>
         </div>
-
-        <div className="form-grid">
+        <SubTabs
+          value={tab}
+          onChange={(v) => setTab(v as typeof tab)}
+          tabs={[
+            ["general", t("Allgemein")],
+            ["stats", t("Werte")],
+            ["spawn", t("Spawnen")],
+            ["loot", t("Beute")],
+          ]}
+        />
+        {tab === "general" && (
+          <div className="form-grid">
           <Field label={t("ID")} hint={t("Kleinbuchstaben, _")}>
             <input className="input mono" value={mob.id} onChange={(e) => onChange({ id: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })} />
           </Field>
@@ -143,6 +155,17 @@ export default function MobEditor({
             </span>
           </div>
 
+          <div className="field">
+            <span className="field-label">{t("Spawn-Ei")}</span>
+            <div className="row gap-6">
+              <input type="color" className="color-input" value={mob.eggPrimary} onChange={(e) => onChange({ eggPrimary: e.target.value })} aria-label={t("Grundfarbe")} />
+              <input type="color" className="color-input" value={mob.eggSecondary} onChange={(e) => onChange({ eggSecondary: e.target.value })} aria-label={t("Fleckenfarbe")} />
+              <img className="egg-icon" src={eggDataUrl(mob.eggPrimary, mob.eggSecondary)} alt="" />
+            </div>
+          </div>
+          </div>
+        )}
+        {tab === "stats" && <div className="form-grid">
           <Field label={t("Leben · {v0} Herzen", { v0: mob.health / 2 })}>
             <input type="range" className="range full" min={1} max={100} value={mob.health} onChange={(e) => onChange({ health: Number(e.target.value) })} />
           </Field>
@@ -154,16 +177,9 @@ export default function MobEditor({
               <Num value={mob.attackDamage} min={0} max={100} step={0.5} onChange={(v) => onChange({ attackDamage: v })} />
             </Field>
           )}
-          <div className="field">
-            <span className="field-label">{t("Spawn-Ei")}</span>
-            <div className="row gap-6">
-              <input type="color" className="color-input" value={mob.eggPrimary} onChange={(e) => onChange({ eggPrimary: e.target.value })} aria-label={t("Grundfarbe")} />
-              <input type="color" className="color-input" value={mob.eggSecondary} onChange={(e) => onChange({ eggSecondary: e.target.value })} aria-label={t("Fleckenfarbe")} />
-              <img className="egg-icon" src={eggDataUrl(mob.eggPrimary, mob.eggSecondary)} alt="" />
-            </div>
-          </div>
-        </div>
-
+        </div>}
+        {tab === "spawn" && (
+          <>
         <div className="sub-section">
           <div className="sub-head">
             <span className="sub-icon">
@@ -201,6 +217,10 @@ export default function MobEditor({
           )}
         </div>
 
+          </>
+        )}
+        {tab === "loot" && (
+          <>
         <div className="sub-section">
           <div className="sub-head">
             <span className="sub-icon">
@@ -227,6 +247,8 @@ export default function MobEditor({
             )}
           </div>
         </div>
+          </>
+        )}
       </div>
 
       <div className="panel texture-panel">
