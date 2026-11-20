@@ -523,7 +523,7 @@ pub async fn change_mc_version(app: AppHandle, project_id: String, version: Stri
     step(tr("Inhalte werden für die neue Version erzeugt …"));
     let mut notes = vec![trf("Sicherung der alten Gradle-Dateien: {path}", &[("path", &backup.display())])];
     let (mut content, _) = crate::content::load(&p)?;
-    if !content.blocks.is_empty() || !content.items.is_empty() {
+    if !content.blocks.is_empty() || !content.items.is_empty() || !content.mobs.is_empty() {
         crate::content::generate(&p, &mut content)?;
         notes.push(tr("Blöcke & Items wurden im Format der neuen Version neu erzeugt."));
     }

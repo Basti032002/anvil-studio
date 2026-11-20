@@ -148,7 +148,7 @@ pub fn mod_settings_save(app: AppHandle, project_id: String, settings: ModSettin
     let (mut content, _) = crate::content::load(&p)?;
     content.tab_name = s.tab_name.trim().to_string();
     content.tab_icon = s.tab_icon.trim().to_string();
-    if content.blocks.is_empty() && content.items.is_empty() {
+    if content.blocks.is_empty() && content.items.is_empty() && content.mobs.is_empty() {
         crate::content::save_file(&p, &content)?;
     } else {
         crate::content::generate(&p, &mut content)?;

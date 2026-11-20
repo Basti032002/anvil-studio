@@ -16,9 +16,9 @@ use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
-pub const CONTENT_SCHEMA: u32 = 2;
+pub const CONTENT_SCHEMA: u32 = 3;
 /// Bei Änderungen an den Vorlagen hochzählen → Projekte werden neu erzeugt.
-pub const GENERATOR_VERSION: u32 = 2;
+pub const GENERATOR_VERSION: u32 = 3;
 
 const PLACEHOLDER_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAALklEQVR42mP8wfDjPwMewMHAgU+agYmBQjBqwGAwgJGBgQFvOvjB8GM0EIe/AQAVpgYNJPiOmAAAAABJRU5ErkJggg==";
 
@@ -197,14 +197,70 @@ impl Default for ItemDef {
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase", default)]
+pub struct MobDef {
+    pub id: String,
+    pub name_de: String,
+    pub name_en: String,
+    /// Körper & Verhalten wie: cow | pig | chicken | zombie | spider | creeper
+    pub model: String,
+    pub health: f32,
+    pub speed: f32,
+    pub attack_damage: f32,
+    /// Farben des Spawn-Eis (#rrggbb)
+    pub egg_primary: String,
+    pub egg_secondary: String,
+    pub spawn: bool,
+    /// overworld | forest | plains | desert | jungle | taiga | savanna | snowy | mountain | beach | nether | end
+    pub biomes: String,
+    pub weight: u32,
+    pub group_min: u32,
+    pub group_max: u32,
+    /// Beute (leer = keine)
+    pub drop: String,
+    pub drop_min: u32,
+    pub drop_max: u32,
+}
+
+impl Default for MobDef {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            name_de: String::new(),
+            name_en: String::new(),
+            model: "cow".into(),
+            health: 10.0,
+            speed: 0.2,
+            attack_damage: 3.0,
+            egg_primary: "#9c6b3c".into(),
+            egg_secondary: "#e0c9a6".into(),
+            spawn: true,
+            biomes: "plains".into(),
+            weight: 8,
+            group_min: 2,
+            group_max: 4,
+            drop: String::new(),
+            drop_min: 0,
+            drop_max: 2,
+        }
+    }
+}
+
+pub fn is_hostile(model: &str) -> bool {
+    matches!(model, "zombie" | "spider" | "creeper")
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase", default)]
 pub struct Content {
     pub schema_version: u32,
     pub generator_version: u32,
     pub blocks: Vec<BlockDef>,
     pub items: Vec<ItemDef>,
+    pub mobs: Vec<MobDef>,
     /// Zuletzt erzeugte IDs – zum Aufräumen gelöschter Einträge
     pub generated_blocks: Vec<String>,
     pub generated_items: Vec<String>,
+    pub generated_mobs: Vec<String>,
     /// Symbol des Kreativ-Tabs (eigene ID, leer = erstes Element)
     pub tab_icon: String,
     /// Name des Kreativ-Tabs (leer = Projektname)
@@ -218,8 +274,10 @@ impl Default for Content {
             generator_version: 0,
             blocks: vec![],
             items: vec![],
+            mobs: vec![],
             generated_blocks: vec![],
             generated_items: vec![],
+            generated_mobs: vec![],
             tab_icon: String::new(),
             tab_name: String::new(),
         }
@@ -289,7 +347,11 @@ fn migrate_value(mut v: Value) -> Value {
         // Version 2: Formen, Erze, Werkzeuge & Rüstung – neue Felder bekommen Standardwerte
         v["schemaVersion"] = json!(2);
     }
-    // Künftige Migrationen hier anhängen: if version < 3 { … }
+    if version < 3 {
+        // Version 3: Kreaturen
+        v["schemaVersion"] = json!(3);
+    }
+    // Künftige Migrationen hier anhängen: if version < 4 { … }
     v
 }
 
@@ -460,6 +522,151 @@ fn armor_sets(c: &Content) -> std::collections::BTreeMap<String, Vec<&ItemDef>> 
     m
 }
 
+
+// ---- Kreaturen -----------------------------------------------------------------
+
+pub fn camel(id: &str) -> String {
+    id.split('_').filter(|p| !p.is_empty()).map(|p| {
+        let mut c = p.chars();
+        match c.next() {
+            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+            None => String::new(),
+        }
+    }).collect()
+}
+
+/// (Basisklasse, Kategorie, Breite, Höhe, Basis-Renderer, Spawn-Regel)
+fn mob_base(model: &str) -> (&'static str, &'static str, f32, f32, &'static str, &'static str) {
+    match model {
+        "pig" => ("Pig", "CREATURE", 0.9, 0.9, "PigRenderer", "Animal::checkAnimalSpawnRules"),
+        "chicken" => ("Chicken", "CREATURE", 0.4, 0.7, "ChickenRenderer", "Animal::checkAnimalSpawnRules"),
+        "zombie" => ("Zombie", "MONSTER", 0.6, 1.95, "ZombieRenderer", "Monster::checkMonsterSpawnRules"),
+        "spider" => ("Spider", "MONSTER", 1.4, 0.9, "SpiderRenderer", "Monster::checkMonsterSpawnRules"),
+        "creeper" => ("Creeper", "MONSTER", 0.6, 1.7, "CreeperRenderer", "Monster::checkMonsterSpawnRules"),
+        _ => ("Cow", "CREATURE", 0.9, 1.4, "CowRenderer", "Animal::checkAnimalSpawnRules"),
+    }
+}
+
+/// Parametertyp von getTextureLocation im Renderer – hängt von der Version ab.
+fn render_param(model: &str, class: &str, api: &Api) -> String {
+    if !api.materials_v2 {
+        return match model {
+            "spider" => class.to_string(),
+            _ => mob_base(model).0.to_string(),
+        };
+    }
+    match model {
+        "pig" => "PigRenderState",
+        "chicken" => "ChickenRenderState",
+        "zombie" => "ZombieRenderState",
+        "creeper" => "CreeperRenderState",
+        "cow" if api.props_tools => "CowRenderState",
+        _ => "LivingEntityRenderState",
+    }
+    .to_string()
+}
+
+fn parse_color(hex: &str) -> u32 {
+    u32::from_str_radix(hex.trim().trim_start_matches('#'), 16).unwrap_or(0x888888) & 0xffffff
+}
+
+fn biome_target(biomes: &str) -> Value {
+    match biomes {
+        "forest" => json!("#minecraft:is_forest"),
+        "jungle" => json!("#minecraft:is_jungle"),
+        "taiga" => json!("#minecraft:is_taiga"),
+        "savanna" => json!("#minecraft:is_savanna"),
+        "mountain" => json!("#minecraft:is_mountain"),
+        "beach" => json!("#minecraft:is_beach"),
+        "nether" => json!("#minecraft:is_nether"),
+        "end" => json!("#minecraft:is_end"),
+        "plains" => json!(["minecraft:plains", "minecraft:sunflower_plains", "minecraft:meadow"]),
+        "desert" => json!(["minecraft:desert", "minecraft:badlands"]),
+        "snowy" => json!(["minecraft:snowy_plains", "minecraft:snowy_taiga", "minecraft:ice_spikes", "minecraft:snowy_slopes"]),
+        _ => json!("#minecraft:is_overworld"),
+    }
+}
+
+/// 16×16-Spawn-Ei aus zwei Farben (ab 1.21.5 hat jedes Ei eine eigene Textur).
+fn egg_png(primary: u32, secondary: u32) -> Vec<u8> {
+    let rgb = |c: u32| [(c >> 16) as u8, (c >> 8) as u8, c as u8];
+    let (p, sc) = (rgb(primary), rgb(secondary));
+    let inside = |x: f32, y: f32| {
+        let ry = if y < 9.0 { 6.8 } else { 5.6 };
+        let rx = 4.6 + (y - 3.0).clamp(0.0, 6.0) * 0.12;
+        ((x - 7.5) / rx).powi(2) + ((y - 9.0) / ry).powi(2) <= 1.0
+    };
+    png_rgba(16, 16, |x, y| {
+        let (fx, fy) = (x as f32, y as f32);
+        if !inside(fx, fy) {
+            return [0, 0, 0, 0];
+        }
+        let edge = !inside(fx - 1.0, fy) || !inside(fx + 1.0, fy) || !inside(fx, fy - 1.0) || !inside(fx, fy + 1.0);
+        let spot = matches!((x, y), (6, 5) | (9, 7) | (5, 9) | (6, 9) | (10, 11) | (7, 13) | (8, 13) | (9, 4) | (4, 11));
+        let base = if spot { sc } else { p };
+        let shade = |v: u8, f: f32| (v as f32 * f).min(255.0) as u8;
+        let f = if edge { 0.62 } else if x >= 9 && y >= 10 { 0.85 } else if x <= 5 && y <= 7 { 1.15 } else { 1.0 };
+        [shade(base[0], f), shade(base[1], f), shade(base[2], f), 255]
+    })
+}
+
+fn mob_placeholder(model: &str, color: u32) -> Vec<u8> {
+    let h = if model == "zombie" { 64 } else { 32 };
+    let [r, g, b] = [(color >> 16) as u8, (color >> 8) as u8, color as u8];
+    png_rgba(64, h, |x, y| {
+        let d = if (x / 2 + y / 2) % 3 == 0 { 20 } else { 0 };
+        [r.saturating_sub(d), g.saturating_sub(d), b.saturating_sub(d), 255]
+    })
+}
+
+fn generate_client_java(p: &Project, c: &Content) -> String {
+    let api = api(p);
+    let mut regs = String::new();
+    let mut classes = String::new();
+    for m in &c.mobs {
+        let class = format!("{}Entity", camel(&m.id));
+        let rclass = format!("{}EntityRenderer", camel(&m.id));
+        let (_, _, _, _, base_renderer, _) = mob_base(&m.model);
+        let parent = if m.model == "spider" { format!("SpiderRenderer<AnvilContent.{class}>") } else { base_renderer.to_string() };
+        let param = render_param(&m.model, &format!("AnvilContent.{class}"), &api);
+        regs.push_str(&format!("        event.registerEntityRenderer(AnvilContent.{}.get(), {rclass}::new);\n", m.id.to_uppercase()));
+        classes.push_str(&format!(
+            "    public static class {rclass} extends {parent} {{\n        private static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath(AnvilContent.MODID, \"textures/entity/{id}.png\");\n\n        public {rclass}(EntityRendererProvider.Context context) {{\n            super(context);\n        }}\n\n        @Override\n        public ResourceLocation getTextureLocation({param} state) {{\n            return TEXTURE;\n        }}\n    }}\n\n",
+            id = m.id
+        ));
+    }
+    let state_import = if api.materials_v2 { "import net.minecraft.client.renderer.entity.state.*;\n" } else { "" };
+    format!(
+        r#"// =============================================================================
+// AUTOMATISCH ERZEUGT von Anvil Studio – nur auf dem Client geladen.
+// =============================================================================
+package {pkg}.anvil;
+
+import net.minecraft.client.renderer.entity.*;
+{state_import}import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.animal.*;
+import net.minecraft.world.entity.monster.*;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.common.Mod;
+import net.neoforged.neoforge.client.event.EntityRenderersEvent;
+
+@SuppressWarnings("unused")
+@Mod(value = AnvilContent.MODID, dist = Dist.CLIENT)
+public final class AnvilClient {{
+    public AnvilClient(IEventBus modEventBus) {{
+        modEventBus.addListener(AnvilClient::registerRenderers);
+    }}
+
+    private static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {{
+{regs}    }}
+
+{classes}}}
+"#,
+        pkg = p.package
+    )
+}
+
 fn generate_java(p: &Project, c: &Content) -> String {
     let modid = &p.mod_id;
     let api = api(p);
@@ -614,11 +821,68 @@ fn generate_java(p: &Project, c: &Content) -> String {
         tab.push_str(&format!("                output.accept({k}.get());\n"));
     }
 
+    // Kreaturen
+    let mut mob_classes = String::new();
+    let mut attr_lines = String::new();
+    let mut spawn_lines = String::new();
+    for m in &c.mobs {
+        let k = up(&m.id);
+        let class = format!("{}Entity", camel(&m.id));
+        let (base, cat, w, h, _, rule) = mob_base(&m.model);
+        let key = if api.materials_v2 {
+            format!("ResourceKey.create(Registries.ENTITY_TYPE, ResourceLocation.fromNamespaceAndPath(MODID, \"{}\"))", m.id)
+        } else {
+            format!("\"{}\"", m.id)
+        };
+        fields.push_str(&format!(
+            "    public static final DeferredHolder<EntityType<?>, EntityType<{class}>> {k} = ENTITIES.register(\"{id}\", () -> EntityType.Builder.of({class}::new, MobCategory.{cat}).sized({w}, {h}).build({key}));\n",
+            id = m.id,
+            w = java_float(w),
+            h = java_float(h)
+        ));
+        let egg = if api.props_tools {
+            format!("p -> new SpawnEggItem({k}.get(), p)")
+        } else {
+            format!("p -> new DeferredSpawnEggItem({k}, 0x{:06x}, 0x{:06x}, p)", parse_color(&m.egg_primary), parse_color(&m.egg_secondary))
+        };
+        fields.push_str(&format!(
+            "    public static final DeferredItem<Item> {k}_SPAWN_EGG = ITEMS.registerItem(\"{id}_spawn_egg\", {egg}, {});\n\n",
+            lz("new Item.Properties()".to_string()),
+            id = m.id
+        ));
+        tab.push_str(&format!("                output.accept({k}_SPAWN_EGG.get());\n"));
+
+        let create = if api.materials_v2 { "create(level, EntitySpawnReason.BREEDING)" } else { "create(level)" };
+        let body = match m.model.as_str() {
+            "cow" | "pig" | "chicken" => format!(
+                "\n        @Override\n        public {base} getBreedOffspring(ServerLevel level, AgeableMob partner) {{\n            return {k}.get().{create};\n        }}\n"
+            ),
+            "zombie" => "\n        @Override\n        protected boolean convertsInWater() {\n            return false;\n        }\n".to_string(),
+            _ => String::new(),
+        };
+        mob_classes.push_str(&format!(
+            "    public static class {class} extends {base} {{\n        public {class}(EntityType<? extends {base}> type, Level level) {{\n            super(type, level);\n        }}\n{body}    }}\n\n"
+        ));
+        let mut attrs = format!(
+            "{base}.createAttributes().add(Attributes.MAX_HEALTH, {:.1}).add(Attributes.MOVEMENT_SPEED, {:.3})",
+            m.health.clamp(1.0, 1024.0),
+            m.speed.clamp(0.01, 2.0)
+        );
+        if is_hostile(&m.model) {
+            attrs.push_str(&format!(".add(Attributes.ATTACK_DAMAGE, {:.1})", m.attack_damage.clamp(0.0, 1000.0)));
+        }
+        attr_lines.push_str(&format!("        event.put({k}.get(), {attrs}.build());\n"));
+        spawn_lines.push_str(&format!(
+            "        event.register({k}.get(), SpawnPlacementTypes.ON_GROUND, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, {rule}, RegisterSpawnPlacementsEvent.Operation.REPLACE);\n"
+        ));
+    }
+
     let icon = c
         .items
         .first()
         .map(|i| i.id.to_uppercase())
-        .or_else(|| c.blocks.first().map(|b| format!("{}_ITEM", b.id.to_uppercase())));
+        .or_else(|| c.blocks.first().map(|b| format!("{}_ITEM", b.id.to_uppercase())))
+        .or_else(|| c.mobs.first().map(|m| format!("{}_SPAWN_EGG", m.id.to_uppercase())));
     let icon = match c.tab_icon.as_str() {
         "" => icon,
         id => {
@@ -666,7 +930,34 @@ fn generate_java(p: &Project, c: &Content) -> String {
         imports.push("net.minecraft.Util");
         imports.push("net.neoforged.neoforge.common.SimpleTier");
     }
+    if !c.mobs.is_empty() {
+        imports.extend([
+            "net.minecraft.server.level.ServerLevel",
+            "net.minecraft.world.entity.*",
+            "net.minecraft.world.entity.ai.attributes.Attributes",
+            "net.minecraft.world.entity.animal.*",
+            "net.minecraft.world.entity.monster.*",
+            "net.minecraft.world.level.Level",
+            "net.minecraft.world.level.levelgen.Heightmap",
+            "net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent",
+            "net.neoforged.neoforge.event.entity.RegisterSpawnPlacementsEvent",
+        ]);
+        if !api.props_tools {
+            imports.push("net.neoforged.neoforge.common.DeferredSpawnEggItem");
+        }
+    }
     let imports: String = imports.iter().map(|i| format!("import {i};\n")).collect();
+    let (mob_reg_field, mob_reg_call, mob_methods) = if c.mobs.is_empty() {
+        (String::new(), String::new(), String::new())
+    } else {
+        (
+            "    public static final DeferredRegister<EntityType<?>> ENTITIES = DeferredRegister.create(Registries.ENTITY_TYPE, MODID);\n".to_string(),
+            "        ENTITIES.register(modEventBus);\n        modEventBus.addListener(AnvilContent::registerAttributes);\n        modEventBus.addListener(AnvilContent::registerSpawnPlacements);\n".to_string(),
+            format!(
+                "\n    private static void registerAttributes(EntityAttributeCreationEvent event) {{\n{attr_lines}    }}\n\n    private static void registerSpawnPlacements(RegisterSpawnPlacementsEvent event) {{\n{spawn_lines}    }}\n\n{mob_classes}"
+            ),
+        )
+    };
     let (armor_reg_field, armor_reg_call) = if api.materials_v2 {
         (String::new(), String::new())
     } else {
@@ -692,7 +983,7 @@ public final class AnvilContent {{
     public static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(MODID);
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(MODID);
     public static final DeferredRegister<CreativeModeTab> TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
-{armor_reg_field}
+{armor_reg_field}{mob_reg_field}
 {fields}{tab_def}    private AnvilContent() {{}}
 
     /** Wird aus der Hauptklasse der Mod aufgerufen. */
@@ -700,8 +991,8 @@ public final class AnvilContent {{
 {armor_reg_call}        BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);
         TABS.register(modEventBus);
-    }}
-}}
+{mob_reg_call}    }}
+{mob_methods}}}
 "#,
         pkg = p.package
     )
@@ -1079,6 +1370,22 @@ fn validate_extra(c: &Content) -> Result<(), String> {
             return Err(format!("„{}“: Bitte ein Rüstungsmaterial angeben (z. B. ruby).", i.id));
         }
     }
+    let item_ids: std::collections::HashSet<&String> = c.items.iter().map(|i| &i.id).collect();
+    for m in &c.mobs {
+        if !valid_id(&m.id) {
+            return Err(format!("„{}“ ist keine gültige ID (Kleinbuchstaben, Ziffern, _; mit Buchstaben beginnen).", m.id));
+        }
+        if seen.contains(&m.id) || item_ids.contains(&m.id) || c.mobs.iter().filter(|x| x.id == m.id).count() > 1 {
+            return Err(format!("Die ID „{}“ ist doppelt vergeben.", m.id));
+        }
+        let egg = format!("{}_spawn_egg", m.id);
+        if seen.contains(&egg) || item_ids.contains(&egg) {
+            return Err(format!("Die ID „{egg}“ (Spawn-Ei) ist schon vergeben.", ));
+        }
+        if !m.drop.trim().is_empty() && !valid_ref(m.drop.trim()) {
+            return Err(format!("Kreatur „{}“: „{}“ ist keine gültige Item-ID.", m.id, m.drop));
+        }
+    }
     for b in &c.blocks {
         if b.ore.enabled && !b.ore.drop.trim().is_empty() && !valid_ref(b.ore.drop.trim()) {
             return Err(format!("Erz „{}“: „{}“ ist keine gültige Item-ID.", b.id, b.ore.drop));
@@ -1104,6 +1411,12 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
         std::fs::create_dir_all(parent).map_err(err)?;
     }
     std::fs::write(&java, generate_java(p, c)).map_err(err)?;
+    let client_java = java.with_file_name("AnvilClient.java");
+    if c.mobs.is_empty() {
+        remove_if_exists(client_java);
+    } else {
+        std::fs::write(&client_java, generate_client_java(p, c)).map_err(err)?;
+    }
     let registration = ensure_registration(p)?;
 
     let variants = all_variants(c);
@@ -1362,6 +1675,82 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
         }
     }
 
+    // Kreaturen
+    let mob_ids: Vec<String> = c.mobs.iter().map(|m| m.id.clone()).collect();
+    for id in c.generated_mobs.iter().filter(|id| !mob_ids.contains(id)) {
+        let egg = format!("{id}_spawn_egg");
+        remove_if_exists(assets.join(format!("models/item/{egg}.json")));
+        remove_if_exists(assets.join(format!("items/{egg}.json")));
+        remove_if_exists(data.join(format!("loot_table/entities/{id}.json")));
+        remove_if_exists(data.join(format!("neoforge/biome_modifier/{id}_spawns.json")));
+        removed_keys.push(format!("entity.{modid}.{id}"));
+        removed_keys.push(format!("item.{modid}.{egg}"));
+    }
+    for m in &c.mobs {
+        let id = &m.id;
+        let egg = format!("{id}_spawn_egg");
+        let (prim, sec) = (parse_color(&m.egg_primary), parse_color(&m.egg_secondary));
+        // Spawn-Ei
+        if api.props_tools {
+            let tex = texture_path(p, "item", &egg);
+            if let Some(parent) = tex.parent() {
+                std::fs::create_dir_all(parent).map_err(err)?;
+            }
+            std::fs::write(&tex, egg_png(prim, sec)).map_err(err)?;
+            write_json(&assets.join(format!("models/item/{egg}.json")), &json!({ "parent": "minecraft:item/generated", "textures": { "layer0": format!("{modid}:item/{egg}") } }))?;
+            write_json(&assets.join(format!("items/{egg}.json")), &json!({ "model": { "type": "minecraft:model", "model": format!("{modid}:item/{egg}") } }))?;
+        } else if client_items {
+            remove_if_exists(assets.join(format!("models/item/{egg}.json")));
+            write_json(
+                &assets.join(format!("items/{egg}.json")),
+                &json!({ "model": { "type": "minecraft:model", "model": "minecraft:item/template_spawn_egg", "tints": [
+                    { "type": "minecraft:constant", "value": prim as i64 - 0x1000000 },
+                    { "type": "minecraft:constant", "value": sec as i64 - 0x1000000 }
+                ] } }),
+            )?;
+        } else {
+            write_json(&assets.join(format!("models/item/{egg}.json")), &json!({ "parent": "minecraft:item/template_spawn_egg" }))?;
+        }
+        // Textur der Kreatur (Platzhalter, bis eine gemalt oder übernommen wird)
+        write_if_missing(&texture_path(p, "entity", id), &mob_placeholder(&m.model, prim))?;
+        // Beute
+        let pools = if m.drop.trim().is_empty() {
+            json!([])
+        } else {
+            json!([{
+                "rolls": 1,
+                "entries": [{
+                    "type": "minecraft:item",
+                    "name": m.drop.trim(),
+                    "functions": [
+                        { "function": "minecraft:set_count", "count": { "type": "minecraft:uniform", "min": m.drop_min.min(64), "max": m.drop_max.max(m.drop_min).min(64) }, "add": false },
+                        { "function": "minecraft:enchanted_count_increase", "enchantment": "minecraft:looting", "count": { "type": "minecraft:uniform", "min": 0, "max": 1 } }
+                    ]
+                }]
+            }])
+        };
+        write_json(&data.join(format!("loot_table/entities/{id}.json")), &json!({ "type": "minecraft:entity", "pools": pools }))?;
+        // Natürliches Spawnen
+        let modifier = data.join(format!("neoforge/biome_modifier/{id}_spawns.json"));
+        if m.spawn {
+            let (min, max) = (m.group_min.clamp(1, 16), m.group_max.clamp(1, 16).max(m.group_min.clamp(1, 16)));
+            let weight = m.weight.clamp(1, 1000);
+            let spawners = if api.props_tools {
+                json!([{ "data": { "type": format!("{modid}:{id}"), "minCount": min, "maxCount": max }, "weight": weight }])
+            } else {
+                json!({ "type": format!("{modid}:{id}"), "weight": weight, "minCount": min, "maxCount": max })
+            };
+            write_json(&modifier, &json!({ "type": "neoforge:add_spawns", "biomes": biome_target(&m.biomes), "spawners": spawners }))?;
+        } else {
+            remove_if_exists(modifier);
+        }
+        let (de, en) = (name_of(&m.name_de, &m.name_en, true), name_of(&m.name_de, &m.name_en, false));
+        lang_de.push((format!("entity.{modid}.{id}"), de.clone()));
+        lang_en.push((format!("entity.{modid}.{id}"), en.clone()));
+        lang_de.push((format!("item.{modid}.{egg}"), format!("{de}-Spawn-Ei")));
+        lang_en.push((format!("item.{modid}.{egg}"), format!("{en} Spawn Egg")));
+    }
+
     merge_lang(&assets.join("lang/de_de.json"), &lang_de, &removed_keys)?;
     merge_lang(&assets.join("lang/en_us.json"), &lang_en, &removed_keys)?;
 
@@ -1400,6 +1789,7 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
 
     c.generated_blocks = block_ids;
     c.generated_items = item_ids;
+    c.generated_mobs = mob_ids;
     c.generator_version = GENERATOR_VERSION;
     save_file(p, c)?;
     Ok(registration)
@@ -1429,12 +1819,13 @@ pub fn content_save(app: AppHandle, project_id: String, content: Content) -> Res
     let mut c = content;
     c.generated_blocks = old.generated_blocks;
     c.generated_items = old.generated_items;
+    c.generated_mobs = old.generated_mobs;
     let registration = generate(&p, &mut c)?;
     Ok(SaveResult { content: c, registration })
 }
 
 fn check_kind(kind: &str, id: &str) -> Result<(), String> {
-    if !matches!(kind, "block" | "item" | "armor" | "armor_legs") || !valid_id(id) {
+    if !matches!(kind, "block" | "item" | "armor" | "armor_legs" | "entity") || !valid_id(id) {
         return Err("Ungültige Textur".into());
     }
     Ok(())
@@ -1477,7 +1868,7 @@ pub fn project_open(app: AppHandle, project_id: String) -> Result<Vec<String>, S
     if migrated {
         notes.push("Die Projektdaten wurden auf das neue Format umgestellt (Sicherung in .anvil/backups).".to_string());
     }
-    let has_content = !c.blocks.is_empty() || !c.items.is_empty();
+    let has_content = !c.blocks.is_empty() || !c.items.is_empty() || !c.mobs.is_empty();
     if has_content && (migrated || c.generator_version < GENERATOR_VERSION) {
         let file = content_file(&p);
         if file.exists() {
@@ -1595,6 +1986,17 @@ mod tests {
             });
         }
         c.tab_icon = "ruby_sword".into();
+        for (i, model) in ["cow", "pig", "chicken", "zombie", "spider", "creeper"].iter().enumerate() {
+            c.mobs.push(MobDef {
+                id: format!("crystal_{model}"),
+                name_de: format!("Kristall-{model}"),
+                model: model.to_string(),
+                drop: if i % 2 == 0 { format!("{}:ruby", p.mod_id) } else { String::new() },
+                biomes: ["plains", "forest", "overworld", "desert", "nether", "snowy"][i].into(),
+                spawn: i != 5,
+                ..Default::default()
+            });
+        }
         let reg = generate(&p, &mut c).unwrap();
         println!("{}", std::fs::read_to_string(dir.join("src/main/java").join(p.package.replace('.', "/")).join("anvil/AnvilContent.java")).unwrap());
         assert!(reg == "added" || reg == "ok", "{reg}");
