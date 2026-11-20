@@ -19,7 +19,7 @@ nächsten offenen Etappe weitermachen.
    Reiter (Allgemein, Aussehen, Funktion, Abbau & Drops, Rezept, Formen …), Vorschau rechts
 3. [x] **Localization-Tab** (0.5.0-dev.16) (oben in der Leiste): alle Texte der Mod in einer Tabelle,
    Sprachen hinzufügen (alle MC-Sprachen), Filter „nur fehlende“, Import/Export JSON
-4. [ ] **Blueprints**: Wenn/Sonst, UND/ODER/NICHT, Vergleich, Schleifen (n-mal, für jeden
+4. [x] **Blueprints** (0.5.0-dev.17): Wenn/Sonst, UND/ODER/NICHT, Vergleich, Schleifen (n-mal, für jeden
    Spieler/Mob, solange), Warten, Variablen (Welt / pro Spieler), Mathe, eigene Funktionen,
    neue Ereignisse (Block abgebaut/platziert, Mob getötet, Tod, Sprung, Dimension, Item benutzt,
    Timer, Chat-Befehl) und Aktionen (Block setzen, Bereich füllen, Mob spawnen, Explosion,
