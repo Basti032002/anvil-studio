@@ -19,6 +19,7 @@ import {
   SearchIcon,
   ShieldIcon,
   SparkIcon,
+  WorkshopIcon,
 } from "../icons";
 import { dismissToast, useAppVersion, useToasts, useUpdate } from "../state";
 import { useAllRunning } from "../store";
@@ -69,7 +70,7 @@ export function TitleBar({ subtitle, onSearch }: { subtitle?: string; onSearch: 
   );
 }
 
-export type NavKey = "projects" | "workspace" | "new" | "settings" | "admin";
+export type NavKey = "workshop" | "projects" | "workspace" | "new" | "settings" | "admin";
 
 export function ActivityBar({
   active,
@@ -85,6 +86,7 @@ export function ActivityBar({
   showAdmin: boolean;
 }) {
   const top: { key: NavKey; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
+    { key: "workshop", label: t("Workshop"), icon: <WorkshopIcon size={19} /> },
     { key: "projects", label: t("Projekte  ·  Strg 1"), icon: <GridIcon size={19} /> },
     { key: "workspace", label: t("Arbeitsbereich"), icon: <CubeIcon size={19} />, disabled: !hasWorkspace },
     { key: "new", label: t("Neues Projekt  ·  Strg N"), icon: <PlusIcon size={19} /> },

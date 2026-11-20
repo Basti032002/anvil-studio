@@ -84,6 +84,9 @@ export type Settings = {
   accent: "green" | "blue" | "violet" | "orange";
   consoleFontSize: number;
   lastUpdateCheck: number;
+  workshopUrl: string;
+  startPage: "workshop" | "projects";
+  playMemoryMb: number;
 };
 
 export type UpdateInfo = {

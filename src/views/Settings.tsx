@@ -5,12 +5,16 @@ import { Segmented, Toggle } from "../components/Chrome";
 import { AnvilLogo, CheckIcon, DownloadIcon, ExternalIcon, FolderIcon, GithubIcon, LogoutIcon, RefreshIcon, ShieldIcon } from "../icons";
 import { logout, useAccount } from "../admin";
 import { GitHubLogin, openGithub } from "./Admin";
+import { invoke } from "@tauri-apps/api/core";
+import McLoginDialog from "../components/McLogin";
+import { mcLogout, refreshWorkshop, useWorkshop } from "../workshop";
 import { checkForUpdate, installUpdate, updateSettings, useAppVersion, useSettings, useUpdate } from "../state";
 
-type Section = "updates" | "account" | "general" | "appearance" | "about";
+type Section = "updates" | "account" | "workshop" | "general" | "appearance" | "about";
 const SECTIONS: { id: Section; label: string }[] = [
   { id: "updates", label: t("Updates") },
   { id: "account", label: t("Konto") },
+  { id: "workshop", label: t("Workshop & Spielen") },
   { id: "general", label: t("Allgemein") },
   { id: "appearance", label: t("Darstellung") },
   { id: "about", label: t("Über") },
@@ -41,6 +45,7 @@ export default function Settings({ onOpenAdmin }: { onOpenAdmin: () => void }) {
       <div className="settings-content" key={section}>
         {section === "updates" && <UpdatesSection onAccount={() => setSection("account")} />}
         {section === "account" && <AccountSection onOpenAdmin={onOpenAdmin} />}
+        {section === "workshop" && <WorkshopSection />}
         {section === "general" && (
           <>
             <h2>{t("Allgemein")}</h2>
@@ -275,6 +280,72 @@ function UpdatesSection({ onAccount }: { onAccount: () => void }) {
           </div>
         )}
       </div>
+    </>
+  );
+}
+
+function WorkshopSection() {
+  const s = useSettings()!;
+  const ws = useWorkshop();
+  const [login, setLogin] = useState(false);
+  const [url, setUrl] = useState(s.workshopUrl);
+  return (
+    <>
+      <h2>{t("Workshop & Spielen")}</h2>
+      <div className="setting-list">
+        <Row title={t("Startseite")} desc={t("Welche Seite beim Öffnen von Anvil Studio erscheint.")}>
+          <Segmented
+            label={t("Startseite")}
+            value={s.startPage}
+            options={[
+              { value: "workshop", label: t("Workshop") },
+              { value: "projects", label: t("Projekte") },
+            ]}
+            onChange={(v) => updateSettings({ startPage: v })}
+          />
+        </Row>
+        <Row
+          title={t("Minecraft-Konto")}
+          desc={ws.profile ? t("Angemeldet als {name}. Wird zum Spielen und Hochladen im Workshop benutzt.", { name: ws.profile.name }) : t("Zum Spielen und Hochladen im Workshop. Anmeldung über Microsoft.")}
+        >
+          {ws.profile ? (
+            <button className="btn ghost" onClick={() => mcLogout()}>
+              <LogoutIcon size={14} /> {t("Abmelden")}
+            </button>
+          ) : (
+            <button className="btn" onClick={() => setLogin(true)}>
+              {t("Anmelden")}
+            </button>
+          )}
+        </Row>
+        <Row title={t("Arbeitsspeicher beim Spielen")} desc={t("Wie viel RAM Minecraft beim Spielen aus dem Workshop bekommt.")}>
+          <select className="input" style={{ width: 140 }} value={s.playMemoryMb} onChange={(e) => updateSettings({ playMemoryMb: Number(e.target.value) })} aria-label={t("Arbeitsspeicher beim Spielen")}>
+            {[2048, 3072, 4096, 6144, 8192].map((m) => (
+              <option key={m} value={m}>
+                {m / 1024} GB
+              </option>
+            ))}
+          </select>
+        </Row>
+        <Row title={t("Workshop-Server")} desc={t("Adresse des Servers, auf dem der Workshop läuft.")}>
+          <span className="row gap-6">
+            <input className="input mono" style={{ width: 280 }} value={url} onChange={(e) => setUrl(e.target.value)} aria-label={t("Workshop-Server")} />
+            {url.trim() !== s.workshopUrl && (
+              <button
+                className="btn small"
+                onClick={async () => {
+                  await updateSettings({ workshopUrl: url.trim() });
+                  await invoke("ws_reset").catch(() => {});
+                  refreshWorkshop();
+                }}
+              >
+                {t("Speichern")}
+              </button>
+            )}
+          </span>
+        </Row>
+      </div>
+      {login && <McLoginDialog onClose={() => setLogin(false)} onDone={() => setLogin(false)} />}
     </>
   );
 }

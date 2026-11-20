@@ -22,6 +22,8 @@ import {
 import { Segmented } from "../components/Chrome";
 import { AlertIcon, ArrowRightIcon, CheckIcon, CloseIcon, CopyIcon, DownloadIcon, ExternalIcon, GithubIcon, LogoutIcon, PencilIcon, PlusIcon, RefreshIcon, RocketIcon, SaveIcon, ShieldIcon, TagIcon, TrashIcon } from "../icons";
 import { toast } from "../state";
+import { useWorkshop } from "../workshop";
+import WorkshopAdmin from "./WorkshopAdmin";
 
 const openUrl = (url: string) => invoke("open_url", { url }).catch((e) => toast(String(e), "error"));
 
@@ -29,6 +31,21 @@ export const openGithub = openUrl;
 
 export default function Admin() {
   const account = useAccount();
+  const ws = useWorkshop();
+  // Nur Workshop-Admin (ohne GitHub-Entwicklerzugang): direkt die Workshop-Verwaltung
+  if (ws.me?.admin && !account?.isAdmin) {
+    return (
+      <div className="page admin">
+        <header className="page-header">
+          <div>
+            <div className="eyebrow">{t("Admin")}</div>
+            <h1>{t("Workshop verwalten")}</h1>
+          </div>
+        </header>
+        <WorkshopAdmin />
+      </div>
+    );
+  }
   if (!account) {
     return (
       <div className="admin-login">
@@ -168,7 +185,7 @@ export function GitHubLogin({ compact }: { compact?: boolean }) {
 
 // ---- Dashboard ------------------------------------------------------------------
 
-type Tab = "overview" | "publish" | "releases" | "testers" | "builds";
+type Tab = "overview" | "publish" | "releases" | "testers" | "builds" | "workshop";
 
 function Dashboard({ account }: { account: AccountInfo }) {
   const user = account.user;
@@ -232,10 +249,13 @@ function Dashboard({ account }: { account: AccountInfo }) {
           { value: "releases", label: t("Releases") },
           { value: "testers", label: t("Tester") },
           { value: "builds", label: t("Builds") },
+          { value: "workshop", label: t("Workshop") },
         ]}
       />
 
-      {!data ? (
+      {tab === "workshop" ? (
+        <WorkshopAdmin />
+      ) : !data ? (
         <div className="skeleton-grid">
           {[0, 1, 2, 3].map((i) => (
             <div key={i} className="skeleton" />

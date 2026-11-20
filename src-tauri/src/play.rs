@@ -365,7 +365,14 @@ pub fn launch_args(base: &Path, mc: &str, vanilla: &Value, forge: &Value, game: 
             cp.push(full.to_string_lossy().to_string());
         }
     }
-    cp.push(base.join("versions").join(mc).join(format!("{mc}.jar")).to_string_lossy().to_string());
+    // Wie der offizielle Launcher: Spiel-Jar unter dem Namen der NeoForge-Version
+    // (NeoForge ignoriert genau diese Datei beim Modul-Scan, sonst Doppelpaket-Fehler)
+    let forge_id = forge["id"].as_str().unwrap_or("neoforge");
+    let named = base.join("versions").join(forge_id).join(format!("{forge_id}.jar"));
+    if !named.exists() {
+        std::fs::copy(base.join("versions").join(mc).join(format!("{mc}.jar")), &named).map_err(err)?;
+    }
+    cp.push(named.to_string_lossy().to_string());
 
     let natives = base.join("natives").join(mc);
     std::fs::create_dir_all(&natives).map_err(err)?;

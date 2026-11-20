@@ -2,18 +2,21 @@ import { t, takeReturnNav } from "./i18n";
 import { ContextMenuHost, DialogHost } from "./components/Overlay";
 import PatchNotesDialog from "./components/PatchNotes";
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { restoreSession, useAccount } from "./admin";
 import { api, importProject, JavaStatus, pickFolder, Project } from "./api";
 import { ActivityBar, NavKey, StatusBar, TitleBar, Toasts } from "./components/Chrome";
 import CommandPalette, { Command } from "./components/CommandPalette";
-import { CubeIcon, GearIcon, GridIcon, HammerIcon, PlayIcon, PlusIcon, RefreshIcon, RocketIcon, ShieldIcon, StopIcon } from "./icons";
+import { WorkshopIcon, CubeIcon, GearIcon, GridIcon, HammerIcon, PlayIcon, PlusIcon, RefreshIcon, RocketIcon, ShieldIcon, StopIcon } from "./icons";
 import { checkForUpdate, toast, useUpdate } from "./state";
 import Admin from "./views/Admin";
 import NewProject from "./views/NewProject";
 import ProjectList from "./views/ProjectList";
 import Settings from "./views/Settings";
 import Workspace from "./views/Workspace";
+import Workshop from "./views/Workshop";
+import { refreshWorkshop, useWorkshop } from "./workshop";
+import { settingsApi } from "./api";
 
 /** Befehle an den geöffneten Arbeitsbereich (Palette & Tastenkürzel). */
 export function workspaceCommand(cmd: "run" | "stop" | "build") {
@@ -23,7 +26,14 @@ export function workspaceCommand(cmd: "run" | "stop" | "build") {
 const EDIT_LABELS = { cut: t("Ausschneiden"), copy: t("Kopieren"), paste: t("Einfügen"), selectAll: t("Alles markieren") };
 
 export default function App() {
-  const [nav, setNav] = useState<NavKey>(() => (takeReturnNav() === "settings" ? "settings" : "projects"));
+  const [returnNav] = useState(() => takeReturnNav());
+  const [nav, setNavRaw] = useState<NavKey>(() => (returnNav === "settings" ? "settings" : "projects"));
+  const navigated = useRef(false);
+  const setNav = useCallback((k: NavKey) => {
+    navigated.current = true;
+    setNavRaw(k);
+  }, []);
+  const ws = useWorkshop();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [autoRun, setAutoRun] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -46,6 +56,15 @@ export default function App() {
   useEffect(() => {
     reload();
     restoreSession();
+    refreshWorkshop();
+    // Startseite aus den Einstellungen
+    if (!returnNav)
+      settingsApi
+        .get()
+        .then((s) => {
+          if (!navigated.current && s.startPage === "workshop") setNavRaw("workshop");
+        })
+        .catch(() => {});
     // Startbildschirm ausblenden
     const splash = document.getElementById("splash");
     if (splash) {
@@ -120,11 +139,12 @@ export default function App() {
 
   const current = workspaceId ? projects.find((p) => p.id === workspaceId) : undefined;
   const subtitle =
-    nav === "workspace" && current ? current.name : nav === "settings" ? t("Einstellungen") : nav === "admin" ? t("Entwicklerbereich") : undefined;
+    nav === "workspace" && current ? current.name : nav === "settings" ? t("Einstellungen") : nav === "admin" ? t("Entwicklerbereich") : nav === "workshop" ? t("Workshop") : undefined;
 
   const commands: Command[] = useMemo(() => {
     const inWs = nav === "workspace" && !!current;
     return [
+      { id: "nav-workshop", label: t("Workshop öffnen"), group: t("Navigation"), icon: <WorkshopIcon size={15} />, run: () => setNav("workshop") },
       { id: "nav-projects", label: t("Projekte anzeigen"), group: t("Navigation"), icon: <GridIcon size={15} />, shortcut: t("Strg 1"), run: () => setNav("projects") },
       { id: "import", label: t("Bestehendes Projekt importieren"), group: t("Navigation"), icon: <PlusIcon size={15} />, run: () => importExisting() },
       { id: "nav-new", label: t("Neues Projekt erstellen"), group: t("Navigation"), icon: <PlusIcon size={15} />, shortcut: t("Strg N"), run: () => setNav("new") },
@@ -163,10 +183,19 @@ export default function App() {
           hasWorkspace={!!current}
           onNavigate={setNav}
           settingsBadge={update.phase === "available"}
-          showAdmin={admin}
+          showAdmin={admin || !!ws.me?.admin}
         />
         <main className="main">
           <div className="view" key={nav === "workspace" ? `ws-${current?.id}` : nav}>
+            {nav === "workshop" && (
+              <Workshop
+                projects={projects}
+                onOpenProject={async (p) => {
+                  await reload();
+                  openWorkspace(p.id);
+                }}
+              />
+            )}
             {nav === "projects" && (
               <ProjectList
                 projects={projects}

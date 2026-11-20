@@ -79,6 +79,11 @@ fn enc(s: &str) -> String {
 }
 
 #[tauri::command]
+pub fn ws_reset() {
+    reset_session();
+}
+
+#[tauri::command]
 pub fn ws_base_url(app: AppHandle) -> String {
     base(&app)
 }

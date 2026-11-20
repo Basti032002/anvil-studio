@@ -85,6 +85,7 @@ pub fn run() {
             minecraft::mc_account,
             minecraft::mc_logout,
             workshop::ws_base_url,
+            workshop::ws_reset,
             workshop::ws_list,
             workshop::ws_item,
             workshop::ws_me,
