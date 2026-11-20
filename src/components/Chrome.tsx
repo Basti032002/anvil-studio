@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 // Fensterrahmen: eigene Titelleiste, Activity-Bar, Statusleiste und Toasts.
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useState } from "react";
@@ -40,7 +41,7 @@ export function TitleBar({ subtitle, onSearch }: { subtitle?: string; onSearch: 
         <span className="titlebar-logo">
           <AnvilLogo size={13} />
         </span>
-        <span data-tauri-drag-region>Anvil Studio</span>
+        <span data-tauri-drag-region>{t("Anvil Studio")}</span>
         <ChannelBadge />
         {subtitle && (
           <span className="titlebar-sub" data-tauri-drag-region>
@@ -48,19 +49,19 @@ export function TitleBar({ subtitle, onSearch }: { subtitle?: string; onSearch: 
           </span>
         )}
       </div>
-      <button className="command-center" onClick={onSearch} aria-label="Befehlspalette öffnen">
+      <button className="command-center" onClick={onSearch} aria-label={t("Befehlspalette öffnen")}>
         <SearchIcon size={13} />
-        <span>Befehl oder Projekt suchen</span>
-        <kbd>Strg K</kbd>
+        <span>{t("Befehl oder Projekt suchen")}</span>
+        <kbd>{t("Strg K")}</kbd>
       </button>
       <div className="window-controls">
-        <button aria-label="Minimieren" onClick={() => win.minimize()}>
+        <button aria-label={t("Minimieren")} onClick={() => win.minimize()}>
           <MinimizeIcon />
         </button>
-        <button aria-label={maximized ? "Wiederherstellen" : "Maximieren"} onClick={() => win.toggleMaximize()}>
+        <button aria-label={maximized ? t("Wiederherstellen") : t("Maximieren")} onClick={() => win.toggleMaximize()}>
           <MaximizeIcon />
         </button>
-        <button aria-label="Schließen" className="close" onClick={() => win.close()}>
+        <button aria-label={t("Schließen")} className="close" onClick={() => win.close()}>
           <CloseIcon />
         </button>
       </div>
@@ -84,18 +85,18 @@ export function ActivityBar({
   showAdmin: boolean;
 }) {
   const top: { key: NavKey; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
-    { key: "projects", label: "Projekte  ·  Strg 1", icon: <GridIcon size={19} /> },
-    { key: "workspace", label: "Arbeitsbereich", icon: <CubeIcon size={19} />, disabled: !hasWorkspace },
-    { key: "new", label: "Neues Projekt  ·  Strg N", icon: <PlusIcon size={19} /> },
+    { key: "projects", label: t("Projekte  ·  Strg 1"), icon: <GridIcon size={19} /> },
+    { key: "workspace", label: t("Arbeitsbereich"), icon: <CubeIcon size={19} />, disabled: !hasWorkspace },
+    { key: "new", label: t("Neues Projekt  ·  Strg N"), icon: <PlusIcon size={19} /> },
   ];
   const topIndex = top.findIndex((t) => t.key === active);
   const bottom: { key: NavKey; label: string; icon: React.ReactNode }[] = [
-    ...(showAdmin ? [{ key: "admin" as NavKey, label: "Entwicklerbereich", icon: <ShieldIcon size={19} /> }] : []),
-    { key: "settings", label: "Einstellungen  ·  Strg ,", icon: <GearIcon size={19} /> },
+    ...(showAdmin ? [{ key: "admin" as NavKey, label: t("Entwicklerbereich"), icon: <ShieldIcon size={19} /> }] : []),
+    { key: "settings", label: t("Einstellungen  ·  Strg ,"), icon: <GearIcon size={19} /> },
   ];
 
   return (
-    <nav className="activitybar" aria-label="Hauptnavigation">
+    <nav className="activitybar" aria-label={t("Hauptnavigation")}>
       <div className="activity-group">
         {topIndex >= 0 && <span className="activity-indicator" style={{ transform: `translateY(${topIndex * 48}px)` }} />}
         {top.map((t) => (
@@ -152,34 +153,34 @@ export function StatusBar({
       <div className="status-left">
         {java?.installed ? (
           <span className="status-item">
-            <CoffeeIcon size={13} /> Java {java.version}
+            <CoffeeIcon size={13} />{" "}{t("Java")}{" "}{java.version}
           </span>
         ) : (
           <button className="status-item warn" onClick={onInstallJava} disabled={!!javaProgress}>
-            <AlertIcon size={13} /> {javaProgress ?? (java?.broken ? "Java beschädigt – reparieren" : "Java fehlt – jetzt installieren")}
+            <AlertIcon size={13} /> {javaProgress ?? (java?.broken ? t("Java beschädigt – reparieren") : t("Java fehlt – jetzt installieren"))}
           </button>
         )}
         {running.length > 0 && (
           <span className="status-item live">
-            <span className="pulse-dot" /> {running.length === 1 ? `${running[0].task} läuft` : `${running.length} Prozesse laufen`}
+            <span className="pulse-dot" /> {running.length === 1 ? t("{task} läuft", { task: running[0].task }) : t("{length} Prozesse laufen", { length: running.length })}
           </span>
         )}
       </div>
       <div className="status-right">
         {update.phase === "available" && (
           <button className="status-item accent" onClick={onOpenSettings}>
-            <DownloadIcon size={13} /> Update {update.info?.version}
-            {update.waitingForIdle ? " · wartet bis nichts mehr läuft" : ""}
+            <DownloadIcon size={13} />{" "}{t("Update")}{" "}{update.info?.version}
+            {update.waitingForIdle ? t(" · wartet bis nichts mehr läuft") : ""}
           </button>
         )}
         {update.phase === "downloading" && (
           <span className="status-item accent">
-            <DownloadIcon size={13} /> Update wird geladen {update.progress !== undefined ? `${Math.round(update.progress * 100)} %` : "…"}
+            <DownloadIcon size={13} />{" "}{t("Update wird geladen")}{" "}{update.progress !== undefined ? `${Math.round(update.progress * 100)} %` : "…"}
           </span>
         )}
-        {update.phase === "installing" && <span className="status-item accent">Wird installiert – Neustart …</span>}
-        {update.phase === "checking" && <span className="status-item">Suche nach Updates …</span>}
-        <span className="status-item">NeoForge</span>
+        {update.phase === "installing" && <span className="status-item accent">{t("Wird installiert – Neustart …")}</span>}
+        {update.phase === "checking" && <span className="status-item">{t("Suche nach Updates …")}</span>}
+        <span className="status-item">{t("NeoForge")}</span>
         <span className="status-item">v{version}</span>
       </div>
     </footer>
@@ -190,11 +191,11 @@ export function Toasts() {
   const toasts = useToasts();
   return (
     <div className="toasts" role="status" aria-live="polite">
-      {toasts.map((t) => (
-        <div key={t.id} className={`toast ${t.kind} ${t.leaving ? "leaving" : ""}`}>
-          <span className="toast-icon">{t.kind === "error" ? <AlertIcon size={15} /> : t.kind === "success" ? <CheckIcon size={15} /> : <SparkIcon size={15} />}</span>
-          <span className="toast-text">{t.text}</span>
-          <button aria-label="Schließen" className="toast-close" onClick={() => dismissToast(t.id)}>
+      {toasts.map((x) => (
+        <div key={x.id} className={`toast ${x.kind} ${x.leaving ? "leaving" : ""}`}>
+          <span className="toast-icon">{x.kind === "error" ? <AlertIcon size={15} /> : x.kind === "success" ? <CheckIcon size={15} /> : <SparkIcon size={15} />}</span>
+          <span className="toast-text">{x.text}</span>
+          <button aria-label={t("Schließen")} className="toast-close" onClick={() => dismissToast(x.id)}>
             <CloseIcon size={11} />
           </button>
         </div>

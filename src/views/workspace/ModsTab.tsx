@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { contextMenu } from "../../components/Overlay";
 import { useEffect, useRef, useState } from "react";
 import { api, ModEntry, ModHit, modsApi, Project } from "../../api";
@@ -6,7 +7,7 @@ import { DownloadIcon, ExternalIcon, PlusIcon, RefreshIcon, SearchIcon, ToggleIc
 import { toast } from "../../state";
 
 function fmt(n: number) {
-  return n >= 1e6 ? `${(n / 1e6).toFixed(1)} Mio.` : n >= 1e3 ? `${Math.round(n / 1e3)} Tsd.` : String(n);
+  return n >= 1e6 ? t("{v0} Mio.", { v0: (n / 1e6).toFixed(1) }) : n >= 1e3 ? t("{v0} Tsd.", { v0: Math.round(n / 1e3) }) : String(n);
 }
 
 export default function ModsTab({ project }: { project: Project }) {
@@ -45,7 +46,7 @@ export default function ModsTab({ project }: { project: Project }) {
       const list = await modsApi.add(project.id, hit.projectId);
       setMods(list);
       const deps = list.length - before - 1;
-      toast(`${hit.title} wird beim Testen mitgeladen${deps > 0 ? ` (+${deps} Abhängigkeit${deps > 1 ? "en" : ""})` : ""}.`, "success");
+      toast(deps > 0 ? t("{title} wird beim Testen mitgeladen (+{n} Abhängigkeiten).", { title: hit.title, n: deps }) : t("{title} wird beim Testen mitgeladen.", { title: hit.title }), "success");
     } catch (e) {
       toast(String(e), "error");
     } finally {
@@ -60,8 +61,8 @@ export default function ModsTab({ project }: { project: Project }) {
       <section className="mods-installed">
         <div className="panel-head">
           <div>
-            <div className="panel-title-lg">Mitgeladene Mods</div>
-            <div className="muted small">Werden vor jedem Testlauf nach run/mods kopiert. Deine Mod-Dateien bleiben unberührt.</div>
+            <div className="panel-title-lg">{t("Mitgeladene Mods")}</div>
+            <div className="muted small">{t("Werden vor jedem Testlauf nach run/mods kopiert. Deine Mod-Dateien bleiben unberührt.")}</div>
           </div>
           <button
             className={updating ? "btn small loading" : "btn small"}
@@ -71,7 +72,7 @@ export default function ModsTab({ project }: { project: Project }) {
               try {
                 const n = await modsApi.update(project.id);
                 setMods(await modsApi.list(project.id));
-                toast(n ? `${n} Mod${n > 1 ? "s" : ""} aktualisiert.` : "Alle Mods sind aktuell.", "success");
+                toast(n ? t("{n} Mod{v1} aktualisiert.", { n: n, v1: n > 1 ? "s" : "" }) : t("Alle Mods sind aktuell."), "success");
               } catch (e) {
                 toast(String(e), "error");
               } finally {
@@ -79,11 +80,11 @@ export default function ModsTab({ project }: { project: Project }) {
               }
             }}
           >
-            <RefreshIcon size={14} /> Alle aktualisieren
+            <RefreshIcon size={14} />{" "}{t("Alle aktualisieren")}
           </button>
         </div>
         {mods.length === 0 ? (
-          <div className="mods-empty muted small">Noch keine. Suche rechts z. B. nach „JEI“, „JourneyMap“ oder „Jade“.</div>
+          <div className="mods-empty muted small">{t("Noch keine. Suche rechts z. B. nach „JEI“, „JourneyMap“ oder „Jade“.")}</div>
         ) : (
           <div className="list">
             {mods.map((m, i) => (
@@ -93,7 +94,7 @@ export default function ModsTab({ project }: { project: Project }) {
                 style={{ "--i": i } as React.CSSProperties}
                 {...contextMenu(() => [
                   {
-                    label: m.enabled ? "Deaktivieren" : "Aktivieren",
+                    label: m.enabled ? t("Deaktivieren") : t("Aktivieren"),
                     icon: <ToggleIcon size={15} />,
                     onClick: () =>
                       modsApi
@@ -101,10 +102,10 @@ export default function ModsTab({ project }: { project: Project }) {
                         .then(setMods)
                         .catch((e) => toast(String(e), "error")),
                   },
-                  { label: "Auf Modrinth ansehen", icon: <ExternalIcon size={15} />, onClick: () => api.openUrl(`https://modrinth.com/mod/${m.slug}`).catch((e) => toast(String(e), "error")) },
+                  { label: t("Auf Modrinth ansehen"), icon: <ExternalIcon size={15} />, onClick: () => api.openUrl(`https://modrinth.com/mod/${m.slug}`).catch((e) => toast(String(e), "error")) },
                   "separator",
                   {
-                    label: "Entfernen",
+                    label: t("Entfernen"),
                     icon: <TrashIcon size={15} />,
                     danger: true,
                     onClick: () =>
@@ -123,9 +124,9 @@ export default function ModsTab({ project }: { project: Project }) {
                   <div className="ellipsis">{m.title}</div>
                   <div className="muted small ellipsis">
                     {m.versionNumber}
-                    {m.dependencyOf && " · Abhängigkeit"}
-                    {m.serverSide === "unsupported" && " · nur Client"}
-                    {m.clientSide === "unsupported" && " · nur Server"}
+                    {m.dependencyOf && t(" · Abhängigkeit")}
+                    {m.serverSide === "unsupported" && t(" · nur Client")}
+                    {m.clientSide === "unsupported" && t(" · nur Server")}
                   </div>
                 </div>
                 <Toggle
@@ -141,7 +142,7 @@ export default function ModsTab({ project }: { project: Project }) {
                 <button
                   className="icon-btn danger"
                   aria-label={`${m.title} entfernen`}
-                  data-tip="Entfernen"
+                  data-tip={t("Entfernen")}
                   onClick={() =>
                     modsApi
                       .remove(project.id, m.projectId)
@@ -164,11 +165,11 @@ export default function ModsTab({ project }: { project: Project }) {
         <div className="search wide">
           <SearchIcon size={15} />
           <label htmlFor="modsearch" className="sr-only">
-            Mods auf Modrinth suchen
+            {t("Mods auf Modrinth suchen")}
           </label>
           <input
             id="modsearch"
-            placeholder={`Modrinth durchsuchen · NeoForge ${project.mcVersion}`}
+            placeholder={t("Modrinth durchsuchen · NeoForge {mcVersion}", { mcVersion: project.mcVersion })}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -178,21 +179,21 @@ export default function ModsTab({ project }: { project: Project }) {
           {searching && <span className="spinner small" />}
         </div>
         <div className="hits">
-          {hits?.length === 0 && <p className="muted small">Keine passenden Mods für NeoForge {project.mcVersion} gefunden.</p>}
+          {hits?.length === 0 && <p className="muted small">{t("Keine passenden Mods für NeoForge {version} gefunden.", { version: project.mcVersion })}</p>}
           {hits?.map((h, i) => (
             <div
               key={h.projectId}
               className="hit"
               style={{ "--i": i } as React.CSSProperties}
               {...contextMenu(() => [
-                { label: "Hinzufügen", icon: <PlusIcon size={15} />, disabled: installed.has(h.projectId) || !!adding, onClick: () => add(h) },
-                { label: "Auf Modrinth ansehen", icon: <ExternalIcon size={15} />, onClick: () => api.openUrl(`https://modrinth.com/mod/${h.slug}`).catch((e) => toast(String(e), "error")) },
+                { label: t("Hinzufügen"), icon: <PlusIcon size={15} />, disabled: installed.has(h.projectId) || !!adding, onClick: () => add(h) },
+                { label: t("Auf Modrinth ansehen"), icon: <ExternalIcon size={15} />, onClick: () => api.openUrl(`https://modrinth.com/mod/${h.slug}`).catch((e) => toast(String(e), "error")) },
               ])}
             >
               {h.iconUrl ? <img className="mod-icon" src={h.iconUrl} alt="" /> : <span className="mod-icon" />}
               <div className="grow min0">
                 <div className="hit-title">
-                  {h.title} <span className="muted small">von {h.author}</span>
+                  {h.title} <span className="muted small">{t("von {author}", { author: h.author })}</span>
                 </div>
                 <div className="muted small hit-desc">{h.description}</div>
                 <div className="muted small">
@@ -200,10 +201,10 @@ export default function ModsTab({ project }: { project: Project }) {
                 </div>
               </div>
               {installed.has(h.projectId) ? (
-                <span className="tag accent">Hinzugefügt</span>
+                <span className="tag accent">{t("Hinzugefügt")}</span>
               ) : (
                 <button className={adding === h.projectId ? "btn small loading" : "btn small"} disabled={!!adding} onClick={() => add(h)}>
-                  <PlusIcon size={14} /> Hinzufügen
+                  <PlusIcon size={14} />{" "}{t("Hinzufügen")}
                 </button>
               )}
             </div>

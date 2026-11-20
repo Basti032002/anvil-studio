@@ -36,6 +36,7 @@ import {
   GlobeHemisphereWest,
   GridFour,
   Hammer,
+  Heart,
   Image,
   Info,
   MagnifyingGlass,
@@ -179,3 +180,4 @@ export const TShirtIcon = ({ size = 16 }: P) => <TShirt size={size} weight="duot
 export const MountainsIcon = ({ size = 16 }: P) => <Mountains size={size} weight="duotone" aria-hidden="true" />;
 export const MinimizeIcon = ({ size = 12 }: P) => <Minus size={size} weight="regular" aria-hidden="true" />;
 export const MaximizeIcon = ({ size = 12 }: P) => <Square size={size} weight="regular" aria-hidden="true" />;
+export const HeartIcon = ({ size = 16 }: P) => <Heart size={size} weight="duotone" aria-hidden="true" />;

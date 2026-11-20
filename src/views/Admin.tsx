@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { confirmDialog } from "../components/Overlay";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -35,8 +36,8 @@ export default function Admin() {
           <div className="login-icon">
             <ShieldIcon size={26} />
           </div>
-          <h1>Entwicklerbereich</h1>
-          <p className="muted">Veröffentliche neue Versionen, verwalte Releases, Tester und Builds. Zugang nur für Basti032002.</p>
+          <h1>{t("Entwicklerbereich")}</h1>
+          <p className="muted">{t("Veröffentliche neue Versionen, verwalte Releases, Tester und Builds. Zugang nur für Basti032002.")}</p>
           <GitHubLogin />
         </div>
       </div>
@@ -49,8 +50,8 @@ export default function Admin() {
           <div className="login-icon warn">
             <AlertIcon size={24} />
           </div>
-          <h1>Kein Zugriff</h1>
-          <p className="muted">Angemeldet als {account.user.login}. Der Entwicklerbereich ist nur für Basti032002.</p>
+          <h1>{t("Kein Zugriff")}</h1>
+          <p className="muted">{t("Angemeldet als {user}. Der Entwicklerbereich ist nur für {owner}.", { user: account.user.login, owner: "Basti032002" })}</p>
         </div>
       </div>
     );
@@ -92,7 +93,7 @@ export function GitHubLogin({ compact }: { compact?: boolean }) {
       try {
         const r = await adminApi.pollLogin(c.deviceCode);
         if (r.status === "done" && r.account) {
-          toast(`Angemeldet als ${r.account.user.login}.`, "success");
+          toast(t("Angemeldet als {login}.", { login: r.account.user.login }), "success");
           setState("idle");
           setCode(null);
           loggedIn(r.account);
@@ -116,9 +117,9 @@ export function GitHubLogin({ compact }: { compact?: boolean }) {
           <div className="callout warn left">
             <AlertIcon size={18} />
             <div>
-              <div className="callout-title">GitHub-Login ist noch nicht eingerichtet</div>
+              <div className="callout-title">{t("GitHub-Login ist noch nicht eingerichtet")}</div>
               <div className="muted small">
-                Diese Version wurde ohne Client-ID der GitHub App gebaut.
+                {t("Diese Version wurde ohne Client-ID der GitHub App gebaut.")}
               </div>
             </div>
           </div>
@@ -126,7 +127,7 @@ export function GitHubLogin({ compact }: { compact?: boolean }) {
 
         {state === "waiting" && code ? (
           <div className="device">
-            <div className="muted small">Gib diesen Code auf GitHub ein:</div>
+            <div className="muted small">{t("Gib diesen Code auf GitHub ein:")}</div>
             <div className="device-code mono">
               {code.userCode.split("").map((ch, i) => (
                 <span key={i} style={{ "--i": i } as React.CSSProperties}>
@@ -138,26 +139,26 @@ export function GitHubLogin({ compact }: { compact?: boolean }) {
               <button
                 className="btn small"
                 onClick={() => {
-                  navigator.clipboard.writeText(code.userCode).then(() => toast("Code kopiert.", "success"));
+                  navigator.clipboard.writeText(code.userCode).then(() => toast(t("Code kopiert."), "success"));
                 }}
               >
-                <CopyIcon size={14} /> Code kopieren
+                <CopyIcon size={14} />{" "}{t("Code kopieren")}
               </button>
               <button className="btn small" onClick={() => openUrl(code.verificationUri)}>
-                <GithubIcon size={14} /> GitHub öffnen
+                <GithubIcon size={14} />{" "}{t("GitHub öffnen")}
               </button>
             </div>
             <div className="waiting">
-              <span className="spinner" /> Warte auf Bestätigung …
+              <span className="spinner" />{" "}{t("Warte auf Bestätigung …")}
             </div>
           </div>
         ) : (
           <>
             {(state === "expired" || state === "denied") && (
-              <div className="callout warn left">{state === "denied" ? "Anmeldung abgelehnt." : "Der Code ist abgelaufen."} Versuch es noch einmal.</div>
+              <div className="callout warn left">{state === "denied" ? t("Anmeldung abgelehnt.") : t("Der Code ist abgelaufen.")}{" "}{t("Versuch es noch einmal.")}</div>
             )}
             <button className={compact ? "btn primary" : "btn primary large"} disabled={!configured || busy} onClick={start}>
-              <GithubIcon size={17} /> Mit GitHub anmelden
+              <GithubIcon size={17} />{" "}{t("Mit GitHub anmelden")}
             </button>
           </>
         )}
@@ -205,32 +206,32 @@ function Dashboard({ account }: { account: AccountInfo }) {
         <div className="row">
           <img className="avatar" src={user.avatarUrl} alt="" />
           <div>
-            <div className="eyebrow">Entwicklerbereich</div>
-            <h1>Hallo {user.name ?? user.login}</h1>
+            <div className="eyebrow">{t("Entwicklerbereich")}</div>
+            <h1>{t("Hallo")}{" "}{user.name ?? user.login}</h1>
           </div>
         </div>
         <div className="row">
-          <button className="icon-btn" aria-label="Aktualisieren" data-tip="Aktualisieren" onClick={refresh} disabled={loading}>
+          <button className="icon-btn" aria-label={t("Aktualisieren")} data-tip={t("Aktualisieren")} onClick={refresh} disabled={loading}>
             <span className={loading ? "spin-icon" : ""}>
               <RefreshIcon size={16} />
             </span>
           </button>
-          <button className="btn ghost" onClick={() => logout().then(() => toast("Abgemeldet.", "info"))}>
-            <LogoutIcon size={14} /> Abmelden
+          <button className="btn ghost" onClick={() => logout().then(() => toast(t("Abgemeldet."), "info"))}>
+            <LogoutIcon size={14} />{" "}{t("Abmelden")}
           </button>
         </div>
       </header>
 
       <Segmented
-        label="Bereich"
+        label={t("Bereich")}
         value={tab}
         onChange={setTab}
         options={[
-          { value: "overview", label: "Übersicht" },
-          { value: "publish", label: "Veröffentlichen" },
-          { value: "releases", label: "Releases" },
-          { value: "testers", label: "Tester" },
-          { value: "builds", label: "Builds" },
+          { value: "overview", label: t("Übersicht") },
+          { value: "publish", label: t("Veröffentlichen") },
+          { value: "releases", label: t("Releases") },
+          { value: "testers", label: t("Tester") },
+          { value: "builds", label: t("Builds") },
         ]}
       />
 
@@ -265,10 +266,10 @@ function Dashboard({ account }: { account: AccountInfo }) {
 
 function runState(r?: RunRow) {
   if (!r) return { label: "–", cls: "" };
-  if (r.status !== "completed") return { label: r.status === "queued" ? "In Warteschlange" : "Läuft", cls: "running" };
-  if (r.conclusion === "success") return { label: "Erfolgreich", cls: "ok" };
-  if (r.conclusion === "cancelled") return { label: "Abgebrochen", cls: "muted" };
-  return { label: "Fehlgeschlagen", cls: "fail" };
+  if (r.status !== "completed") return { label: r.status === "queued" ? t("In Warteschlange") : t("Läuft"), cls: "running" };
+  if (r.conclusion === "success") return { label: t("Erfolgreich"), cls: "ok" };
+  if (r.conclusion === "cancelled") return { label: t("Abgebrochen"), cls: "muted" };
+  return { label: t("Fehlgeschlagen"), cls: "fail" };
 }
 
 function OverviewTab({ data, onPublish }: { data: Overview; onPublish: () => void }) {
@@ -280,24 +281,24 @@ function OverviewTab({ data, onPublish }: { data: Overview; onPublish: () => voi
   return (
     <>
       <div className="stats">
-        <Stat label="Version im Code" value={data.repoVersion} />
-        <Stat label="Neueste stabile Version" value={latest ? latest.tag : "–"} sub={latest ? relTime(latest.publishedAt) : "noch keins"} />
-        <Stat label="Downloads gesamt" value={total.toLocaleString("de-DE")} sub={`${data.releases.length} Releases`} />
-        <Stat label="Letzter Build" value={rs.label} cls={rs.cls} sub={lastRun ? relTime(lastRun.createdAt) : ""} />
+        <Stat label={t("Version im Code")} value={data.repoVersion} />
+        <Stat label={t("Neueste stabile Version")} value={latest ? latest.tag : "–"} sub={latest ? relTime(latest.publishedAt) : t("noch keins")} />
+        <Stat label={t("Downloads gesamt")} value={total.toLocaleString("de-DE")} sub={t("{length} Releases", { length: data.releases.length })} />
+        <Stat label={t("Letzter Build")} value={rs.label} cls={rs.cls} sub={lastRun ? relTime(lastRun.createdAt) : ""} />
       </div>
 
       <div className="panel">
         <div className="panel-head">
           <div>
-            <div className="panel-title-lg">Noch nicht veröffentlicht</div>
-            <div className="muted small">Commits seit dem letzten Release</div>
+            <div className="panel-title-lg">{t("Noch nicht veröffentlicht")}</div>
+            <div className="muted small">{t("Commits seit dem letzten Release")}</div>
           </div>
           <button className="btn primary" onClick={onPublish}>
-            <RocketIcon size={15} /> Neue Version
+            <RocketIcon size={15} />{" "}{t("Neue Version")}
           </button>
         </div>
         {data.unreleased.length === 0 ? (
-          <p className="muted small">Alles veröffentlicht – keine neuen Änderungen.</p>
+          <p className="muted small">{t("Alles veröffentlicht – keine neuen Änderungen.")}</p>
         ) : (
           <ul className="commit-list">
             {data.unreleased.map((c, i) => (
@@ -346,16 +347,16 @@ function PublishTab({
     const release = data.releases.find((r) => r.tag === `v${publishing.version}`);
     const failed = run?.status === "completed" && run.conclusion !== "success";
     const steps = [
-      { label: "Commit auf main erstellt", state: "done" },
+      { label: t("Commit auf main erstellt"), state: "done" },
       {
-        label: run ? (run.status === "completed" ? (failed ? "Build fehlgeschlagen" : "Installer gebaut") : "Installer wird gebaut …") : "Warte auf GitHub Actions …",
+        label: run ? (run.status === "completed" ? (failed ? t("Build fehlgeschlagen") : t("Installer gebaut")) : t("Installer wird gebaut …")) : t("Warte auf GitHub Actions …"),
         state: failed ? "fail" : run?.status === "completed" ? "done" : "active",
       },
-      { label: release ? "Release ist online" : "Release veröffentlichen", state: release ? "done" : failed ? "idle" : run?.status === "completed" ? "active" : "idle" },
+      { label: release ? t("Release ist online") : t("Release veröffentlichen"), state: release ? "done" : failed ? "idle" : run?.status === "completed" ? "active" : "idle" },
     ];
     return (
       <div className="panel publish-progress">
-        <div className="panel-title-lg">Version {publishing.version}</div>
+        <div className="panel-title-lg">{t("Version")}{" "}{publishing.version}</div>
         <div className="timeline">
           {steps.map((s, i) => (
             <div key={i} className={`tl-step ${s.state}`}>
@@ -368,28 +369,28 @@ function PublishTab({
           <div className="callout ok">
             <CheckIcon size={18} />
             <div className="grow">
-              <div className="callout-title">Fertig!</div>
-              <div className="muted small">Alle Installationen mit automatischen Updates bekommen {release.tag} beim nächsten Check.</div>
+              <div className="callout-title">{t("Fertig!")}</div>
+              <div className="muted small">{t("Alle Installationen mit automatischen Updates bekommen {tag} beim nächsten Check.", { tag: release.tag })}</div>
             </div>
             <button className="btn small" onClick={() => openUrl(release.htmlUrl)}>
-              <ExternalIcon size={14} /> Ansehen
+              <ExternalIcon size={14} />{" "}{t("Ansehen")}
             </button>
           </div>
         )}
         <div className="row">
           {run && (
             <button className="btn small" onClick={() => openUrl(run.htmlUrl)}>
-              <ExternalIcon size={14} /> Build-Log
+              <ExternalIcon size={14} /> {t("Build-Log")}
             </button>
           )}
           {failed && run && (
-            <button className="btn small" onClick={() => adminApi.rerun(run.id).then(() => toast("Build wird neu gestartet.", "info"))}>
-              <RefreshIcon size={14} /> Erneut versuchen
+            <button className="btn small" onClick={() => adminApi.rerun(run.id).then(() => toast(t("Build wird neu gestartet."), "info"))}>
+              <RefreshIcon size={14} />{" "}{t("Erneut versuchen")}
             </button>
           )}
           {(release || failed) && (
             <button className="btn small ghost" onClick={onReset}>
-              <RefreshIcon size={14} /> Neue Version vorbereiten
+              <RefreshIcon size={14} />{" "}{t("Neue Version vorbereiten")}
             </button>
           )}
         </div>
@@ -400,12 +401,12 @@ function PublishTab({
   const suggested = data.unreleased.filter((c) => !/^Version \d/.test(c));
 
   async function publish() {
-    const who = { stable: "Alle Nutzer", beta: "Alle Beta-Nutzer", dev: "Alle Tester" }[channelOf(version)];
-    if (!(await confirmDialog(`Version ${version} jetzt veröffentlichen?`, `${who} bekommen das Update.`, "Veröffentlichen", "Abbrechen"))) return;
+    const who = { stable: t("Alle Nutzer"), beta: t("Alle Beta-Nutzer"), dev: t("Alle Tester") }[channelOf(version)];
+    if (!(await confirmDialog(t("Version {version} jetzt veröffentlichen?", { version: version }), t("{who} bekommen das Update.", { who: who }), t("Veröffentlichen"), t("Abbrechen")))) return;
     setBusy(true);
     try {
       const r = await adminApi.publish(version, notes);
-      toast(`Version ${version} wird gebaut.`, "success");
+      toast(t("Version {version} wird gebaut.", { version: version }), "success");
       onPublished(version, r.commitSha);
     } catch (e) {
       toast(String(e), "error");
@@ -418,55 +419,55 @@ function PublishTab({
     <div className="publish">
       <div className="panel">
         <div className="field">
-          <label>Art der Änderung</label>
+          <label>{t("Art der Änderung")}</label>
           <Segmented
-            label="Art der Änderung"
+            label={t("Art der Änderung")}
             value={kind}
             onChange={setKind}
             options={[
-              { value: "patch", label: "Fehlerbehebung" },
-              { value: "minor", label: "Neue Funktionen" },
-              { value: "major", label: "Großes Update" },
-              { value: "beta", label: "Beta" },
-              { value: "dev", label: "Dev" },
+              { value: "patch", label: t("Fehlerbehebung") },
+              { value: "minor", label: t("Neue Funktionen") },
+              { value: "major", label: t("Großes Update") },
+              { value: "beta", label: t("Beta") },
+              { value: "dev", label: t("Dev") },
             ]}
           />
         </div>
         <div className={`channel-note ${channelOf(version)}`}>
-          {channelOf(version) === "stable" && "Stabile Version – alle Nutzer bekommen das Update."}
-          {channelOf(version) === "beta" && "Beta – nur Nutzer mit Update-Kanal „Beta“ oder „Dev“ bekommen sie."}
-          {channelOf(version) === "dev" && "Dev – landet im privaten Repo. Nur angemeldete Tester können sie laden."}
+          {channelOf(version) === "stable" && t("Stabile Version – alle Nutzer bekommen das Update.")}
+          {channelOf(version) === "beta" && t("Beta – nur Nutzer mit Update-Kanal „Beta“ oder „Dev“ bekommen sie.")}
+          {channelOf(version) === "dev" && t("Dev – landet im privaten Repo. Nur angemeldete Tester können sie laden.")}
         </div>
         <div className="version-row">
           <div className="version-from mono">{data.repoVersion}</div>
           <span className="version-arrow"><ArrowRightIcon size={14} /></span>
           <label htmlFor="ver" className="sr-only">
-            Neue Version
+            {t("Neue Version")}
           </label>
           <input id="ver" className="input mono version-input" value={version} onChange={(e) => setVersion(e.target.value)} />
           <span className={`tag ch-${channelOf(version)}`}>{CHANNEL_LABEL[channelOf(version)]}</span>
         </div>
         <div className="field">
-          <label htmlFor="notes">Was ist neu? (erscheint im Release und in der App)</label>
-          <textarea id="notes" className="input textarea" rows={6} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="- Neues Feature …&#10;- Fehler behoben …" />
+          <label htmlFor="notes">{t("Was ist neu? (erscheint im Release und in der App)")}</label>
+          <textarea id="notes" className="input textarea" rows={6} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t("- Neues Feature …\n- Fehler behoben …")} />
           {suggested.length > 0 && !notes && (
             <button className="link small" onClick={() => setNotes(suggested.map((c) => `- ${c}`).join("\n"))}>
-              Aus {suggested.length} Commits übernehmen
+              {t("Aus {n} Commits übernehmen", { n: suggested.length })}
             </button>
           )}
         </div>
         <div className="row end">
           <button className={busy ? "btn primary loading" : "btn primary"} disabled={busy || !version} onClick={publish}>
-            <RocketIcon size={15} /> Version {version} veröffentlichen
+            <RocketIcon size={15} />{" "}{t("Version {version} veröffentlichen", { version })}
           </button>
         </div>
       </div>
       <div className="panel soft explain">
-        <div className="panel-title-lg">Was passiert dann?</div>
+        <div className="panel-title-lg">{t("Was passiert dann?")}</div>
         <ol>
-          <li>Die Versionsnummer wird in allen Dateien gesetzt und als Commit auf <span className="mono">main</span> gespeichert.</li>
-          <li>GitHub Actions baut den Windows-Installer (ca. 4–12 Minuten).</li>
-          <li>Stabil &amp; Beta erscheinen im öffentlichen Repo, Dev im privaten Repo – passende Installationen finden das Update automatisch.</li>
+          <li>{t("Die Versionsnummer wird in allen Dateien gesetzt und als Commit auf {branch} gespeichert.", { branch: "main" })}</li>
+          <li>{t("GitHub Actions baut den Windows-Installer (ca. 4–12 Minuten).")}</li>
+          <li>{t("Stabil & Beta erscheinen im öffentlichen Repo, Dev im privaten Repo – passende Installationen finden das Update automatisch.")}</li>
         </ol>
       </div>
     </div>
@@ -478,7 +479,7 @@ function ReleasesTab({ releases, onChanged }: { releases: ReleaseRow[]; onChange
   const [draft, setDraft] = useState("");
   const max = useMemo(() => Math.max(1, ...releases.map((r) => r.downloads)), [releases]);
 
-  if (releases.length === 0) return <p className="muted">Noch keine Releases.</p>;
+  if (releases.length === 0) return <p className="muted">{t("Noch keine Releases.")}</p>;
 
   return (
     <div className="list">
@@ -506,13 +507,13 @@ function ReleasesTab({ releases, onChanged }: { releases: ReleaseRow[]; onChange
                 adminApi
                   .setPrerelease(r.repo, r.id, !r.prerelease)
                   .then(() => {
-                    toast(r.prerelease ? `${r.tag} ist jetzt stabil.` : `${r.tag} ist jetzt Beta.`, "success");
+                    toast(r.prerelease ? t("{tag} ist jetzt stabil.", { tag: r.tag }) : t("{tag} ist jetzt Beta.", { tag: r.tag }), "success");
                     onChanged();
                   })
                   .catch((e) => toast(String(e), "error"))
               }
             >
-              <TagIcon size={14} /> {r.prerelease ? "Als stabil markieren" : "Zur Beta machen"}
+              <TagIcon size={14} /> {r.prerelease ? t("Als stabil markieren") : t("Zur Beta machen")}
             </button>
             )}
             <button
@@ -522,21 +523,21 @@ function ReleasesTab({ releases, onChanged }: { releases: ReleaseRow[]; onChange
                 setDraft(r.body);
               }}
             >
-              <PencilIcon size={14} /> Notizen
+              <PencilIcon size={14} />{" "}{t("Notizen")}
             </button>
-            <button className="icon-btn" aria-label="Auf GitHub ansehen" data-tip="Auf GitHub" onClick={() => openUrl(r.htmlUrl)}>
+            <button className="icon-btn" aria-label={t("Auf GitHub ansehen")} data-tip={t("Auf GitHub")} onClick={() => openUrl(r.htmlUrl)}>
               <GithubIcon size={15} />
             </button>
             <button
               className="icon-btn danger"
-              aria-label="Release löschen"
-              data-tip="Löschen"
+              aria-label={t("Release löschen")}
+              data-tip={t("Löschen")}
               onClick={async () => {
-                if (!(await confirmDialog(`${r.tag} wirklich löschen?`, "Nutzer bekommen diese Version dann nicht mehr angeboten.", "Löschen", "Abbrechen", true))) return;
+                if (!(await confirmDialog(t("{tag} wirklich löschen?", { tag: r.tag }), t("Nutzer bekommen diese Version dann nicht mehr angeboten."), t("Löschen"), t("Abbrechen"), true))) return;
                 adminApi
                   .deleteRelease(r.repo, r.id, r.tag)
                   .then(() => {
-                    toast(`${r.tag} gelöscht.`, "success");
+                    toast(t("{tag} gelöscht.", { tag: r.tag }), "success");
                     onChanged();
                   })
                   .catch((e) => toast(String(e), "error"));
@@ -547,10 +548,10 @@ function ReleasesTab({ releases, onChanged }: { releases: ReleaseRow[]; onChange
           </div>
           {editing === r.id && (
             <div className="notes-edit">
-              <textarea className="input textarea mono" rows={8} value={draft} onChange={(e) => setDraft(e.target.value)} aria-label="Release-Notizen" />
+              <textarea className="input textarea mono" rows={8} value={draft} onChange={(e) => setDraft(e.target.value)} aria-label={t("Release-Notizen")} />
               <div className="row end">
                 <button className="btn small ghost" onClick={() => setEditing(null)}>
-                  <CloseIcon size={14} /> Abbrechen
+                  <CloseIcon size={14} />{" "}{t("Abbrechen")}
                 </button>
                 <button
                   className="btn small primary"
@@ -558,14 +559,14 @@ function ReleasesTab({ releases, onChanged }: { releases: ReleaseRow[]; onChange
                     adminApi
                       .updateNotes(r.repo, r.id, draft)
                       .then(() => {
-                        toast("Notizen gespeichert.", "success");
+                        toast(t("Notizen gespeichert."), "success");
                         setEditing(null);
                         onChanged();
                       })
                       .catch((e) => toast(String(e), "error"))
                   }
                 >
-                  <SaveIcon size={14} /> Speichern
+                  <SaveIcon size={14} />{" "}{t("Speichern")}
                 </button>
               </div>
             </div>
@@ -599,7 +600,7 @@ function TestersTab() {
     setBusy(true);
     try {
       await adminApi.addTester(name.trim());
-      toast(`${name.trim()} wurde eingeladen.`, "success");
+      toast(t("{v0} wurde eingeladen.", { v0: name.trim() }), "success");
       setName("");
       load();
     } catch (err) {
@@ -612,45 +613,44 @@ function TestersTab() {
   return (
     <>
       <div className="panel">
-        <div className="panel-title-lg">Tester für Dev-Versionen</div>
+        <div className="panel-title-lg">{t("Tester für Dev-Versionen")}</div>
         <p className="muted small" style={{ margin: "2px 0 14px" }}>
-          Tester bekommen Lesezugriff auf das private Repo <span className="mono">anvil-studio-dev</span> – dort liegen nur die Dev-Installer, nicht dein
-          Quellcode. GitHub schickt ihnen eine Einladung, die sie annehmen müssen.
+          {t("Tester bekommen Lesezugriff auf das private Repo {repo} – dort liegen nur die Dev-Installer, nicht dein Quellcode. GitHub schickt ihnen eine Einladung, die sie annehmen müssen.", { repo: "anvil-studio-dev" })}
         </p>
         <form className="row" onSubmit={add}>
           <label htmlFor="tester" className="sr-only">
-            GitHub-Name
+            {t("GitHub-Name")}
           </label>
-          <input id="tester" className="input" style={{ maxWidth: 280 }} placeholder="GitHub-Name, z. B. octocat" value={name} onChange={(e) => setName(e.target.value)} />
+          <input id="tester" className="input" style={{ maxWidth: 280 }} placeholder={t("GitHub-Name, z. B. octocat")} value={name} onChange={(e) => setName(e.target.value)} />
           <button className={busy ? "btn primary loading" : "btn primary"} disabled={busy || !name.trim()}>
-            <PlusIcon size={15} /> Einladen
+            <PlusIcon size={15} />{" "}{t("Einladen")}
           </button>
         </form>
       </div>
       {list === null ? (
         <div className="skeleton" style={{ height: 60 }} />
       ) : list.length === 0 ? (
-        <p className="muted">Noch keine Tester.</p>
+        <p className="muted">{t("Noch keine Tester.")}</p>
       ) : (
         <div className="list">
-          {list.map((t, i) => (
-            <div key={t.login + (t.invitationId ?? "")} className="list-row" style={{ "--i": i } as React.CSSProperties}>
-              <img className="avatar small" src={t.avatarUrl} alt="" />
+          {list.map((tt, i) => (
+            <div key={tt.login + (tt.invitationId ?? "")} className="list-row" style={{ "--i": i } as React.CSSProperties}>
+              <img className="avatar small" src={tt.avatarUrl} alt="" />
               <div className="grow">
-                <div>{t.login}</div>
-                <div className="muted small">{t.pending ? "Einladung noch nicht angenommen" : "Hat Zugriff auf Dev-Versionen"}</div>
+                <div>{tt.login}</div>
+                <div className="muted small">{tt.pending ? t("Einladung noch nicht angenommen") : t("Hat Zugriff auf Dev-Versionen")}</div>
               </div>
-              {t.pending ? <span className="tag warn">Eingeladen</span> : <span className="tag ch-dev">Tester</span>}
+              {tt.pending ? <span className="tag warn">{t("Eingeladen")}</span> : <span className="tag ch-dev">{t("Tester")}</span>}
               <button
                 className="icon-btn danger"
-                aria-label={`${t.login} entfernen`}
-                data-tip="Entfernen"
+                aria-label={`${tt.login} entfernen`}
+                data-tip={t("Entfernen")}
                 onClick={async () => {
-                  if (!(await confirmDialog(`${t.login} den Zugriff entziehen?`, "Die Person kann danach keine Dev-Versionen mehr laden.", "Zugriff entziehen", "Abbrechen", true))) return;
+                  if (!(await confirmDialog(t("{login} den Zugriff entziehen?", { login: tt.login }), t("Die Person kann danach keine Dev-Versionen mehr laden."), t("Zugriff entziehen"), t("Abbrechen"), true))) return;
                   adminApi
-                    .removeTester(t.login, t.invitationId)
+                    .removeTester(tt.login, tt.invitationId)
                     .then(() => {
-                      toast(`${t.login} entfernt.`, "success");
+                      toast(`${tt.login} entfernt.`, "success");
                       load();
                     })
                     .catch((e) => toast(String(e), "error"));
@@ -667,7 +667,7 @@ function TestersTab() {
 }
 
 function BuildsTab({ runs, onChanged }: { runs: RunRow[]; onChanged: () => void }) {
-  if (runs.length === 0) return <p className="muted">Noch keine Builds.</p>;
+  if (runs.length === 0) return <p className="muted">{t("Noch keine Builds.")}</p>;
   return (
     <div className="list">
       {runs.map((r, i) => {
@@ -690,16 +690,16 @@ function BuildsTab({ runs, onChanged }: { runs: RunRow[]; onChanged: () => void 
                   adminApi
                     .rerun(r.id)
                     .then(() => {
-                      toast("Build wird neu gestartet.", "info");
+                      toast(t("Build wird neu gestartet."), "info");
                       onChanged();
                     })
                     .catch((e) => toast(String(e), "error"))
                 }
               >
-                <RefreshIcon size={14} /> Neu starten
+                <RefreshIcon size={14} />{" "}{t("Neu starten")}
               </button>
             )}
-            <button className="icon-btn" aria-label="Log öffnen" data-tip="Log öffnen" onClick={() => openUrl(r.htmlUrl)}>
+            <button className="icon-btn" aria-label={t("Log öffnen")} data-tip={t("Log öffnen")} onClick={() => openUrl(r.htmlUrl)}>
               <GithubIcon size={15} />
             </button>
           </div>

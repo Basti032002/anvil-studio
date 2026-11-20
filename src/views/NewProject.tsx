@@ -1,3 +1,4 @@
+import { t, translateMessage } from "../i18n";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 import { api, pickFolder, Project } from "../api";
@@ -28,7 +29,7 @@ function className(name: string) {
   return out ? (/^[0-9]/.test(out) ? `Mod${out}` : out) : "MeineMod";
 }
 
-const STEPS = ["NeoForge-Vorlage wird heruntergeladen …", "Vorlage wird entpackt …", "Git-Repository wird angelegt …", "Fertig!"];
+const STEPS = [t("NeoForge-Vorlage wird heruntergeladen …"), t("Vorlage wird entpackt …"), t("Git-Repository wird angelegt …"), t("Fertig!")];
 
 export default function NewProject({ onCancel, onCreated }: Props) {
   const [name, setName] = useState("");
@@ -48,7 +49,7 @@ export default function NewProject({ onCancel, onCreated }: Props) {
       setVersions(v.versions);
       setParentDir(v.defaultDir);
     });
-    const un = listen<{ step: string }>("create-progress", (e) => setStep(e.payload.step));
+    const un = listen<{ step: string }>("create-progress", (e) => setStep(translateMessage(e.payload.step)));
     return () => {
       un.then((f) => f());
     };
@@ -72,12 +73,12 @@ export default function NewProject({ onCancel, onCreated }: Props) {
         package: pack,
         mcVersion,
         author,
-        description: description || `${name} – eine Minecraft-Mod`,
+        description: description || t("{name} – eine Minecraft-Mod", { name: name }),
         parentDir: parentDir || null,
       });
       onCreated(p);
     } catch (err) {
-      setError(String(err));
+      setError(translateMessage(String(err)));
     } finally {
       setBusy(false);
       setStep(null);
@@ -88,78 +89,78 @@ export default function NewProject({ onCancel, onCreated }: Props) {
     <form className="page new-project" onSubmit={submit}>
       <header className="page-header">
         <div>
-          <div className="eyebrow">Neues Projekt</div>
-          <h1>Was baust du als Nächstes?</h1>
+          <div className="eyebrow">{t("Neues Projekt")}</div>
+          <h1>{t("Was baust du als Nächstes?")}</h1>
         </div>
       </header>
 
       <div className="split-layout">
         <section className="panel form-grid">
-          <Field label="Projektname" id="name">
-            <input id="name" className="input" required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="z. B. Kristallhöhlen" />
+          <Field label={t("Projektname")} id="name">
+            <input id="name" className="input" required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t("z. B. Kristallhöhlen")} />
           </Field>
-          <Field label="Mod-ID" hint="automatisch" id="modid">
+          <Field label={t("Mod-ID")} hint={t("automatisch")} id="modid">
             <input
               id="modid"
               className="input mono"
               required
               pattern="[a-z][a-z0-9_]{1,63}"
-              title="Kleinbuchstaben, Ziffern und _, mit Buchstaben beginnen"
+              title={t("Kleinbuchstaben, Ziffern und _, mit Buchstaben beginnen")}
               value={id}
               onChange={(e) => setModId(e.target.value)}
             />
           </Field>
-          <Field label="Autor" id="author">
-            <input id="author" className="input" value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="Dein Name" />
+          <Field label={t("Autor")} id="author">
+            <input id="author" className="input" value={author} onChange={(e) => setAuthor(e.target.value)} placeholder={t("Dein Name")} />
           </Field>
-          <Field label="Java-Paket" hint="automatisch" id="pkg">
+          <Field label={t("Java-Paket")} hint={t("automatisch")} id="pkg">
             <input id="pkg" className="input mono" required value={pack} onChange={(e) => setPkg(e.target.value)} />
           </Field>
-          <Field label="Minecraft-Version" id="mcver">
+          <Field label={t("Minecraft-Version")} id="mcver">
             <select id="mcver" className="input" value={mcVersion} onChange={(e) => setMcVersion(e.target.value)}>
               {versions.map((v) => (
                 <option key={v} value={v}>
                   {v}
-                  {v === "1.21.1" ? " · empfohlen" : ""}
+                  {v === "1.21.1" ? t(" · empfohlen") : ""}
                 </option>
               ))}
             </select>
           </Field>
-          <Field label="Mod-Loader" id="loader">
+          <Field label={t("Mod-Loader")} id="loader">
             <select id="loader" className="input" value="neoforge" disabled>
-              <option value="neoforge">NeoForge</option>
+              <option value="neoforge">{t("NeoForge")}</option>
             </select>
           </Field>
           <div className="span-2">
-            <Field label="Beschreibung" id="desc">
-              <input id="desc" className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Worum geht es in deiner Mod?" />
+            <Field label={t("Beschreibung")} id="desc">
+              <input id="desc" className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t("Worum geht es in deiner Mod?")} />
             </Field>
           </div>
           <div className="span-2">
-            <Field label="Speicherort" id="dir">
+            <Field label={t("Speicherort")} id="dir">
               <div className="input-row">
                 <input id="dir" className="input mono" value={parentDir} onChange={(e) => setParentDir(e.target.value)} />
                 <button
                   type="button"
                   className="btn"
                   onClick={async () => {
-                    const d = await pickFolder("Ordner für das neue Projekt wählen", parentDir);
+                    const d = await pickFolder(t("Ordner für das neue Projekt wählen"), parentDir);
                     if (d) setParentDir(d);
                   }}
                 >
-                  <FolderIcon size={15} /> Durchsuchen …
+                  <FolderIcon size={15} />{" "}{t("Durchsuchen …")}
                 </button>
               </div>
             </Field>
             <p className="muted small">
-              Das Projekt landet in <span className="mono">{(parentDir || "…").replace(/[\\/]+$/, "")}{parentDir.includes("\\") ? "\\" : "/"}{id || "mod_id"}</span>
+              {t("Das Projekt landet in")}{" "}<span className="mono">{(parentDir || "…").replace(/[\\/]+$/, "")}{parentDir.includes("\\") ? "\\" : "/"}{id || "mod_id"}</span>
             </p>
           </div>
         </section>
 
         <aside className="panel preview">
           <div className="panel-title">
-            <FolderIcon size={15} /> Vorschau
+            <FolderIcon size={15} />{" "}{t("Vorschau")}
           </div>
           <div className="tree mono">
             <div className="tree-root">{id || "mod_id"}/</div>
@@ -179,13 +180,13 @@ export default function NewProject({ onCancel, onCreated }: Props) {
           </div>
           <ul className="checklist">
             <li>
-              <CheckIcon size={14} /> Beispiel-Block, -Item &amp; Kreativ-Tab
+              <CheckIcon size={14} />{" "}{t("Beispiel-Block, -Item & Kreativ-Tab")}
             </li>
             <li>
-              <CheckIcon size={14} /> Testen-Knopf mit „Direkt in Welt“
+              <CheckIcon size={14} />{" "}{t("Testen-Knopf mit „Direkt in Welt“")}
             </li>
             <li>
-              <CheckIcon size={14} /> Git-Repository
+              <CheckIcon size={14} /> {t("Git-Repository")}
             </li>
           </ul>
         </aside>
@@ -210,10 +211,10 @@ export default function NewProject({ onCancel, onCreated }: Props) {
 
       <div className="row end">
         <button type="button" className="btn ghost" onClick={onCancel} disabled={busy}>
-          <CloseIcon size={14} /> Abbrechen
+          <CloseIcon size={14} />{" "}{t("Abbrechen")}
         </button>
         <button type="submit" className={busy ? "btn primary loading" : "btn primary"} disabled={busy || !name.trim()}>
-          <PlusIcon size={14} /> {busy ? "Wird erstellt …" : "Projekt erstellen"}
+          <PlusIcon size={14} /> {busy ? t("Wird erstellt …") : t("Projekt erstellen")}
         </button>
       </div>
     </form>

@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useState } from "react";
 import { ArmorSlot, BlockDef, ItemDef, OreDef, Project, ToolType } from "../../api";
 import { useCatalog } from "../../catalog";
@@ -36,7 +37,7 @@ export function ItemField({ project, own, value, onChange, placeholder }: { proj
           {value && <span className="mono muted small">{value}</span>}
         </button>
         {value && (
-          <button type="button" className="icon-btn" aria-label="Entfernen" data-tip="Entfernen" onClick={() => onChange("")}>
+          <button type="button" className="icon-btn" aria-label={t("Entfernen")} data-tip={t("Entfernen")} onClick={() => onChange("")}>
             <CloseIcon size={12} />
           </button>
         )}
@@ -95,7 +96,7 @@ export function BlockExtras({
   return (
     <>
       <div className="sub-section">
-        <SectionHead icon={<LayersIcon size={16} />} title="Weitere Formen" sub="Aus demselben Material – mit Rezept, Tags und Modellen" />
+        <SectionHead icon={<LayersIcon size={16} />} title={t("Weitere Formen")} sub={t("Aus demselben Material – mit Rezept, Tags und Modellen")} />
         <div className="shape-grid">
           {SHAPES.map((s) => {
             const on = block.shapes.includes(s.id);
@@ -116,67 +117,67 @@ export function BlockExtras({
       <div className="sub-section">
         <SectionHead
           icon={<GemIcon size={16} />}
-          title="Erz & Weltgenerierung"
-          sub="Der Block erscheint in neuen Chunks unter der Erde"
-          right={<Toggle label="Erz" checked={ore.enabled} onChange={(v) => setOre({ enabled: v })} />}
+          title={t("Erz & Weltgenerierung")}
+          sub={t("Der Block erscheint in neuen Chunks unter der Erde")}
+          right={<Toggle label={t("Erz")} checked={ore.enabled} onChange={(v) => setOre({ enabled: v })} />}
         />
         {ore.enabled && (
           <div className="form-grid">
-            <Field label="Lässt fallen" hint="leer = sich selbst" span>
-              <ItemField project={project} own={own} value={ore.drop} onChange={(v) => setOre({ drop: v })} placeholder="Sich selbst (wie Eisenerz vor 1.17)" />
+            <Field label={t("Lässt fallen")} hint={t("leer = sich selbst")} span>
+              <ItemField project={project} own={own} value={ore.drop} onChange={(v) => setOre({ drop: v })} placeholder={t("Sich selbst (wie Eisenerz vor 1.17)")} />
             </Field>
             {ore.drop && (
               <>
-                <Field label="Anzahl min.">
+                <Field label={t("Anzahl min.")}>
                   <Num value={ore.dropMin} min={1} max={64} onChange={(v) => setOre({ dropMin: v })} />
                 </Field>
-                <Field label="Anzahl max." hint="Glück erhöht zusätzlich">
+                <Field label={t("Anzahl max.")} hint={t("Glück erhöht zusätzlich")}>
                   <Num value={ore.dropMax} min={1} max={64} onChange={(v) => setOre({ dropMax: v })} />
                 </Field>
               </>
             )}
-            <Field label="Erfahrung min.">
+            <Field label={t("Erfahrung min.")}>
               <Num value={ore.xpMin} min={0} max={100} onChange={(v) => setOre({ xpMin: v })} />
             </Field>
-            <Field label="Erfahrung max." hint="Diamant 3–7">
+            <Field label={t("Erfahrung max.")} hint={t("Diamant 3–7")}>
               <Num value={ore.xpMax} min={0} max={100} onChange={(v) => setOre({ xpMax: v })} />
             </Field>
             <div className="field span-2">
               <span className="field-label">
-                <GlobeIcon size={13} /> Dimension
+                <GlobeIcon size={13} />{" "}{t("Dimension")}
               </span>
               <Segmented
-                label="Dimension"
+                label={t("Dimension")}
                 value={ore.dimension}
                 onChange={(v) => setOre({ dimension: v as OreDef["dimension"], ...(v === "nether" ? { minY: 10, maxY: 117 } : v === "end" ? { minY: 0, maxY: 80 } : {}) })}
                 options={[
-                  { value: "overworld", label: "Oberwelt" },
-                  { value: "nether", label: "Nether" },
-                  { value: "end", label: "Ende" },
+                  { value: "overworld", label: t("Oberwelt") },
+                  { value: "nether", label: t("Nether") },
+                  { value: "end", label: t("Ende") },
                 ]}
               />
             </div>
             {ore.dimension === "overworld" && (
               <div className="span-2 toggle-row" style={{ flexDirection: "row" }}>
-                <Toggle label="Tiefenschiefer-Variante" checked={ore.deepslate} onChange={(v) => setOre({ deepslate: v })} />
+                <Toggle label={t("Tiefenschiefer-Variante")} checked={ore.deepslate} onChange={(v) => setOre({ deepslate: v })} />
                 <span>
-                  Tiefenschiefer-Variante <span className="muted small">· deepslate_{block.id}, erscheint unter Y 0</span>
+                  {t("Tiefenschiefer-Variante")} <span className="muted small">· {t("deepslate_{id}, erscheint unter Y 0", { id: block.id })}</span>
                 </span>
               </div>
             )}
-            <Field label={`Adergröße · ${ore.veinSize}`} hint="Diamant 8 · Eisen 9 · Kohle 17">
+            <Field label={t("Adergröße · {veinSize}", { veinSize: ore.veinSize })} hint={t("Diamant 8 · Eisen 9 · Kohle 17")}>
               <input type="range" className="range full" min={1} max={32} value={ore.veinSize} onChange={(e) => setOre({ veinSize: Number(e.target.value) })} />
             </Field>
-            <Field label={`Adern pro Chunk · ${ore.veinsPerChunk}`} hint="Diamant 7 · Eisen 10">
+            <Field label={t("Adern pro Chunk · {veinsPerChunk}", { veinsPerChunk: ore.veinsPerChunk })} hint={t("Diamant 7 · Eisen 10")}>
               <input type="range" className="range full" min={1} max={40} value={ore.veinsPerChunk} onChange={(e) => setOre({ veinsPerChunk: Number(e.target.value) })} />
             </Field>
-            <Field label="Höhe von (Y)">
+            <Field label={t("Höhe von (Y)")}>
               <Num value={ore.minY} min={-64} max={320} onChange={(v) => setOre({ minY: v })} />
             </Field>
-            <Field label="Höhe bis (Y)">
+            <Field label={t("Höhe bis (Y)")}>
               <Num value={ore.maxY} min={-64} max={320} onChange={(v) => setOre({ maxY: v })} />
             </Field>
-            <div className="span-2 muted small">Tipp: Erze erscheinen nur in neu erzeugten Chunks. Zum Testen am besten eine neue Welt anlegen.</div>
+            <div className="span-2 muted small">{t("Tipp: Erze erscheinen nur in neu erzeugten Chunks. Zum Testen am besten eine neue Welt anlegen.")}</div>
           </div>
         )}
       </div>
@@ -191,9 +192,9 @@ export function ItemKindSwitch({ item, onChange }: { item: ItemDef; onChange: (p
     <div className="kind-switch span-2">
       {(
         [
-          { k: "basic", label: "Item", icon: <BoxIcon size={16} /> },
-          { k: "tool", label: "Werkzeug / Waffe", icon: <PickaxeIcon size={16} /> },
-          { k: "armor", label: "Rüstung", icon: <ChestplateIcon size={16} /> },
+          { k: "basic", label: t("Item"), icon: <BoxIcon size={16} /> },
+          { k: "tool", label: t("Werkzeug / Waffe"), icon: <PickaxeIcon size={16} /> },
+          { k: "armor", label: t("Rüstung"), icon: <ChestplateIcon size={16} /> },
         ] as const
       ).map((x) => (
         <button
@@ -219,9 +220,9 @@ export function ItemKindSwitch({ item, onChange }: { item: ItemDef; onChange: (p
 export function ToolForm({ project, item, own, onChange }: { project: Project; item: ItemDef; own: OwnEntry[]; onChange: (patch: Partial<ItemDef>) => void }) {
   return (
     <div className="sub-section">
-      <SectionHead icon={<SwordIcon size={16} />} title="Werkzeug" sub="Werte wie im Tooltip – Vorlagen setzen sie wie bei Vanilla" />
+      <SectionHead icon={<SwordIcon size={16} />} title={t("Werkzeug")} sub={t("Werte wie im Tooltip – Vorlagen setzen sie wie bei Vanilla")} />
       <div className="form-grid">
-        <Field label="Art">
+        <Field label={t("Art")}>
           <select className="input" value={item.toolType} onChange={(e) => onChange(toolPreset(e.target.value as ToolType, item.toolTier as Tier))}>
             {(Object.keys(TOOL_LABEL) as ToolType[]).map((t) => (
               <option key={t} value={t}>
@@ -230,32 +231,32 @@ export function ToolForm({ project, item, own, onChange }: { project: Project; i
             ))}
           </select>
         </Field>
-        <Field label="Stufe" hint="wie stark – setzt alle Werte">
+        <Field label={t("Stufe")} hint={t("wie stark – setzt alle Werte")}>
           <select className="input" value={item.toolTier} onChange={(e) => onChange(toolPreset(item.toolType, e.target.value as Tier))}>
-            <option value="wood">Holz</option>
-            <option value="stone">Stein</option>
-            <option value="iron">Eisen</option>
-            <option value="diamond">Diamant</option>
-            <option value="netherite">Netherit</option>
+            <option value="wood">{t("Holz")}</option>
+            <option value="stone">{t("Stein")}</option>
+            <option value="iron">{t("Eisen")}</option>
+            <option value="diamond">{t("Diamant")}</option>
+            <option value="netherite">{t("Netherit")}</option>
           </select>
         </Field>
-        <Field label="Angriffsschaden" hint="Herzen × 2">
+        <Field label={t("Angriffsschaden")} hint={t("Herzen × 2")}>
           <Num value={item.attackDamage} min={1} max={100} step={0.5} onChange={(v) => onChange({ attackDamage: v })} />
         </Field>
-        <Field label="Angriffstempo" hint="Schwert 1,6">
+        <Field label={t("Angriffstempo")} hint={t("Schwert 1,6")}>
           <Num value={item.attackSpeed} min={0.1} max={20} step={0.1} onChange={(v) => onChange({ attackSpeed: v })} />
         </Field>
-        <Field label="Haltbarkeit" hint="Eisen 250 · Diamant 1561">
+        <Field label={t("Haltbarkeit")} hint={t("Eisen 250 · Diamant 1561")}>
           <Num value={item.durability} min={1} max={100000} onChange={(v) => onChange({ durability: v })} />
         </Field>
-        <Field label="Abbautempo" hint="Eisen 6 · Diamant 8">
+        <Field label={t("Abbautempo")} hint={t("Eisen 6 · Diamant 8")}>
           <Num value={item.miningSpeed} min={0.1} max={100} step={0.5} onChange={(v) => onChange({ miningSpeed: v })} />
         </Field>
-        <Field label="Verzauberbarkeit" hint="höher = bessere Verzauberungen">
+        <Field label={t("Verzauberbarkeit")} hint={t("höher = bessere Verzauberungen")}>
           <Num value={item.enchantability} min={1} max={50} onChange={(v) => onChange({ enchantability: v })} />
         </Field>
-        <Field label="Reparieren am Amboss mit">
-          <ItemField project={project} own={own} value={item.repairItem} onChange={(v) => onChange({ repairItem: v })} placeholder="Kein Reparatur-Item" />
+        <Field label={t("Reparieren am Amboss mit")}>
+          <ItemField project={project} own={own} value={item.repairItem} onChange={(v) => onChange({ repairItem: v })} placeholder={t("Kein Reparatur-Item")} />
         </Field>
       </div>
     </div>
@@ -281,18 +282,18 @@ export function ArmorForm({
     <div className="sub-section">
       <SectionHead
         icon={<ChestplateIcon size={16} />}
-        title="Rüstung"
-        sub="Teile mit gleichem Material bilden ein Set"
+        title={t("Rüstung")}
+        sub={t("Teile mit gleichem Material bilden ein Set")}
         right={
           missingSlots.length > 0 && (
             <button type="button" className="btn small" onClick={onCreateSet}>
-              <PlusIcon size={13} /> Fehlende Teile ({missingSlots.map((s) => SLOT_LABEL[s]).join(", ")})
+              <PlusIcon size={13} />{" "}{t("Fehlende Teile ({list})", { list: missingSlots.map((s) => SLOT_LABEL[s]).join(", ") })}
             </button>
           )
         }
       />
       <div className="form-grid">
-        <Field label="Teil">
+        <Field label={t("Teil")}>
           <select className="input" value={item.armorSlot} onChange={(e) => onChange({ armorSlot: e.target.value as ArmorSlot })}>
             {(Object.keys(SLOT_LABEL) as ArmorSlot[]).map((s) => (
               <option key={s} value={s}>
@@ -301,40 +302,39 @@ export function ArmorForm({
             ))}
           </select>
         </Field>
-        <Field label="Material" hint="ID, z. B. ruby">
+        <Field label={t("Material")} hint={t("ID, z. B. ruby")}>
           <input className="input mono" value={item.armorMaterial} onChange={(e) => onChange({ armorMaterial: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })} />
         </Field>
         <div className="field span-2">
-          <span className="field-label">Vorlage</span>
+          <span className="field-label">{t("Vorlage")}</span>
           <div className="row gap-6">
-            {(["iron", "diamond", "netherite"] as ArmorTier[]).map((t) => (
-              <button key={t} type="button" className="btn small" onClick={() => onChange(armorPreset(t, item.armorSlot))}>
-                <ChestplateIcon size={13} /> {t === "iron" ? "Wie Eisen" : t === "diamond" ? "Wie Diamant" : "Wie Netherit"}
+            {(["iron", "diamond", "netherite"] as ArmorTier[]).map((tier) => (
+              <button key={tier} type="button" className="btn small" onClick={() => onChange(armorPreset(tier, item.armorSlot))}>
+                <ChestplateIcon size={13} /> {tier === "iron" ? t("Wie Eisen") : tier === "diamond" ? t("Wie Diamant") : t("Wie Netherit")}
               </button>
             ))}
           </div>
         </div>
-        <Field label={`Rüstungspunkte · ${item.defense / 2} Brustplatten`}>
+        <Field label={t("Rüstungspunkte · {v0} Brustplatten", { v0: item.defense / 2 })}>
           <input type="range" className="range full" min={0} max={20} value={item.defense} onChange={(e) => onChange({ defense: Number(e.target.value) })} />
         </Field>
-        <Field label="Härte" hint="Diamant 2 · Netherit 3">
+        <Field label={t("Härte")} hint={t("Diamant 2 · Netherit 3")}>
           <Num value={item.toughness} min={0} max={20} step={0.5} onChange={(v) => onChange({ toughness: v })} />
         </Field>
-        <Field label="Rückstoßresistenz" hint="0 bis 1">
+        <Field label={t("Rückstoßresistenz")} hint={t("0 bis 1")}>
           <Num value={item.knockbackResistance} min={0} max={1} step={0.05} onChange={(v) => onChange({ knockbackResistance: v })} />
         </Field>
-        <Field label="Haltbarkeits-Faktor" hint="Eisen 15 · Diamant 33">
+        <Field label={t("Haltbarkeits-Faktor")} hint={t("Eisen 15 · Diamant 33")}>
           <Num value={item.durability} min={1} max={200} onChange={(v) => onChange({ durability: v })} />
         </Field>
-        <Field label="Verzauberbarkeit">
+        <Field label={t("Verzauberbarkeit")}>
           <Num value={item.enchantability} min={1} max={50} onChange={(v) => onChange({ enchantability: v })} />
         </Field>
-        <Field label="Reparieren am Amboss mit">
-          <ItemField project={project} own={own} value={item.repairItem} onChange={(v) => onChange({ repairItem: v })} placeholder="Kein Reparatur-Item" />
+        <Field label={t("Reparieren am Amboss mit")}>
+          <ItemField project={project} own={own} value={item.repairItem} onChange={(v) => onChange({ repairItem: v })} placeholder={t("Kein Reparatur-Item")} />
         </Field>
         <div className="span-2 muted small">
-          Härte, Rückstoß, Haltbarkeit und Reparatur gelten für das ganze Set (Werte vom ersten Teil). Die getragene Rüstung bekommt eine einfarbige
-          Platzhalter-Textur, die du später ersetzen kannst.
+          {t("Härte, Rückstoß, Haltbarkeit und Reparatur gelten für das ganze Set (Werte vom ersten Teil). Die getragene Rüstung bekommt eine einfarbige Platzhalter-Textur, die du später ersetzen kannst.")}
         </div>
       </div>
     </div>

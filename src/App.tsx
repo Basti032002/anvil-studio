@@ -1,3 +1,4 @@
+import { t, takeReturnNav } from "./i18n";
 import { ContextMenuHost, DialogHost } from "./components/Overlay";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -18,10 +19,10 @@ export function workspaceCommand(cmd: "run" | "stop" | "build") {
   window.dispatchEvent(new CustomEvent("anvil:workspace", { detail: cmd }));
 }
 
-const EDIT_LABELS = { cut: "Ausschneiden", copy: "Kopieren", paste: "Einfügen", selectAll: "Alles markieren" };
+const EDIT_LABELS = { cut: t("Ausschneiden"), copy: t("Kopieren"), paste: t("Einfügen"), selectAll: t("Alles markieren") };
 
 export default function App() {
-  const [nav, setNav] = useState<NavKey>("projects");
+  const [nav, setNav] = useState<NavKey>(() => (takeReturnNav() === "settings" ? "settings" : "projects"));
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [autoRun, setAutoRun] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -54,8 +55,8 @@ export default function App() {
     const b = listen<{ phase: string; downloaded: number; total: number | null }>("java-progress", (e) => {
       const { phase, downloaded, total } = e.payload;
       const mb = (n: number) => (n / 1024 / 1024).toFixed(0);
-      if (phase === "download") setJavaProgress(total ? `Java wird geladen … ${mb(downloaded)} / ${mb(total)} MB` : "Java wird geladen …");
-      else if (phase === "extract") setJavaProgress("Java wird entpackt …");
+      if (phase === "download") setJavaProgress(total ? t("Java wird geladen … {v0} / {v1} MB", { v0: mb(downloaded), v1: mb(total) }) : t("Java wird geladen …"));
+      else if (phase === "extract") setJavaProgress(t("Java wird entpackt …"));
     });
     return () => {
       a.then((f) => f());
@@ -86,24 +87,24 @@ export default function App() {
   }, []);
 
   async function installJava() {
-    setJavaProgress("Starte Download …");
+    setJavaProgress(t("Starte Download …"));
     try {
       setJava(await api.installJava());
-      toast("Java 21 ist installiert.", "success");
+      toast(t("Java 21 ist installiert."), "success");
     } catch (e) {
-      toast(`Java-Installation fehlgeschlagen: ${e}`, "error");
+      toast(t("Java-Installation fehlgeschlagen: {e}", { e: e }), "error");
     } finally {
       setJavaProgress(null);
     }
   }
 
   async function importExisting() {
-    const dir = await pickFolder("Ordner eines bestehenden NeoForge-Projekts wählen");
+    const dir = await pickFolder(t("Ordner eines bestehenden NeoForge-Projekts wählen"));
     if (!dir) return;
     try {
       const p = await importProject(dir, true);
       await reload();
-      toast(`„${p.name}“ wurde importiert.`, "success");
+      toast(t("„{name}“ wurde importiert.", { name: p.name }), "success");
       openWorkspace(p.id);
     } catch (e) {
       toast(String(e), "error");
@@ -118,34 +119,34 @@ export default function App() {
 
   const current = workspaceId ? projects.find((p) => p.id === workspaceId) : undefined;
   const subtitle =
-    nav === "workspace" && current ? current.name : nav === "settings" ? "Einstellungen" : nav === "admin" ? "Entwicklerbereich" : undefined;
+    nav === "workspace" && current ? current.name : nav === "settings" ? t("Einstellungen") : nav === "admin" ? t("Entwicklerbereich") : undefined;
 
   const commands: Command[] = useMemo(() => {
     const inWs = nav === "workspace" && !!current;
     return [
-      { id: "nav-projects", label: "Projekte anzeigen", group: "Navigation", icon: <GridIcon size={15} />, shortcut: "Strg 1", run: () => setNav("projects") },
-      { id: "import", label: "Bestehendes Projekt importieren", group: "Navigation", icon: <PlusIcon size={15} />, run: () => importExisting() },
-      { id: "nav-new", label: "Neues Projekt erstellen", group: "Navigation", icon: <PlusIcon size={15} />, shortcut: "Strg N", run: () => setNav("new") },
-      { id: "nav-settings", label: "Einstellungen öffnen", group: "Navigation", icon: <GearIcon size={15} />, shortcut: "Strg ,", run: () => setNav("settings") },
-      { id: "nav-admin", label: admin ? "Entwicklerbereich öffnen" : "Als Entwickler anmelden", group: "Navigation", icon: <ShieldIcon size={15} />, run: () => setNav("admin") },
-      { id: "ws-run", label: "Starten", group: "Arbeitsbereich", icon: <PlayIcon size={13} />, shortcut: "F5", disabled: !inWs, run: () => workspaceCommand("run") },
-      { id: "ws-stop", label: "Stoppen", group: "Arbeitsbereich", icon: <StopIcon size={13} />, shortcut: "Umschalt F5", disabled: !inWs, run: () => workspaceCommand("stop") },
-      { id: "ws-build", label: "Bauen", group: "Arbeitsbereich", icon: <HammerIcon size={15} />, shortcut: "Strg B", disabled: !inWs, run: () => workspaceCommand("build") },
-      { id: "upd", label: "Nach Updates suchen", group: "Anvil Studio", icon: <RefreshIcon size={15} />, run: () => checkForUpdate(true) },
+      { id: "nav-projects", label: t("Projekte anzeigen"), group: t("Navigation"), icon: <GridIcon size={15} />, shortcut: t("Strg 1"), run: () => setNav("projects") },
+      { id: "import", label: t("Bestehendes Projekt importieren"), group: t("Navigation"), icon: <PlusIcon size={15} />, run: () => importExisting() },
+      { id: "nav-new", label: t("Neues Projekt erstellen"), group: t("Navigation"), icon: <PlusIcon size={15} />, shortcut: t("Strg N"), run: () => setNav("new") },
+      { id: "nav-settings", label: t("Einstellungen öffnen"), group: t("Navigation"), icon: <GearIcon size={15} />, shortcut: t("Strg ,"), run: () => setNav("settings") },
+      { id: "nav-admin", label: admin ? t("Entwicklerbereich öffnen") : t("Als Entwickler anmelden"), group: t("Navigation"), icon: <ShieldIcon size={15} />, run: () => setNav("admin") },
+      { id: "ws-run", label: t("Starten"), group: t("Arbeitsbereich"), icon: <PlayIcon size={13} />, shortcut: "F5", disabled: !inWs, run: () => workspaceCommand("run") },
+      { id: "ws-stop", label: t("Stoppen"), group: t("Arbeitsbereich"), icon: <StopIcon size={13} />, shortcut: t("Umschalt F5"), disabled: !inWs, run: () => workspaceCommand("stop") },
+      { id: "ws-build", label: t("Bauen"), group: t("Arbeitsbereich"), icon: <HammerIcon size={15} />, shortcut: t("Strg B"), disabled: !inWs, run: () => workspaceCommand("build") },
+      { id: "upd", label: t("Nach Updates suchen"), group: t("Anvil Studio"), icon: <RefreshIcon size={15} />, run: () => checkForUpdate(true) },
       ...(admin
-        ? [{ id: "publish", label: "Neue Version veröffentlichen", group: "Entwickler", icon: <RocketIcon size={15} />, run: () => setNav("admin") }]
+        ? [{ id: "publish", label: t("Neue Version veröffentlichen"), group: t("Entwickler"), icon: <RocketIcon size={15} />, run: () => setNav("admin") }]
         : []),
       ...projects.map((p) => ({
         id: `p-${p.id}`,
         label: p.name,
-        group: "Projekt öffnen",
+        group: t("Projekt öffnen"),
         icon: <CubeIcon size={15} />,
         run: () => openWorkspace(p.id),
       })),
       ...projects.map((p) => ({
         id: `t-${p.id}`,
         label: `${p.name} testen`,
-        group: "Projekt testen",
+        group: t("Projekt testen"),
         icon: <PlayIcon size={13} />,
         run: () => openWorkspace(p.id, true),
       })),
@@ -177,7 +178,7 @@ export default function App() {
                 onRemove={async (id, mode) => {
                   try {
                     await api.removeProject(id, mode);
-                    toast(mode === "list" ? "Projekt aus der Liste entfernt." : mode === "trash" ? "Projekt in den Papierkorb verschoben." : "Projekt endgültig gelöscht.", "success");
+                    toast(mode === "list" ? t("Projekt aus der Liste entfernt.") : mode === "trash" ? t("Projekt in den Papierkorb verschoben.") : t("Projekt endgültig gelöscht."), "success");
                   } catch (e) {
                     toast(String(e), "error");
                   }
@@ -192,7 +193,7 @@ export default function App() {
                 onCancel={() => setNav("projects")}
                 onCreated={async (p) => {
                   await reload();
-                  toast(`„${p.name}“ wurde erstellt.`, "success");
+                  toast(t("„{name}“ wurde erstellt.", { name: p.name }), "success");
                   openWorkspace(p.id);
                 }}
               />
@@ -202,7 +203,7 @@ export default function App() {
             )}
             {nav === "workspace" && !current && (
               <div className="page">
-                <p className="muted">Kein Projekt geöffnet.</p>
+                <p className="muted">{t("Kein Projekt geöffnet.")}</p>
               </div>
             )}
             {nav === "settings" && <Settings onOpenAdmin={() => setNav("admin")} />}

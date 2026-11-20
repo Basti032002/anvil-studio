@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { useSyncExternalStore } from "react";
 
@@ -104,10 +105,10 @@ export function bump(version: string, kind: BumpKind): string {
 export function relTime(iso: string): string {
   if (!iso) return "";
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (diff < 60) return "gerade eben";
-  if (diff < 3600) return `vor ${Math.floor(diff / 60)} min`;
-  if (diff < 86400) return `vor ${Math.floor(diff / 3600)} Std.`;
-  return `vor ${Math.floor(diff / 86400)} Tagen`;
+  if (diff < 60) return t("gerade eben");
+  if (diff < 3600) return t("vor {v0} min", { v0: Math.floor(diff / 60) });
+  if (diff < 86400) return t("vor {v0} Std.", { v0: Math.floor(diff / 3600) });
+  return t("vor {v0} Tagen", { v0: Math.floor(diff / 86400) });
 }
 
 export function channelOf(version: string): Channel {
@@ -116,4 +117,4 @@ export function channelOf(version: string): Channel {
   return "stable";
 }
 
-export const CHANNEL_LABEL: Record<Channel, string> = { stable: "Stabil", beta: "Beta", dev: "Dev" };
+export const CHANNEL_LABEL: Record<Channel, string> = { stable: t("Stabil"), beta: t("Beta"), dev: t("Dev") };

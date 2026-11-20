@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { confirmDialog, contextMenu, showDialog } from "../components/Overlay";
 import { useEffect, useState } from "react";
 import { api, contentApi, JavaStatus, Project, TASK_LABELS, Task, timeAgo } from "../api";
@@ -49,18 +50,18 @@ export default function ProjectList({ projects, java, javaProgress, onInstallJav
     <div className="page">
       <header className="page-header">
         <div>
-          <div className="eyebrow">Werkstatt</div>
-          <h1>Projekte</h1>
+          <div className="eyebrow">{t("Werkstatt")}</div>
+          <h1>{t("Projekte")}</h1>
           {projects.length > 0 && (
             <div className="project-stats" style={{ marginTop: 8 }}>
               <span>
-                <b>{projects.length}</b>Projekte
+                <b>{projects.length}</b>{t("Projekte")}
               </span>
               <span>
-                <b>{Object.keys(running).length}</b>laufen gerade
+                <b>{Object.keys(running).length}</b>{t("laufen gerade")}
               </span>
               <span>
-                <b>{projects.filter((p) => p.lastRun && !p.lastRun.success).length}</b>mit Fehlern
+                <b>{projects.filter((p) => p.lastRun && !p.lastRun.success).length}</b>{t("mit Fehlern")}
               </span>
             </div>
           )}
@@ -69,15 +70,15 @@ export default function ProjectList({ projects, java, javaProgress, onInstallJav
           <div className="search">
             <SearchIcon size={15} />
             <label htmlFor="search" className="sr-only">
-              Projekte durchsuchen
+              {t("Projekte durchsuchen")}
             </label>
-            <input id="search" type="search" placeholder="Suchen …" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <input id="search" type="search" placeholder={t("Suchen …")} value={query} onChange={(e) => setQuery(e.target.value)} />
           </div>
           <button className="btn" onClick={onImport}>
-            <FolderIcon size={15} /> Importieren
+            <FolderIcon size={15} />{" "}{t("Importieren")}
           </button>
           <button className="btn primary" onClick={onNew}>
-            <PlusIcon size={15} /> Neues Projekt
+            <PlusIcon size={15} />{" "}{t("Neues Projekt")}
           </button>
         </div>
       </header>
@@ -86,15 +87,15 @@ export default function ProjectList({ projects, java, javaProgress, onInstallJav
         <div className="callout warn">
           <AlertIcon size={18} />
           <div className="grow">
-            <div className="callout-title">{java.broken ? "Java 21 ist beschädigt" : "Java 21 fehlt noch"}</div>
+            <div className="callout-title">{java.broken ? t("Java 21 ist beschädigt") : t("Java 21 fehlt noch")}</div>
             <div className="muted small">
               {java.broken
-                ? "Die Installation ist unvollständig (z. B. durch einen abgebrochenen Download). Anvil Studio lädt Java neu und prüft die Datei."
-                : "Wird zum Bauen und Testen gebraucht. Anvil Studio lädt Eclipse Temurin herunter (ca. 190 MB)."}
+                ? t("Die Installation ist unvollständig (z. B. durch einen abgebrochenen Download). Anvil Studio lädt Java neu und prüft die Datei.")
+                : t("Wird zum Bauen und Testen gebraucht. Anvil Studio lädt Eclipse Temurin herunter (ca. 190 MB).")}
             </div>
           </div>
           <button className="btn primary" onClick={onInstallJava} disabled={!!javaProgress}>
-            <CoffeeIcon size={14} /> {javaProgress ?? (java.broken ? "Java reparieren" : "Jetzt installieren")}
+            <CoffeeIcon size={14} /> {javaProgress ?? (java.broken ? t("Java reparieren") : t("Jetzt installieren"))}
           </button>
         </div>
       )}
@@ -104,14 +105,14 @@ export default function ProjectList({ projects, java, javaProgress, onInstallJav
           <div className="empty-icon">
             <CubeIcon size={28} />
           </div>
-          <h2>Deine Werkbank ist noch leer</h2>
-          <p className="muted">Lege deine erste Mod an. Anvil Studio lädt die NeoForge-Vorlage und richtet alles ein.</p>
+          <h2>{t("Deine Werkbank ist noch leer")}</h2>
+          <p className="muted">{t("Lege deine erste Mod an. Anvil Studio lädt die NeoForge-Vorlage und richtet alles ein.")}</p>
           <div className="row center">
             <button className="btn primary" onClick={onNew}>
-              <PlusIcon size={15} /> Erste Mod erstellen
+              <PlusIcon size={15} />{" "}{t("Erste Mod erstellen")}
             </button>
             <button className="btn" onClick={onImport}>
-              <FolderIcon size={15} /> Bestehendes Projekt importieren
+              <FolderIcon size={15} />{" "}{t("Bestehendes Projekt importieren")}
             </button>
           </div>
         </div>
@@ -120,7 +121,7 @@ export default function ProjectList({ projects, java, javaProgress, onInstallJav
           {shown.map((p, i) => (
             <ProjectCard key={p.id} project={p} index={i} running={running[p.id]?.task as Task | undefined} onOpen={onOpen} onTest={onTest} onRemove={onRemove} />
           ))}
-          {shown.length === 0 && <p className="muted">Keine Treffer für „{query}“.</p>}
+          {shown.length === 0 && <p className="muted">{t("Keine Treffer für „{query}“.", { query })}</p>}
         </div>
       )}
     </div>
@@ -145,29 +146,29 @@ function ProjectCard({
   const icon = useProjectIcon(p.id);
   const askRemove = async () => {
     const mode = await showDialog<RemoveMode>({
-      title: `„${p.name}“ entfernen?`,
+      title: t("„{name}“ entfernen?", { name: p.name }),
       icon: <TrashIcon size={20} />,
       danger: true,
       message: (
         <>
-          Du kannst das Projekt nur aus der Liste nehmen (die Dateien bleiben) oder den Projektordner löschen:
+          {t("Du kannst das Projekt nur aus der Liste nehmen (die Dateien bleiben) oder den Projektordner löschen:")}
           <br />
           <code>{p.path}</code>
         </>
       ),
       actions: [
-        { label: "Nur aus Liste", value: "list", kind: "ghost" },
-        { label: "In den Papierkorb", value: "trash" },
-        { label: "Endgültig löschen", value: "delete", kind: "danger" },
+        { label: t("Nur aus Liste"), value: "list", kind: "ghost" },
+        { label: t("In den Papierkorb"), value: "trash" },
+        { label: t("Endgültig löschen"), value: "delete", kind: "danger" },
       ],
     });
     if (!mode) return;
     if (mode === "delete") {
       const sure = await confirmDialog(
-        "Wirklich endgültig löschen?",
-        <>Der Ordner wird mit allen Dateien unwiderruflich gelöscht.</>,
-        "Endgültig löschen",
-        "Abbrechen",
+        t("Wirklich endgültig löschen?"),
+        <>{t("Der Ordner wird mit allen Dateien unwiderruflich gelöscht.")}</>,
+        t("Endgültig löschen"),
+        t("Abbrechen"),
         true,
       );
       if (!sure) return;
@@ -175,19 +176,19 @@ function ProjectCard({
     onRemove(p.id, mode);
   };
   const menu = contextMenu(() => [
-    { label: "Öffnen", icon: <ArrowRightIcon size={15} />, onClick: () => onOpen(p.id) },
-    { label: "Testen", icon: <PlayIcon size={15} />, onClick: () => onTest(p.id), disabled: !!running },
+    { label: t("Öffnen"), icon: <ArrowRightIcon size={15} />, onClick: () => onOpen(p.id) },
+    { label: t("Testen"), icon: <PlayIcon size={15} />, onClick: () => onTest(p.id), disabled: !!running },
     "separator",
-    { label: "Im Explorer zeigen", icon: <FolderOpenIcon size={15} />, onClick: () => api.openIn(p.id, "folder").catch((e) => toast(String(e), "error")) },
-    { label: "In VS Code öffnen", icon: <CodeIcon size={15} />, onClick: () => api.openIn(p.id, "code").catch((e) => toast(String(e), "error")) },
-    { label: "Pfad kopieren", icon: <CopyIcon size={15} />, onClick: () => navigator.clipboard.writeText(p.path).then(() => toast("Pfad kopiert.", "success")) },
+    { label: t("Im Explorer zeigen"), icon: <FolderOpenIcon size={15} />, onClick: () => api.openIn(p.id, "folder").catch((e) => toast(String(e), "error")) },
+    { label: t("In VS Code öffnen"), icon: <CodeIcon size={15} />, onClick: () => api.openIn(p.id, "code").catch((e) => toast(String(e), "error")) },
+    { label: t("Pfad kopieren"), icon: <CopyIcon size={15} />, onClick: () => navigator.clipboard.writeText(p.path).then(() => toast(t("Pfad kopiert."), "success")) },
     "separator",
-    { label: "Entfernen …", icon: <TrashIcon size={15} />, danger: true, onClick: askRemove, disabled: !!running },
+    { label: t("Entfernen …"), icon: <TrashIcon size={15} />, danger: true, onClick: askRemove, disabled: !!running },
   ]);
   return (
     <article className="card" style={{ "--i": index } as React.CSSProperties} {...menu}>
-      {running && <span className="card-live">läuft</span>}
-      <button className="card-top" onClick={() => onOpen(p.id)} aria-label={`${p.name} öffnen`}>
+      {running && <span className="card-live">{t("läuft")}</span>}
+      <button className="card-top" onClick={() => onOpen(p.id)} aria-label={t("{name} öffnen", { name: p.name })}>
         <span className="card-icon">{icon ? <img src={icon} alt="" /> : p.name.slice(0, 1).toUpperCase()}</span>
         <span className="min0">
           <div className="card-title ellipsis">{p.name}</div>
@@ -195,22 +196,22 @@ function ProjectCard({
         </span>
       </button>
       <div className="card-meta">
-        <span className="tag">NeoForge</span>
-        <span className="tag">Minecraft {p.mcVersion}</span>
+        <span className="tag">{t("NeoForge")}</span>
+        <span className="tag">{t("Minecraft")}{" "}{p.mcVersion}</span>
       </div>
       <Status project={p} runningTask={running} />
       <div className="card-actions">
         <button className="btn" onClick={() => onOpen(p.id)}>
-          <ArrowRightIcon size={14} /> Öffnen
+          <ArrowRightIcon size={14} />{" "}{t("Öffnen")}
         </button>
         <button className="btn primary" onClick={() => onTest(p.id)} disabled={!!running}>
-          <PlayIcon size={12} /> Testen
+          <PlayIcon size={12} />{" "}{t("Testen")}
         </button>
         <button
           className="icon-btn"
           style={{ flex: "none" }}
-          aria-label="Entfernen"
-          data-tip="Entfernen"
+          aria-label={t("Entfernen")}
+          data-tip={t("Entfernen")}
           disabled={!!running}
           onClick={askRemove}
         >
@@ -225,7 +226,7 @@ function Status({ project, runningTask }: { project: Project; runningTask?: Task
   if (runningTask) {
     return (
       <div className="status">
-        <span className="pulse-dot" /> {TASK_LABELS[runningTask] ?? runningTask} läuft …
+        <span className="pulse-dot" /> {TASK_LABELS[runningTask] ?? runningTask}{" "}{t("läuft …")}
       </div>
     );
   }
@@ -233,18 +234,18 @@ function Status({ project, runningTask }: { project: Project; runningTask?: Task
   if (!r) {
     return (
       <div className="status muted">
-        <span className="dot none" /> Noch nie gebaut
+        <span className="dot none" />{" "}{t("Noch nie gebaut")}
       </div>
     );
   }
   const label = TASK_LABELS[r.task as Task] ?? r.task;
   return r.success ? (
     <div className="status">
-      <span className="dot ok" /> {label} erfolgreich · {timeAgo(r.finishedAt)}
+      <span className="dot ok" /> {t("{label} erfolgreich · {time}", { label, time: timeAgo(r.finishedAt) })}
     </div>
   ) : (
     <div className="status error-text">
-      <span className="dot fail" /> {label} fehlgeschlagen · {timeAgo(r.finishedAt)}
+      <span className="dot fail" /> {t("{label} fehlgeschlagen · {time}", { label, time: timeAgo(r.finishedAt) })}
     </div>
   );
 }

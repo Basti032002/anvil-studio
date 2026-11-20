@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { invoke } from "@tauri-apps/api/core";
 
 export type LastRun = { task: string; success: boolean; finishedAt: number };
@@ -51,19 +52,19 @@ export const api = {
 };
 
 export const TASK_LABELS: Record<Task, string> = {
-  runClient: "Testen (Client)",
-  runServer: "Server",
-  runData: "Datagen",
-  build: "Bauen",
-  clean: "Aufräumen",
+  runClient: t("Testen (Client)"),
+  runServer: t("Server"),
+  runData: t("Datagen"),
+  build: t("Bauen"),
+  clean: t("Aufräumen"),
 };
 
 export function timeAgo(seconds: number): string {
   const diff = Math.max(0, Date.now() / 1000 - seconds);
-  if (diff < 60) return "gerade eben";
-  if (diff < 3600) return `vor ${Math.floor(diff / 60)} min`;
-  if (diff < 86400) return `vor ${Math.floor(diff / 3600)} Std.`;
-  return `vor ${Math.floor(diff / 86400)} Tagen`;
+  if (diff < 60) return t("gerade eben");
+  if (diff < 3600) return t("vor {v0} min", { v0: Math.floor(diff / 60) });
+  if (diff < 86400) return t("vor {v0} Std.", { v0: Math.floor(diff / 3600) });
+  return t("vor {v0} Tagen", { v0: Math.floor(diff / 86400) });
 }
 
 // ---- Einstellungen & Updates -------------------------------------------
@@ -174,13 +175,37 @@ export type ItemDef = {
   toughness: number;
   knockbackResistance: number;
 };
+export type TexKind = "block" | "item" | "armor" | "armor_legs" | "entity";
+export type MobModel = "cow" | "pig" | "chicken" | "zombie" | "spider" | "creeper";
+export type MobDef = {
+  id: string;
+  nameDe: string;
+  nameEn: string;
+  model: MobModel;
+  health: number;
+  speed: number;
+  attackDamage: number;
+  eggPrimary: string;
+  eggSecondary: string;
+  spawn: boolean;
+  biomes: string;
+  weight: number;
+  groupMin: number;
+  groupMax: number;
+  drop: string;
+  dropMin: number;
+  dropMax: number;
+};
+export const mcEntityTexture = (version: string, model: string) => invoke<string | null>("mc_entity_texture", { version, model });
 export type Content = {
   schemaVersion: number;
   generatorVersion: number;
   blocks: BlockDef[];
   items: ItemDef[];
+  mobs: MobDef[];
   generatedBlocks: string[];
   generatedItems: string[];
+  generatedMobs: string[];
   tabIcon: string;
   tabName: string;
 };
@@ -203,8 +228,8 @@ export type FileEntry = { name: string; rel: string; isDir: boolean; size: numbe
 export const contentApi = {
   load: (projectId: string) => invoke<Content>("content_load", { projectId }),
   save: (projectId: string, content: Content) => invoke<{ content: Content; registration: string }>("content_save", { projectId, content }),
-  textureGet: (projectId: string, kind: "block" | "item" | "armor" | "armor_legs", id: string) => invoke<string | null>("texture_get", { projectId, kind, id }),
-  textureSave: (projectId: string, kind: "block" | "item" | "armor" | "armor_legs", id: string, pngBase64: string) => invoke<void>("texture_save", { projectId, kind, id, pngBase64 }),
+  textureGet: (projectId: string, kind: TexKind, id: string) => invoke<string | null>("texture_get", { projectId, kind, id }),
+  textureSave: (projectId: string, kind: TexKind, id: string, pngBase64: string) => invoke<void>("texture_save", { projectId, kind, id, pngBase64 }),
   open: (projectId: string) => invoke<string[]>("project_open", { projectId }),
 };
 

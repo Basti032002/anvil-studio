@@ -1,4 +1,5 @@
-import { ArmorSlot, BlockDef, BlockShape, ItemDef, OreDef, Recipe, ToolType } from "../../api";
+import { t } from "../../i18n";
+import { ArmorSlot, BlockDef, BlockShape, ItemDef, MobDef, MobModel, OreDef, Recipe, ToolType } from "../../api";
 import type { McElement, McIconDef } from "../../iconRender";
 
 export const emptyRecipe = (): Recipe => ({ enabled: false, kind: "crafting", shaped: true, grid: Array(9).fill(""), count: 1, experience: 0.1, cookingTime: 200 });
@@ -56,8 +57,8 @@ const itemBase = {
 
 export const newItem = (id: string, kind: ItemDef["kind"] = "basic"): ItemDef => ({
   id,
-  nameDe: kind === "tool" ? "Neues Werkzeug" : kind === "armor" ? "Neue Rüstung" : "Neues Item",
-  nameEn: kind === "tool" ? "New Tool" : kind === "armor" ? "New Armor" : "New Item",
+  nameDe: kind === "tool" ? t("Neues Werkzeug") : kind === "armor" ? t("Neue Rüstung") : t("Neues Item"),
+  nameEn: kind === "tool" ? t("New Tool") : kind === "armor" ? t("New Armor") : t("New Item"),
   recipe: emptyRecipe(),
   kind,
   ...itemBase,
@@ -124,17 +125,18 @@ export function armorPreset(tier: ArmorTier, slot: ArmorSlot): Partial<ItemDef> 
   return { armorSlot: slot, durability: a.dur, defense: a.def[slot], enchantability: a.ench, toughness: a.tough, knockbackResistance: a.kb, stackSize: 1 };
 }
 
-export const SLOT_LABEL: Record<ArmorSlot, string> = { helmet: "Helm", chestplate: "Brustpanzer", leggings: "Hose", boots: "Stiefel" };
+export const SLOT_LABEL: Record<ArmorSlot, string> = { helmet: t("Helm"), chestplate: t("Brustpanzer"), leggings: t("Hose"), boots: t("Stiefel") };
+export const SLOT_DE: Record<ArmorSlot, string> = { helmet: "Helm", chestplate: "Brustpanzer", leggings: "Hose", boots: "Stiefel" };
 export const SLOT_EN: Record<ArmorSlot, string> = { helmet: "Helmet", chestplate: "Chestplate", leggings: "Leggings", boots: "Boots" };
-export const TOOL_LABEL: Record<ToolType, string> = { sword: "Schwert", pickaxe: "Spitzhacke", axe: "Axt", shovel: "Schaufel", hoe: "Hacke" };
+export const TOOL_LABEL: Record<ToolType, string> = { sword: t("Schwert"), pickaxe: t("Spitzhacke"), axe: t("Axt"), shovel: t("Schaufel"), hoe: t("Hacke") };
 
 // ---- Formen ---------------------------------------------------------------
 
 export const SHAPES: { id: BlockShape; label: string; en: string }[] = [
-  { id: "stairs", label: "Treppe", en: "Stairs" },
-  { id: "slab", label: "Stufe", en: "Slab" },
-  { id: "wall", label: "Mauer", en: "Wall" },
-  { id: "fence", label: "Zaun", en: "Fence" },
+  { id: "stairs", label: t("Treppe"), en: "Stairs" },
+  { id: "slab", label: t("Stufe"), en: "Slab" },
+  { id: "wall", label: t("Mauer"), en: "Wall" },
+  { id: "fence", label: t("Zaun"), en: "Fence" },
 ];
 
 export function variantIds(b: BlockDef): { id: string; shape: BlockShape | "block" | "deepslate"; name: string }[] {
@@ -168,4 +170,99 @@ export function shapeIcon(shape: BlockShape | "block" | "deepslate", tex: string
     default:
       return { kind: "cube", top: tex, side: tex };
   }
+}
+
+// ---- Kreaturen ------------------------------------------------------------
+
+
+export const MOB_MODELS: { id: MobModel; label: string; hostile: boolean; health: number; speed: number; attack: number; egg: [string, string] }[] = [
+  { id: "cow", label: t("Kuh"), hostile: false, health: 10, speed: 0.2, attack: 0, egg: ["#443626", "#a1a1a1"] },
+  { id: "pig", label: t("Schwein"), hostile: false, health: 10, speed: 0.25, attack: 0, egg: ["#f0a5a2", "#db635f"] },
+  { id: "chicken", label: t("Huhn"), hostile: false, health: 4, speed: 0.25, attack: 0, egg: ["#a1a1a1", "#ff0000"] },
+  { id: "zombie", label: t("Zombie"), hostile: true, health: 20, speed: 0.23, attack: 3, egg: ["#00afaf", "#799c65"] },
+  { id: "spider", label: t("Spinne"), hostile: true, health: 16, speed: 0.3, attack: 2, egg: ["#342d27", "#a80e0e"] },
+  { id: "creeper", label: t("Creeper"), hostile: true, health: 20, speed: 0.25, attack: 0, egg: ["#0da70b", "#000000"] },
+];
+
+export const newMob = (id: string, model: MobModel = "cow"): MobDef => {
+  const m = MOB_MODELS.find((x) => x.id === model)!;
+  return {
+    id,
+    nameDe: "Neue Kreatur",
+    nameEn: "New Creature",
+    model,
+    health: m.health,
+    speed: m.speed,
+    attackDamage: m.attack,
+    eggPrimary: m.egg[0],
+    eggSecondary: m.egg[1],
+    spawn: true,
+    biomes: m.hostile ? "overworld" : "plains",
+    weight: m.hostile ? 60 : 8,
+    groupMin: m.hostile ? 1 : 2,
+    groupMax: m.hostile ? 3 : 4,
+    drop: "",
+    dropMin: 0,
+    dropMax: 2,
+  };
+};
+
+export function normalizeMob(m: MobDef): MobDef {
+  return { ...newMob(m.id, m.model ?? "cow"), ...m };
+}
+
+export const BIOMES: { id: string; label: string }[] = [
+  { id: "overworld", label: t("Ganze Oberwelt") },
+  { id: "plains", label: t("Ebenen & Wiesen") },
+  { id: "forest", label: t("Wälder") },
+  { id: "jungle", label: t("Dschungel") },
+  { id: "taiga", label: t("Taiga") },
+  { id: "savanna", label: t("Savanne") },
+  { id: "desert", label: t("Wüste & Tafelberge") },
+  { id: "snowy", label: t("Schneegebiete") },
+  { id: "mountain", label: t("Berge") },
+  { id: "beach", label: t("Strände") },
+  { id: "nether", label: t("Nether") },
+  { id: "end", label: t("Ende") },
+];
+
+const eggCache = new Map<string, string>();
+/** Spawn-Ei als Bild (gleiche Form wie die erzeugte Textur). */
+export function eggDataUrl(primary: string, secondary: string): string {
+  const key = primary + secondary;
+  const hit = eggCache.get(key);
+  if (hit) return hit;
+  const hex = (h: string) => {
+    const n = parseInt(h.replace("#", ""), 16) || 0x888888;
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+  const p = hex(primary);
+  const sc = hex(secondary);
+  const inside = (x: number, y: number) => {
+    const ry = y < 9 ? 6.8 : 5.6;
+    const rx = 4.6 + Math.min(Math.max(y - 3, 0), 6) * 0.12;
+    return ((x - 7.5) / rx) ** 2 + ((y - 9) / ry) ** 2 <= 1;
+  };
+  const spots = new Set(["6,5", "9,7", "5,9", "6,9", "10,11", "7,13", "8,13", "9,4", "4,11"]);
+  const c = document.createElement("canvas");
+  c.width = 16;
+  c.height = 16;
+  const g = c.getContext("2d")!;
+  const img = g.createImageData(16, 16);
+  for (let y = 0; y < 16; y++)
+    for (let x = 0; x < 16; x++) {
+      if (!inside(x, y)) continue;
+      const edge = !inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1);
+      const base = spots.has(`${x},${y}`) ? sc : p;
+      const f = edge ? 0.62 : x >= 9 && y >= 10 ? 0.85 : x <= 5 && y <= 7 ? 1.15 : 1;
+      const i = (y * 16 + x) * 4;
+      img.data[i] = Math.min(255, base[0] * f);
+      img.data[i + 1] = Math.min(255, base[1] * f);
+      img.data[i + 2] = Math.min(255, base[2] * f);
+      img.data[i + 3] = 255;
+    }
+  g.putImageData(img, 0, 0);
+  const url = c.toDataURL();
+  eggCache.set(key, url);
+  return url;
 }

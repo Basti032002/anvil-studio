@@ -455,3 +455,71 @@ mod tests {
         assert!(none < 80, "zu viele ohne Icon: {none}");
     }
 }
+
+/// Vanilla-Textur einer Kreatur aus dem Minecraft-Client (als Vorlage zum Bemalen).
+#[tauri::command]
+pub async fn mc_entity_texture(app: AppHandle, version: String, model: String) -> Result<Option<String>, String> {
+    let cache = cache_dir(&app, &version)?;
+    let jar_path = cache.join("client.jar");
+    if !jar_path.exists() {
+        mc_catalog(app.clone(), version.clone()).await?;
+    }
+    let candidates: &[&str] = match model.as_str() {
+        "pig" => &["entity/pig/temperate_pig", "entity/pig/pig"],
+        "chicken" => &["entity/chicken/temperate_chicken", "entity/chicken"],
+        "zombie" => &["entity/zombie/zombie"],
+        "spider" => &["entity/spider/spider"],
+        "creeper" => &["entity/creeper/creeper"],
+        _ => &["entity/cow/temperate_cow", "entity/cow/cow"],
+    };
+    let file = std::fs::File::open(&jar_path).map_err(err)?;
+    let mut jar = Jar { zip: zip::ZipArchive::new(file).map_err(err)? };
+    for c in candidates {
+        if let Some(bytes) = jar.read(&format!("assets/minecraft/textures/{c}.png")) {
+            return Ok(Some(base64::engine::general_purpose::STANDARD.encode(bytes)));
+        }
+    }
+    Ok(None)
+}
+
+/// Minecraft-Namen in einer weiteren Sprache (z. B. "fr_fr"): Item-ID → Name.
+/// Lädt die Sprachdatei einmal aus dem Asset-Index von Mojang.
+#[tauri::command]
+pub async fn mc_names(app: AppHandle, version: String, code: String) -> Result<HashMap<String, String>, String> {
+    if code.len() > 8 || !code.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
+        return Err("Ungültige Sprache".into());
+    }
+    let cache = cache_dir(&app, &version)?;
+    std::fs::create_dir_all(&cache).map_err(err)?;
+    let path = cache.join(format!("{code}.json"));
+    if !path.exists() {
+        let manifest = get_json(MANIFEST).await?;
+        let url = manifest["versions"]
+            .as_array()
+            .and_then(|a| a.iter().find(|v| v["id"] == version))
+            .and_then(|v| v["url"].as_str())
+            .ok_or_else(|| format!("Minecraft {version} nicht im Versionsverzeichnis gefunden."))?
+            .to_string();
+        let info = get_json(&url).await?;
+        let index = get_json(info["assetIndex"]["url"].as_str().ok_or("Asset-Index fehlt")?).await?;
+        match index["objects"][format!("minecraft/lang/{code}.json")]["hash"].as_str() {
+            Some(hash) => {
+                let url = format!("https://resources.download.minecraft.net/{}/{hash}", &hash[..2]);
+                download(&url, &path, &|_, _| {}).await?;
+            }
+            None => std::fs::write(&path, "{}").map_err(err)?,
+        }
+    }
+    let lang: HashMap<String, String> = std::fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    let mut out = HashMap::new();
+    for (k, v) in lang {
+        for prefix in ["block.minecraft.", "item.minecraft."] {
+            if let Some(id) = k.strip_prefix(prefix) {
+                if !id.contains('.') {
+                    out.insert(format!("minecraft:{id}"), v.clone());
+                }
+            }
+        }
+    }
+    Ok(out)
+}

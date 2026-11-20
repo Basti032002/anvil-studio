@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 // Kleiner globaler Speicher für Logs und laufende Prozesse,
 // damit nichts verloren geht, wenn man zwischen Ansichten wechselt.
 import { listen } from "@tauri-apps/api/event";
@@ -76,7 +77,7 @@ export async function initStore() {
       const { [projectId]: _removed, ...rest } = running;
       running = rest;
       lastExit = { ...lastExit, [projectId]: { task, success, at: Date.now() / 1000 } };
-      pushLog(projectId, success ? "Beendet" : `Beendet mit Fehler (Code ${e.payload.code ?? "?"})`);
+      pushLog(projectId, success ? t("Beendet") : t("Beendet mit Fehler (Code {v0})", { v0: e.payload.code ?? "?" }));
       notify();
     },
   );

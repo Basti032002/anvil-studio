@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 // Eigene Dialoge und Rechtsklick-Menüs (ersetzen confirm() und das Browser-Menü).
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
@@ -175,13 +176,13 @@ export function ContextMenuHost({ editLabels }: { editLabels: { cut: string; cop
       const selection = window.getSelection()?.toString() ?? "";
       if (!field && !selection) return;
       const items: MenuItem[] = [];
-      if (editable) items.push({ label: editLabels.cut, icon: <ScissorsIcon size={15} />, hint: "Strg X", onClick: () => document.execCommand("cut") });
-      items.push({ label: editLabels.copy, icon: <CopyIcon size={15} />, hint: "Strg C", onClick: () => document.execCommand("copy") });
+      if (editable) items.push({ label: editLabels.cut, icon: <ScissorsIcon size={15} />, hint: t("Strg X"), onClick: () => document.execCommand("cut") });
+      items.push({ label: editLabels.copy, icon: <CopyIcon size={15} />, hint: t("Strg C"), onClick: () => document.execCommand("copy") });
       if (editable)
         items.push({
           label: editLabels.paste,
           icon: <ClipboardIcon size={15} />,
-          hint: "Strg V",
+          hint: t("Strg V"),
           onClick: async () => {
             field!.focus();
             try {
@@ -194,7 +195,7 @@ export function ContextMenuHost({ editLabels }: { editLabels: { cut: string; cop
         });
       if (field) {
         items.push("separator");
-        items.push({ label: editLabels.selectAll, icon: <SelectAllIcon size={15} />, hint: "Strg A", onClick: () => (field.focus(), field.select()) });
+        items.push({ label: editLabels.selectAll, icon: <SelectAllIcon size={15} />, hint: t("Strg A"), onClick: () => (field.focus(), field.select()) });
       }
       menuStore.set({ x: e.clientX, y: e.clientY, items });
     };

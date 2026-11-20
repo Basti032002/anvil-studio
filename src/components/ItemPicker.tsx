@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Catalog, McIconDef } from "../api";
@@ -85,29 +86,29 @@ export default function ItemPicker({
   }, [catalog, own, ownTextures, query, cat, modId]);
 
   const cats: [Cat, string][] = [
-    ["all", "Alle"],
-    ["block", "Blöcke"],
-    ["item", "Items"],
-    ["own", `Eigene (${own.length})`],
-    ["tags", "Tags"],
+    ["all", t("Alle")],
+    ["block", t("Blöcke")],
+    ["item", t("Items")],
+    ["own", t("Eigene ({length})", { length: own.length })],
+    ["tags", t("Tags")],
   ];
 
   return createPortal(
     <div className="picker-overlay" onMouseDown={onClose}>
-      <div className="picker" role="dialog" aria-label="Item auswählen" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="picker" role="dialog" aria-label={t("Item auswählen")} onMouseDown={(e) => e.stopPropagation()}>
         <div className="picker-head">
           <div className="search">
             <SearchIcon size={16} />
             <input
               ref={input}
               value={query}
-              placeholder="Block oder Item suchen … z. B. Diamant, oak, Bretter"
-              aria-label="Suchen"
+              placeholder={t("Block oder Item suchen … z. B. Diamant, oak, Bretter")}
+              aria-label={t("Suchen")}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && rows[0] && onPick(rows[0].id)}
             />
           </div>
-          <button className="icon-btn" aria-label="Schließen" onClick={onClose}>
+          <button className="icon-btn" aria-label={t("Schließen")} onClick={onClose}>
             <CloseIcon size={13} />
           </button>
         </div>
@@ -130,14 +131,14 @@ export default function ItemPicker({
               <div className="bar indeterminate">
                 <span />
               </div>
-              <p>{progress ?? "Minecraft-Daten werden vorbereitet …"}</p>
-              <p className="small">Einmalig pro Minecraft-Version: Anvil Studio lädt den offiziellen Client von Mojang und liest daraus alle Blöcke und Items.</p>
+              <p>{progress ?? t("Minecraft-Daten werden vorbereitet …")}</p>
+              <p className="small">{t("Einmalig pro Minecraft-Version: Anvil Studio lädt den offiziellen Client von Mojang und liest daraus alle Blöcke und Items.")}</p>
             </div>
           )}
           {error && cat !== "own" && (
             <div className="picker-state">
               <p className="error-text">{error}</p>
-              <p className="small">Eigene Inhalte und Tags kannst du trotzdem auswählen, oder eine ID direkt eintippen und Enter drücken.</p>
+              <p className="small">{t("Eigene Inhalte und Tags kannst du trotzdem auswählen, oder eine ID direkt eintippen und Enter drücken.")}</p>
             </div>
           )}
           {rows.slice(0, limit).map((r) => (
@@ -148,10 +149,10 @@ export default function ItemPicker({
           ))}
           {!loading && rows.length === 0 && (
             <div className="picker-state">
-              <p>Nichts gefunden.</p>
+              <p>{t("Nichts gefunden.")}</p>
               {/^#?[a-z0-9_.-]+:[a-z0-9_./-]+$/.test(query.trim()) && (
                 <button className="btn small" onClick={() => onPick(query.trim())}>
-                  <CheckIcon size={14} /> „{query.trim()}“ verwenden
+                  <CheckIcon size={14} /> {t("„{query}“ verwenden", { query: query.trim() })}
                 </button>
               )}
             </div>
@@ -159,10 +160,10 @@ export default function ItemPicker({
         </div>
         <div className="picker-foot">
           <span>
-            {rows.length} Treffer · Minecraft {mcVersion}
+            {rows.length}{" "}{t("Treffer · Minecraft")}{" "}{mcVersion}
           </span>
           <span>
-            <kbd>Enter</kbd> erstes übernehmen · <kbd>Esc</kbd> schließen
+            <kbd>Enter</kbd> {t("erstes übernehmen")} · <kbd>Esc</kbd> {t("schließen")}
           </span>
         </div>
       </div>

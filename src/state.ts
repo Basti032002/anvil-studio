@@ -1,3 +1,4 @@
+import { t, translateMessage } from "./i18n";
 // Globale Zustände außerhalb von Projekten: Einstellungen, Toasts, Updates.
 import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
@@ -75,7 +76,7 @@ export async function updateSettings(patch: Partial<Settings>) {
   try {
     settingsStore.set(await settingsApi.save(optimistic));
   } catch (e) {
-    toast(`Einstellungen konnten nicht gespeichert werden: ${e}`, "error");
+    toast(t("Einstellungen konnten nicht gespeichert werden: {e}", { e: e }), "error");
   }
 }
 
@@ -88,7 +89,7 @@ let toastId = 1;
 
 export function toast(text: string, kind: Toast["kind"] = "info", ms = 4500) {
   const id = toastId++;
-  toastStore.set((list) => [...list.slice(-3), { id, text, kind }]);
+  toastStore.set((list) => [...list.slice(-3), { id, text: translateMessage(text), kind }]);
   setTimeout(() => dismissToast(id), ms);
 }
 
@@ -127,18 +128,18 @@ export async function checkForUpdate(manual = false) {
     settingsStore.set({ ...(settingsStore.get() ?? s), lastUpdateCheck: Math.floor(Date.now() / 1000) });
     if (!info) {
       updateStore.set({ phase: "none" });
-      if (manual) toast("Du hast die neueste Version.", "success");
+      if (manual) toast(t("Du hast die neueste Version."), "success");
       return;
     }
     updateStore.set({ phase: "available", info });
     if (s.autoInstall && !manual) {
-      toast(`Update ${info.version} gefunden – wird automatisch installiert.`, "info");
+      toast(t("Update {version} gefunden – wird automatisch installiert.", { version: info.version }), "info");
       installWhenIdle();
     } else {
-      toast(`Update ${info.version} ist verfügbar.`, "info");
+      toast(t("Update {version} ist verfügbar.", { version: info.version }), "info");
     }
   } catch (e) {
-    updateStore.set({ phase: "error", error: String(e) });
+    updateStore.set({ phase: "error", error: translateMessage(String(e)) });
     if (manual) toast(String(e), "error");
   }
 }
@@ -163,7 +164,7 @@ export async function installUpdate() {
   const { info } = updateStore.get();
   if (!info) return;
   if (import.meta.env.DEV) {
-    toast("Im Entwicklungsmodus werden keine Updates installiert.", "info");
+    toast(t("Im Entwicklungsmodus werden keine Updates installiert."), "info");
     return;
   }
   updateStore.set({ phase: "downloading", info, progress: 0 });
@@ -171,8 +172,8 @@ export async function installUpdate() {
     await settingsApi.installUpdate(info);
     updateStore.set({ phase: "installing", info, progress: 1 });
   } catch (e) {
-    updateStore.set({ phase: "error", info, error: String(e) });
-    toast(`Update fehlgeschlagen: ${e}`, "error");
+    updateStore.set({ phase: "error", info, error: translateMessage(String(e)) });
+    toast(t("Update fehlgeschlagen: {e}", { e: e }), "error");
   }
 }
 

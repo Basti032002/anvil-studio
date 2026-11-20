@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useEffect, useRef, useState } from "react";
 import { contentApi } from "../../api";
 import { BucketIcon, CheckIcon, EraserIcon, GridToggleIcon, MirrorIcon, PencilIcon, PipetteIcon, RedoIcon, TrashIcon, UndoIcon } from "../../icons";
@@ -9,8 +10,8 @@ const PALETTE = [
 ];
 
 type Tool = "pencil" | "eraser" | "fill" | "picker";
-export type TexKind = "block" | "item" | "armor" | "armor_legs";
-type Props = { projectId: string; kind: TexKind; id: string; onSaved?: (dataUrl: string) => void };
+export type TexKind = "block" | "item" | "armor" | "armor_legs" | "entity";
+type Props = { projectId: string; kind: TexKind; id: string; onSaved?: (dataUrl: string) => void; reload?: number };
 
 function hexToRgba(hex: string): [number, number, number, number] {
   const n = parseInt(hex.slice(1), 16);
@@ -20,10 +21,12 @@ function rgbaToHex(r: number, g: number, b: number) {
   return "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
 
-export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
-  const wide = kind === "armor" || kind === "armor_legs";
-  const W = wide ? 64 : 16;
-  const H = wide ? 32 : 16;
+export default function PixelEditor({ projectId, kind, id, onSaved, reload }: Props) {
+  const wide = kind === "armor" || kind === "armor_legs" || kind === "entity";
+  const [dims, setDims] = useState(() => (wide ? { w: 64, h: 32 } : { w: 16, h: 16 }));
+  const W = dims.w;
+  const H = dims.h;
+  const tall = H > 32;
   const canvas = useRef<HTMLCanvasElement>(null);
   const pixels = useRef<Uint8ClampedArray>(new Uint8ClampedArray(W * H * 4));
   const undo = useRef<Uint8ClampedArray[]>([]);
@@ -61,14 +64,18 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
       const img = new Image();
       img.onload = () => {
         if (cancelled) return;
+        // Kreaturen-Texturen behalten ihre Größe (64×32 oder 64×64)
+        const w = kind === "entity" ? Math.min(img.width, 128) : W;
+        const h = kind === "entity" ? Math.min(img.height, 128) : H;
         const off = document.createElement("canvas");
-        off.width = W;
-        off.height = H;
+        off.width = w;
+        off.height = h;
         const c = off.getContext("2d")!;
         c.imageSmoothingEnabled = false;
-        c.drawImage(img, 0, 0, W, H);
-        pixels.current = c.getImageData(0, 0, W, H).data;
-        render();
+        c.drawImage(img, 0, 0, w, h);
+        pixels.current = c.getImageData(0, 0, w, h).data;
+        if (w !== W || h !== H) setDims({ w, h });
+        else render();
         force((x) => x + 1);
       };
       img.src = `data:image/png;base64,${b64}`;
@@ -76,7 +83,12 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [projectId, kind, id]);
+  }, [projectId, kind, id, reload]);
+
+  // Nach einer Größenänderung neu zeichnen
+  useEffect(() => {
+    render();
+  }, [dims]);
 
   function scheduleSave() {
     setStatus("saving");
@@ -88,7 +100,7 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
         setStatus("saved");
         onSaved?.(url);
       } catch (e) {
-        toast(`Textur nicht gespeichert: ${e}`, "error");
+        toast(t("Textur nicht gespeichert: {e}", { e: e }), "error");
         setStatus("idle");
       }
     }, 500);
@@ -194,37 +206,37 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
   }
 
   const tools: { t: Tool; label: string; key: string; icon: React.ReactNode }[] = [
-    { t: "pencil", label: "Stift", key: "B", icon: <PencilIcon size={16} /> },
-    { t: "eraser", label: "Radierer", key: "E", icon: <EraserIcon size={16} /> },
-    { t: "fill", label: "Füllen", key: "G", icon: <BucketIcon size={16} /> },
-    { t: "picker", label: "Pipette", key: "I", icon: <PipetteIcon size={16} /> },
+    { t: "pencil", label: t("Stift"), key: "B", icon: <PencilIcon size={16} /> },
+    { t: "eraser", label: t("Radierer"), key: "E", icon: <EraserIcon size={16} /> },
+    { t: "fill", label: t("Füllen"), key: "G", icon: <BucketIcon size={16} /> },
+    { t: "picker", label: t("Pipette"), key: "I", icon: <PipetteIcon size={16} /> },
   ];
 
   return (
     <div className="pixel">
       <div className="pixel-main">
-        <div className="pixel-tools" role="toolbar" aria-label="Werkzeuge">
+        <div className="pixel-tools" role="toolbar" aria-label={t("Werkzeuge")}>
           {tools.map((x) => (
             <button key={x.t} className={tool === x.t ? "ptool active" : "ptool"} onClick={() => setTool(x.t)} aria-label={x.label} data-tip={`${x.label} · ${x.key}`}>
               {x.icon}
             </button>
           ))}
           <span className="ptool-sep" />
-          <button className={mirror ? "ptool active" : "ptool"} onClick={() => setMirror(!mirror)} aria-label="Spiegeln" data-tip="Spiegeln">
+          <button className={mirror ? "ptool active" : "ptool"} onClick={() => setMirror(!mirror)} aria-label={t("Spiegeln")} data-tip={t("Spiegeln")}>
             <MirrorIcon size={16} />
           </button>
-          <button className={grid ? "ptool active" : "ptool"} onClick={() => setGrid(!grid)} aria-label="Raster" data-tip="Raster">
+          <button className={grid ? "ptool active" : "ptool"} onClick={() => setGrid(!grid)} aria-label={t("Raster")} data-tip={t("Raster")}>
             <GridToggleIcon size={16} />
           </button>
           <span className="ptool-sep" />
-          <button className="ptool" onClick={() => history(undo, redo)} aria-label="Rückgängig" data-tip="Rückgängig · Strg Z">
+          <button className="ptool" onClick={() => history(undo, redo)} aria-label={t("Rückgängig")} data-tip={t("Rückgängig · Strg Z")}>
             <UndoIcon size={16} />
           </button>
-          <button className="ptool" onClick={() => history(redo, undo)} aria-label="Wiederholen" data-tip="Wiederholen · Strg Y">
+          <button className="ptool" onClick={() => history(redo, undo)} aria-label={t("Wiederholen")} data-tip={t("Wiederholen · Strg Y")}>
             <RedoIcon size={16} />
           </button>
         </div>
-        <div className={`pixel-canvas-wrap${grid ? " show-grid" : ""}${wide ? " wide" : ""}`}>
+        <div className={`pixel-canvas-wrap${grid ? " show-grid" : ""}${wide ? " wide" : ""}${tall ? " tall" : ""}`}>
           <canvas
             ref={canvas}
             width={W}
@@ -244,7 +256,7 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
         </div>
         <div className="pixel-side">
           <div className="color-current">
-            <input type="color" value={color} onChange={(e) => setColor(e.target.value)} aria-label="Farbe wählen" />
+            <input type="color" value={color} onChange={(e) => setColor(e.target.value)} aria-label={t("Farbe wählen")} />
             <span className="mono small">{color}</span>
           </div>
           <div className="palette">
@@ -253,7 +265,7 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
                 key={c}
                 className={c === color ? "swatch active" : "swatch"}
                 style={{ background: c }}
-                aria-label={`Farbe ${c}`}
+                aria-label={t("Farbe {c}", { c: c })}
                 onClick={() => {
                   setColor(c);
                   if (tool === "eraser" || tool === "picker") setTool("pencil");
@@ -262,7 +274,7 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
             ))}
           </div>
           <label className="btn small full">
-            PNG importieren
+            {t("PNG importieren")}
             <input type="file" accept="image/png" hidden onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} />
           </label>
           <button
@@ -274,16 +286,16 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
               scheduleSave();
             }}
           >
-            <TrashIcon size={14} /> Leeren
+            <TrashIcon size={14} />{" "}{t("Leeren")}
           </button>
-          <div className={`save-state ${status}`}>{status === "saving" ? "Speichert …" : status === "saved" ? (<><CheckIcon size={12} /> Gespeichert</>) : " "}</div>
+          <div className={`save-state ${status}`}>{status === "saving" ? t("Speichert …") : status === "saved" ? (<><CheckIcon size={12} />{" "}{t("Gespeichert")}</>) : " "}</div>
         </div>
       </div>
       <div className="pixel-preview">
         {wide ? (
           <img className="armor-preview" src={preview} alt="" />
         ) : kind === "block" ? (
-          <div className="cube-stage" aria-label="Vorschau als Block">
+          <div className="cube-stage" aria-label={t("Vorschau als Block")}>
             <div className="cube">
               <span className="face top" style={{ backgroundImage: `url(${preview})` }} />
               <span className="face front" style={{ backgroundImage: `url(${preview})` }} />
@@ -294,7 +306,7 @@ export default function PixelEditor({ projectId, kind, id, onSaved }: Props) {
             </div>
           </div>
         ) : (
-          <div className="item-stage" aria-label="Vorschau als Item">
+          <div className="item-stage" aria-label={t("Vorschau als Item")}>
             <div className="slot">
               <img src={preview} alt="" />
             </div>

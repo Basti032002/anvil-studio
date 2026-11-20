@@ -1,3 +1,4 @@
+import { t, LANG, LANGUAGES, Lang, setLanguage } from "../i18n";
 import { useState } from "react";
 import { pickFolder, UpdateCheck } from "../api";
 import { Segmented, Toggle } from "../components/Chrome";
@@ -8,29 +9,29 @@ import { checkForUpdate, installUpdate, updateSettings, useAppVersion, useSettin
 
 type Section = "updates" | "account" | "general" | "appearance" | "about";
 const SECTIONS: { id: Section; label: string }[] = [
-  { id: "updates", label: "Updates" },
-  { id: "account", label: "Konto" },
-  { id: "general", label: "Allgemein" },
-  { id: "appearance", label: "Darstellung" },
-  { id: "about", label: "Über" },
+  { id: "updates", label: t("Updates") },
+  { id: "account", label: t("Konto") },
+  { id: "general", label: t("Allgemein") },
+  { id: "appearance", label: t("Darstellung") },
+  { id: "about", label: t("Über") },
 ];
 
 const CHECK_OPTIONS: { value: UpdateCheck; label: string }[] = [
-  { value: "startup", label: "Bei jedem Start" },
-  { value: "daily", label: "Täglich" },
-  { value: "weekly", label: "Wöchentlich" },
-  { value: "manual", label: "Nur manuell" },
+  { value: "startup", label: t("Bei jedem Start") },
+  { value: "daily", label: t("Täglich") },
+  { value: "weekly", label: t("Wöchentlich") },
+  { value: "manual", label: t("Nur manuell") },
 ];
 
 export default function Settings({ onOpenAdmin }: { onOpenAdmin: () => void }) {
   const s = useSettings();
   const [section, setSection] = useState<Section>("updates");
-  if (!s) return <div className="page muted">Lade Einstellungen …</div>;
+  if (!s) return <div className="page muted">{t("Lade Einstellungen …")}</div>;
 
   return (
     <div className="settings">
-      <nav className="settings-nav" aria-label="Einstellungsbereiche">
-        <div className="eyebrow">Einstellungen</div>
+      <nav className="settings-nav" aria-label={t("Einstellungsbereiche")}>
+        <div className="eyebrow">{t("Einstellungen")}</div>
         {SECTIONS.map((x) => (
           <button key={x.id} className={section === x.id ? "settings-link active" : "settings-link"} onClick={() => setSection(x.id)}>
             {x.label}
@@ -42,20 +43,29 @@ export default function Settings({ onOpenAdmin }: { onOpenAdmin: () => void }) {
         {section === "account" && <AccountSection onOpenAdmin={onOpenAdmin} />}
         {section === "general" && (
           <>
-            <h2>Allgemein</h2>
+            <h2>{t("Allgemein")}</h2>
             <div className="setting-list">
-              <Row title="Standard-Editor" desc="Womit „In … öffnen“ im Arbeitsbereich dein Projekt öffnet.">
+              <Row title={t("Sprache")} desc={t("Sprache der gesamten Oberfläche. Die Ansicht wird dafür kurz neu geladen.")}>
+                <select className="input" style={{ width: 200 }} aria-label={t("Sprache")} value={LANG} onChange={(e) => setLanguage(e.target.value as Lang, "settings")}>
+                  {LANGUAGES.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </Row>
+              <Row title={t("Standard-Editor")} desc={t("Womit „In … öffnen“ im Arbeitsbereich dein Projekt öffnet.")}>
                 <Segmented
-                  label="Standard-Editor"
+                  label={t("Standard-Editor")}
                   value={s.defaultIde}
                   options={[
-                    { value: "code", label: "VS Code" },
-                    { value: "idea", label: "IntelliJ IDEA" },
+                    { value: "code", label: t("VS Code") },
+                    { value: "idea", label: t("IntelliJ IDEA") },
                   ]}
                   onChange={(v) => updateSettings({ defaultIde: v })}
                 />
               </Row>
-              <Row title="Speicherort für neue Projekte" desc="Leer lassen für „Dokumente\Anvil Studio“.">
+              <Row title={t("Speicherort für neue Projekte")} desc={t("Leer lassen für „Dokumente\\Anvil Studio“.")}>
                 <ProjectsDirInput value={s.projectsDir} onSave={(v) => updateSettings({ projectsDir: v })} />
               </Row>
             </div>
@@ -63,15 +73,15 @@ export default function Settings({ onOpenAdmin }: { onOpenAdmin: () => void }) {
         )}
         {section === "appearance" && (
           <>
-            <h2>Darstellung</h2>
+            <h2>{t("Darstellung")}</h2>
             <div className="setting-list">
-              <Row title="Theme" desc="Hell, dunkel oder automatisch wie Windows.">
-                <div className="theme-cards" role="radiogroup" aria-label="Theme">
+              <Row title={t("Theme")} desc={t("Hell, dunkel oder automatisch wie Windows.")}>
+                <div className="theme-cards" role="radiogroup" aria-label={t("Theme")}>
                   {(
                     [
-                      ["dark", "Dunkel"],
-                      ["light", "Hell"],
-                      ["system", "System"],
+                      ["dark", t("Dunkel")],
+                      ["light", t("Hell")],
+                      ["system", t("System")],
                     ] as const
                   ).map(([v, label]) => (
                     <button
@@ -90,14 +100,14 @@ export default function Settings({ onOpenAdmin }: { onOpenAdmin: () => void }) {
                   ))}
                 </div>
               </Row>
-              <Row title="Akzentfarbe" desc="Farbe für Knöpfe, Markierungen und Fortschritt.">
-                <div className="accent-dots" role="radiogroup" aria-label="Akzentfarbe">
+              <Row title={t("Akzentfarbe")} desc={t("Farbe für Knöpfe, Markierungen und Fortschritt.")}>
+                <div className="accent-dots" role="radiogroup" aria-label={t("Akzentfarbe")}>
                   {(
                     [
-                      ["green", "Grün", "#4fb33d"],
-                      ["blue", "Blau", "#3f82e6"],
-                      ["violet", "Violett", "#8a64ea"],
-                      ["orange", "Orange", "#e0802c"],
+                      ["green", t("Grün"), "#4fb33d"],
+                      ["blue", t("Blau"), "#3f82e6"],
+                      ["violet", t("Violett"), "#8a64ea"],
+                      ["orange", t("Orange"), "#e0802c"],
                     ] as const
                   ).map(([v, label, color]) => (
                     <button
@@ -113,25 +123,25 @@ export default function Settings({ onOpenAdmin }: { onOpenAdmin: () => void }) {
                   ))}
                 </div>
               </Row>
-              <Row title="Animationen reduzieren" desc="Schaltet Übergänge und Bewegungen ab.">
-                <Toggle label="Animationen reduzieren" checked={s.reduceMotion} onChange={(v) => updateSettings({ reduceMotion: v })} />
+              <Row title={t("Animationen reduzieren")} desc={t("Schaltet Übergänge und Bewegungen ab.")}>
+                <Toggle label={t("Animationen reduzieren")} checked={s.reduceMotion} onChange={(v) => updateSettings({ reduceMotion: v })} />
               </Row>
-              <Row title="Schriftgröße der Konsole" desc={`${s.consoleFontSize} px`}>
+              <Row title={t("Schriftgröße der Konsole")} desc={`${s.consoleFontSize} px`}>
                 <input
                   type="range"
                   className="range"
                   min={10}
                   max={18}
                   value={s.consoleFontSize}
-                  aria-label="Schriftgröße der Konsole"
+                  aria-label={t("Schriftgröße der Konsole")}
                   onChange={(e) => updateSettings({ consoleFontSize: Number(e.target.value) })}
                 />
               </Row>
             </div>
             <div className="console-preview mono" style={{ fontSize: s.consoleFontSize }}>
-              <div className="log info">[Render thread/INFO] Minecraft wird geladen</div>
-              <div className="log warn">[Render thread/WARN] Textur fehlt: example_item</div>
-              <div className="log success">BUILD SUCCESSFUL in 12s</div>
+              <div className="log info">{t("[Render thread/INFO] Minecraft wird geladen")}</div>
+              <div className="log warn">{t("[Render thread/WARN] Textur fehlt: example_item")}</div>
+              <div className="log success">{t("BUILD SUCCESSFUL in 12s")}</div>
             </div>
           </>
         )}
@@ -147,12 +157,12 @@ function UpdatesSection({ onAccount }: { onAccount: () => void }) {
   const tester = !!account?.isTester;
   const u = useUpdate();
   const version = useAppVersion();
-  const last = s.lastUpdateCheck ? new Date(s.lastUpdateCheck * 1000).toLocaleString("de-DE") : "noch nie";
+  const last = s.lastUpdateCheck ? new Date(s.lastUpdateCheck * 1000).toLocaleString("de-DE") : t("noch nie");
   const busy = u.phase === "checking" || u.phase === "downloading" || u.phase === "installing";
 
   return (
     <>
-      <h2>Updates</h2>
+      <h2>{t("Updates")}</h2>
 
       <div className={`update-hero ${u.phase}`}>
         <div className="update-icon">
@@ -162,105 +172,105 @@ function UpdatesSection({ onAccount }: { onAccount: () => void }) {
           {u.phase === "available" && u.info ? (
             <>
               <div className="update-title">
-                Version {u.info.version} ist verfügbar {u.info.prerelease && <span className="tag">Vorabversion</span>}
+                {t("Version {version} ist verfügbar", { version: u.info.version })}{" "}{u.info.prerelease && <span className="tag">{t("Vorabversion")}</span>}
               </div>
               <div className="muted small">
-                Installiert: {version}
-                {u.waitingForIdle && " · wird installiert, sobald kein Spiel oder Build mehr läuft"}
+                {t("Installiert:")}{" "}{version}
+                {u.waitingForIdle && t(" · wird installiert, sobald kein Spiel oder Build mehr läuft")}
               </div>
             </>
           ) : u.phase === "downloading" ? (
             <>
-              <div className="update-title">Update wird heruntergeladen …</div>
+              <div className="update-title">{t("Update wird heruntergeladen …")}</div>
               <div className="bar">
                 <span style={{ width: `${Math.round((u.progress ?? 0) * 100)}%` }} />
               </div>
             </>
           ) : u.phase === "installing" ? (
             <>
-              <div className="update-title">Wird installiert</div>
-              <div className="muted small">Anvil Studio schließt sich und startet danach neu.</div>
+              <div className="update-title">{t("Wird installiert")}</div>
+              <div className="muted small">{t("Anvil Studio schließt sich und startet danach neu.")}</div>
             </>
           ) : u.phase === "checking" ? (
             <>
-              <div className="update-title">Suche nach Updates …</div>
+              <div className="update-title">{t("Suche nach Updates …")}</div>
               <div className="bar indeterminate">
                 <span />
               </div>
             </>
           ) : u.phase === "error" ? (
             <>
-              <div className="update-title">{u.info ? `Update auf ${u.info.version} fehlgeschlagen` : "Update-Prüfung fehlgeschlagen"}</div>
+              <div className="update-title">{u.info ? t("Update auf {version} fehlgeschlagen", { version: u.info.version }) : t("Update-Prüfung fehlgeschlagen")}</div>
               {u.info && (
                 <div className="muted small">
-                  Die Verbindung zu GitHub wurde unterbrochen – oft durch Virenscanner, Firewall oder DNS-Filter. Du kannst den Installer auch im Browser laden.
+                  {t("Die Verbindung zu GitHub wurde unterbrochen – oft durch Virenscanner, Firewall oder DNS-Filter. Du kannst den Installer auch im Browser laden.")}
                 </div>
               )}
               <div className="error-text small" style={{ whiteSpace: "pre-wrap", userSelect: "text" }}>{u.error}</div>
             </>
           ) : (
             <>
-              <div className="update-title">Anvil Studio {version}</div>
-              <div className="muted small">Zuletzt geprüft: {last}</div>
+              <div className="update-title">{t("Anvil Studio")}{" "}{version}</div>
+              <div className="muted small">{t("Zuletzt geprüft:")}{" "}{last}</div>
             </>
           )}
         </div>
         {u.phase === "error" && u.info && (
           <button className="btn" onClick={() => openGithub(u.info!.htmlUrl)}>
-            <ExternalIcon size={14} /> Im Browser herunterladen
+            <ExternalIcon size={14} />{" "}{t("Im Browser herunterladen")}
           </button>
         )}
         {u.phase === "available" || (u.phase === "error" && u.info) ? (
           <button className="btn primary" onClick={installUpdate}>
-            <DownloadIcon size={15} /> {u.phase === "error" ? "Erneut versuchen" : "Jetzt installieren"}
+            <DownloadIcon size={15} /> {u.phase === "error" ? t("Erneut versuchen") : t("Jetzt installieren")}
           </button>
         ) : (
           <button className="btn" onClick={() => checkForUpdate(true)} disabled={busy}>
-            <RefreshIcon size={15} /> Nach Updates suchen
+            <RefreshIcon size={15} />{" "}{t("Nach Updates suchen")}
           </button>
         )}
       </div>
 
       {u.phase === "available" && u.info?.notes && (
         <div className="notes">
-          <div className="side-title">Was ist neu</div>
+          <div className="side-title">{t("Was ist neu")}</div>
           <pre>{u.info.notes.slice(0, 4000)}</pre>
         </div>
       )}
 
       <div className="setting-list">
-        <Row title="Nach Updates suchen" desc="Wie oft Anvil Studio auf GitHub nach einer neuen Version schaut.">
-          <Segmented label="Nach Updates suchen" value={s.updateCheck} options={CHECK_OPTIONS} onChange={(v) => updateSettings({ updateCheck: v })} />
+        <Row title={t("Nach Updates suchen")} desc={t("Wie oft Anvil Studio auf GitHub nach einer neuen Version schaut.")}>
+          <Segmented label={t("Nach Updates suchen")} value={s.updateCheck} options={CHECK_OPTIONS} onChange={(v) => updateSettings({ updateCheck: v })} />
         </Row>
-        <Row title="Updates automatisch installieren" desc="Gefundene Updates direkt herunterladen und installieren. Läuft gerade ein Spiel oder Build, wird gewartet.">
-          <Toggle label="Updates automatisch installieren" checked={s.autoInstall} onChange={(v) => updateSettings({ autoInstall: v })} />
+        <Row title={t("Updates automatisch installieren")} desc={t("Gefundene Updates direkt herunterladen und installieren. Läuft gerade ein Spiel oder Build, wird gewartet.")}>
+          <Toggle label={t("Updates automatisch installieren")} checked={s.autoInstall} onChange={(v) => updateSettings({ autoInstall: v })} />
         </Row>
         <Row
-          title="Update-Kanal"
+          title={t("Update-Kanal")}
           desc={
             s.updateChannel === "dev"
-              ? "Dev: experimentelle Funktionen für Tester. Kann instabil sein."
+              ? t("Dev: experimentelle Funktionen für Tester. Kann instabil sein.")
               : s.updateChannel === "beta"
-                ? "Beta: neue Funktionen früher ausprobieren. Du bekommst auch alle stabilen Versionen."
-                : "Stabil: nur getestete Versionen."
+                ? t("Beta: neue Funktionen früher ausprobieren. Du bekommst auch alle stabilen Versionen.")
+                : t("Stabil: nur getestete Versionen.")
           }
         >
           <Segmented
-            label="Update-Kanal"
+            label={t("Update-Kanal")}
             value={s.updateChannel}
             onChange={(v) => updateSettings({ updateChannel: v })}
             options={[
-              { value: "stable", label: "Stabil" },
-              { value: "beta", label: "Beta" },
-              { value: "dev", label: "Dev", disabled: !tester, title: tester ? undefined : "Nur für angemeldete Tester" },
+              { value: "stable", label: t("Stabil") },
+              { value: "beta", label: t("Beta") },
+              { value: "dev", label: t("Dev"), disabled: !tester, title: tester ? undefined : t("Nur für angemeldete Tester") },
             ]}
           />
         </Row>
         {!tester && (
           <div className="setting-row hint">
-            <div className="muted small">Dev-Versionen gibt es nur für eingeladene Tester mit GitHub-Anmeldung.</div>
+            <div className="muted small">{t("Dev-Versionen gibt es nur für eingeladene Tester mit GitHub-Anmeldung.")}</div>
             <button className="btn small" onClick={onAccount}>
-              <GithubIcon size={14} /> {account ? "Konto ansehen" : "Mit GitHub anmelden"}
+              <GithubIcon size={14} /> {account ? t("Konto ansehen") : t("Mit GitHub anmelden")}
             </button>
           </div>
         )}
@@ -273,12 +283,12 @@ function AccountSection({ onOpenAdmin }: { onOpenAdmin: () => void }) {
   const account = useAccount();
   return (
     <>
-      <h2>Konto</h2>
+      <h2>{t("Konto")}</h2>
       {!account ? (
         <div className="panel account-login">
           <div>
-            <div className="setting-title">Mit GitHub anmelden</div>
-            <div className="muted small">Nötig für Dev-Versionen (nur eingeladene Tester) und den Entwicklerbereich. Anvil Studio bekommt dabei nur Lesezugriff auf das Dev-Repo.</div>
+            <div className="setting-title">{t("Mit GitHub anmelden")}</div>
+            <div className="muted small">{t("Nötig für Dev-Versionen (nur eingeladene Tester) und den Entwicklerbereich. Anvil Studio bekommt dabei nur Lesezugriff auf das Dev-Repo.")}</div>
           </div>
           <GitHubLogin compact />
         </div>
@@ -291,23 +301,23 @@ function AccountSection({ onOpenAdmin }: { onOpenAdmin: () => void }) {
               <div className="muted small">@{account.user.login}</div>
             </div>
             <button className="btn ghost" onClick={() => logout()}>
-              <LogoutIcon size={14} /> Abmelden
+              <LogoutIcon size={14} />{" "}{t("Abmelden")}
             </button>
           </div>
           <div className="setting-list" style={{ marginTop: 16 }}>
-            <Row title="Dev-Versionen" desc={account.isTester ? "Du bist als Tester freigeschaltet und kannst den Kanal „Dev“ wählen." : "Kein Zugriff. Wenn du eingeladen wurdest, nimm die Einladung auf GitHub an und melde dich neu an."}>
+            <Row title={t("Dev-Versionen")} desc={account.isTester ? t("Du bist als Tester freigeschaltet und kannst den Kanal „Dev“ wählen.") : t("Kein Zugriff. Wenn du eingeladen wurdest, nimm die Einladung auf GitHub an und melde dich neu an.")}>
               {account.isTester ? (
-                <span className="tag ch-dev">Tester</span>
+                <span className="tag ch-dev">{t("Tester")}</span>
               ) : (
                 <button className="btn small" onClick={() => openGithub("https://github.com/Basti032002/anvil-studio-dev/invitations")}>
-                  <ExternalIcon size={14} /> Einladung öffnen
+                  <ExternalIcon size={14} />{" "}{t("Einladung öffnen")}
                 </button>
               )}
             </Row>
             {account.isAdmin && (
-              <Row title="Entwicklerbereich" desc="Versionen veröffentlichen, Releases, Tester und Builds verwalten.">
+              <Row title={t("Entwicklerbereich")} desc={t("Versionen veröffentlichen, Releases, Tester und Builds verwalten.")}>
                 <button className="btn" onClick={onOpenAdmin}>
-                  <ShieldIcon size={14} /> Öffnen
+                  <ShieldIcon size={14} />{" "}{t("Öffnen")}
                 </button>
               </Row>
             )}
@@ -324,20 +334,20 @@ function About({ onOpenAdmin }: { onOpenAdmin: () => void }) {
   const admin = account?.isAdmin ? account.user : null;
   return (
     <>
-      <h2>Über</h2>
+      <h2>{t("Über")}</h2>
       <div className="about">
         <div className="about-logo">
           <AnvilLogo size={30} />
         </div>
         <div>
-          <div className="update-title">Anvil Studio {version}</div>
-          <div className="muted small">Launcher zum Erstellen, Bauen und Testen von Minecraft-Mods.</div>
+          <div className="update-title">{t("Anvil Studio")}{" "}{version}</div>
+          <div className="muted small">{t("Launcher zum Erstellen, Bauen und Testen von Minecraft-Mods.")}</div>
         </div>
       </div>
       <div className="setting-list" style={{ marginTop: 16 }}>
-        <Row title="Entwicklerbereich" desc={admin ? `Angemeldet als ${admin.login}.` : "Versionen veröffentlichen und Releases verwalten. Nur für den Entwickler."}>
+        <Row title={t("Entwicklerbereich")} desc={admin ? t("Angemeldet als {login}.", { login: admin.login }) : t("Versionen veröffentlichen und Releases verwalten. Nur für den Entwickler.")}>
           <button className="btn" onClick={onOpenAdmin}>
-            <ShieldIcon size={14} /> {admin ? "Öffnen" : "Mit GitHub anmelden"}
+            <ShieldIcon size={14} /> {admin ? t("Öffnen") : t("Mit GitHub anmelden")}
           </button>
         </Row>
       </div>
@@ -364,8 +374,8 @@ function ProjectsDirInput({ value, onSave }: { value: string; onSave: (v: string
       <input
         className="input mono"
         style={{ width: 260 }}
-        aria-label="Speicherort für neue Projekte"
-        placeholder="Dokumente\Anvil Studio"
+        aria-label={t("Speicherort für neue Projekte")}
+        placeholder={t("Dokumente\\Anvil Studio")}
         value={v}
         onChange={(e) => setV(e.target.value)}
         onBlur={() => v !== value && onSave(v)}
@@ -373,14 +383,14 @@ function ProjectsDirInput({ value, onSave }: { value: string; onSave: (v: string
       <button
         className="btn"
         onClick={async () => {
-          const d = await pickFolder("Standard-Ordner für neue Projekte", v);
+          const d = await pickFolder(t("Standard-Ordner für neue Projekte"), v);
           if (d) {
             setV(d);
             onSave(d);
           }
         }}
       >
-        <FolderIcon size={14} /> Durchsuchen …
+        <FolderIcon size={14} />{" "}{t("Durchsuchen …")}
       </button>
     </div>
   );

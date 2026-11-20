@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SearchIcon } from "../icons";
 
@@ -74,14 +75,14 @@ export default function CommandPalette({ open, onClose, commands }: { open: bool
 
   return (
     <div className="cmd-overlay" onMouseDown={onClose}>
-      <div className="cmd" role="dialog" aria-label="Befehlspalette" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="cmd" role="dialog" aria-label={t("Befehlspalette")} onMouseDown={(e) => e.stopPropagation()}>
         <div className="cmd-input">
           <SearchIcon size={16} />
           <input
             ref={inputRef}
             value={query}
-            placeholder="Befehl oder Projekt suchen …"
-            aria-label="Befehl suchen"
+            placeholder={t("Befehl oder Projekt suchen …")}
+            aria-label={t("Befehl suchen")}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Escape") onClose();
@@ -94,10 +95,10 @@ export default function CommandPalette({ open, onClose, commands }: { open: bool
               } else if (e.key === "Enter") run(results[index]);
             }}
           />
-          <kbd>Esc</kbd>
+          <kbd>{t("Esc")}</kbd>
         </div>
         <div className="cmd-list" ref={listRef}>
-          {results.length === 0 && <div className="cmd-empty">Nichts gefunden.</div>}
+          {results.length === 0 && <div className="cmd-empty">{t("Nichts gefunden.")}</div>}
           {results.map((c, i) => (
             <button
               key={c.id}
@@ -115,10 +116,10 @@ export default function CommandPalette({ open, onClose, commands }: { open: bool
         </div>
         <div className="cmd-foot muted">
           <span>
-            <kbd>↑</kbd> <kbd>↓</kbd> auswählen
+            <kbd>↑</kbd> <kbd>↓</kbd>{" "}{t("auswählen")}
           </span>
           <span>
-            <kbd>↵</kbd> ausführen
+            <kbd>↵</kbd>{" "}{t("ausführen")}
           </span>
         </div>
       </div>

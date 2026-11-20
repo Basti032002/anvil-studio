@@ -828,8 +828,17 @@ svg [opacity="0.2"] { fill: var(--accent); opacity: 0.38; }
 .pixel-canvas-wrap.wide { width: 386px; height: 194px; }
 .pixel-canvas-wrap.wide .pixel-canvas { width: 384px; height: 192px; }
 .pixel-canvas-wrap.wide.show-grid::after { width: 384px; height: 192px; background-size: 6px 6px; }
-.armor-preview { width: 256px; height: 128px; image-rendering: pixelated; border-radius: 6px; background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 16px 16px; }
+.armor-preview { width: 256px; height: auto; image-rendering: pixelated; border-radius: 6px; background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 16px 16px; }
 .texture-sub { border-top: 1px solid var(--border); padding-top: 14px; display: flex; flex-direction: column; gap: 10px; }
 .texture-sub-head { display: flex; align-items: center; gap: 8px; }
 .pixel-main:has(.wide) { flex-wrap: wrap; }
 .dialog-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.pixel-canvas-wrap.wide.tall { height: 386px; }
+.pixel-canvas-wrap.wide.tall .pixel-canvas { height: 384px; }
+.pixel-canvas-wrap.wide.tall.show-grid::after { height: 384px; }
+
+.egg-icon { width: 24px; height: 24px; image-rendering: pixelated; flex: none; }
+.egg-icon.lg { width: 28px; height: 28px; }
+.mob-models { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.color-input { width: 40px; height: 32px; padding: 2px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; }
+.entry .egg-icon { width: 24px; height: 24px; }

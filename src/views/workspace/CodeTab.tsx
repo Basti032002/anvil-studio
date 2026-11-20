@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { confirmDialog, contextMenu, MenuItem, openMenu, promptDialog } from "../../components/Overlay";
 import { useEffect, useRef, useState } from "react";
 import { FileEntry, filesApi, Project } from "../../api";
@@ -84,7 +85,7 @@ export default function CodeTab({ project }: { project: Project }) {
   async function close(rel: string) {
     const f = filesRef.current.find((x) => x.rel === rel);
     if (!f) return;
-    if (f.version !== f.saved && !(await confirmDialog("Ungespeicherte Änderungen", `${rel} hat ungespeicherte Änderungen. Trotzdem schließen?`, "Schließen", "Abbrechen", true))) return;
+    if (f.version !== f.saved && !(await confirmDialog(t("Ungespeicherte Änderungen"), t("{rel} hat ungespeicherte Änderungen. Trotzdem schließen?", { rel: rel }), t("Schließen"), t("Abbrechen"), true))) return;
     const rest = filesRef.current.filter((x) => x.rel !== rel);
     setFiles(rest);
     if (active === rel) {
@@ -100,7 +101,7 @@ export default function CodeTab({ project }: { project: Project }) {
 
   async function createIn(dir: string, isDir: boolean) {
     const base = dir ? `${dir}/` : "";
-    const rel = await promptDialog(isDir ? "Neuer Ordner" : "Neue Datei", "Pfad (relativ zum Projekt)", `${base}${isDir ? "neuer_ordner" : "NeueDatei.java"}`, "Erstellen", "Abbrechen");
+    const rel = await promptDialog(isDir ? t("Neuer Ordner") : t("Neue Datei"), t("Pfad (relativ zum Projekt)"), `${base}${isDir ? "neuer_ordner" : t("NeueDatei.java")}`, t("Erstellen"), t("Abbrechen"));
     if (!rel?.trim()) return;
     try {
       await filesApi.create(project.id, rel.trim(), isDir);
@@ -114,15 +115,15 @@ export default function CodeTab({ project }: { project: Project }) {
   function treeMenu(e: FileEntry): MenuItem[] {
     const dir = e.isDir ? e.rel : e.rel.split("/").slice(0, -1).join("/");
     return [
-      ...(!e.isDir ? [{ label: "Öffnen", icon: <FolderOpenIcon size={15} />, onClick: () => open(e.rel) } as MenuItem] : []),
-      { label: "Neue Datei hier …", icon: <FilePlusIcon size={15} />, onClick: () => createIn(dir, false) },
-      { label: "Neuer Ordner hier …", icon: <FolderPlusIcon size={15} />, onClick: () => createIn(dir, true) },
+      ...(!e.isDir ? [{ label: t("Öffnen"), icon: <FolderOpenIcon size={15} />, onClick: () => open(e.rel) } as MenuItem] : []),
+      { label: t("Neue Datei hier …"), icon: <FilePlusIcon size={15} />, onClick: () => createIn(dir, false) },
+      { label: t("Neuer Ordner hier …"), icon: <FolderPlusIcon size={15} />, onClick: () => createIn(dir, true) },
       "separator",
       {
-        label: "Umbenennen …",
+        label: t("Umbenennen …"),
         icon: <PencilIcon size={15} />,
         onClick: async () => {
-          const to = await promptDialog("Umbenennen", "Neuer Pfad", e.rel, "Umbenennen", "Abbrechen");
+          const to = await promptDialog(t("Umbenennen"), t("Neuer Pfad"), e.rel, t("Umbenennen"), t("Abbrechen"));
           if (!to?.trim() || to.trim() === e.rel) return;
           try {
             if (filesRef.current.some((f) => f.rel === e.rel || f.rel.startsWith(`${e.rel}/`))) {
@@ -135,15 +136,15 @@ export default function CodeTab({ project }: { project: Project }) {
           }
         },
       },
-      { label: "Pfad kopieren", icon: <CopyIcon size={15} />, onClick: () => navigator.clipboard.writeText(e.rel) },
-      { label: "Im Explorer zeigen", icon: <FolderIcon size={15} />, onClick: () => filesApi.reveal(project.id, e.rel).catch(fail) },
+      { label: t("Pfad kopieren"), icon: <CopyIcon size={15} />, onClick: () => navigator.clipboard.writeText(e.rel) },
+      { label: t("Im Explorer zeigen"), icon: <FolderIcon size={15} />, onClick: () => filesApi.reveal(project.id, e.rel).catch(fail) },
       "separator",
       {
-        label: "Löschen",
+        label: t("Löschen"),
         icon: <TrashIcon size={15} />,
         danger: true,
         onClick: async () => {
-          if (!(await confirmDialog(`„${e.name}“ löschen?`, "Wird in den Papierkorb verschoben.", "Löschen", "Abbrechen", true))) return;
+          if (!(await confirmDialog(t("„{name}“ löschen?", { name: e.name }), t("Wird in den Papierkorb verschoben."), t("Löschen"), t("Abbrechen"), true))) return;
           try {
             for (const f of filesRef.current.filter((f) => f.rel === e.rel || f.rel.startsWith(`${e.rel}/`))) {
               f.model.dispose();
@@ -162,24 +163,24 @@ export default function CodeTab({ project }: { project: Project }) {
 
   function tabMenu(rel: string): MenuItem[] {
     return [
-      { label: "Schließen", icon: <CloseIcon size={14} />, onClick: () => close(rel) },
+      { label: t("Schließen"), icon: <CloseIcon size={14} />, onClick: () => close(rel) },
       {
-        label: "Andere schließen",
+        label: t("Andere schließen"),
         icon: <CloseIcon size={14} />,
         onClick: async () => {
           for (const f of filesRef.current.filter((f) => f.rel !== rel)) await close(f.rel);
         },
       },
       {
-        label: "Alle schließen",
+        label: t("Alle schließen"),
         icon: <CloseIcon size={14} />,
         onClick: async () => {
           for (const f of [...filesRef.current]) await close(f.rel);
         },
       },
       "separator",
-      { label: "Pfad kopieren", icon: <CopyIcon size={15} />, onClick: () => navigator.clipboard.writeText(rel) },
-      { label: "Im Explorer zeigen", icon: <FolderIcon size={15} />, onClick: () => filesApi.reveal(project.id, rel).catch(fail) },
+      { label: t("Pfad kopieren"), icon: <CopyIcon size={15} />, onClick: () => navigator.clipboard.writeText(rel) },
+      { label: t("Im Explorer zeigen"), icon: <FolderIcon size={15} />, onClick: () => filesApi.reveal(project.id, rel).catch(fail) },
     ];
   }
 
@@ -189,19 +190,19 @@ export default function CodeTab({ project }: { project: Project }) {
         className="file-tree"
         onContextMenu={(ev) =>
           openMenu(ev, [
-            { label: "Neue Datei …", icon: <FilePlusIcon size={15} />, onClick: () => createIn("", false) },
-            { label: "Neuer Ordner …", icon: <FolderPlusIcon size={15} />, onClick: () => createIn("", true) },
+            { label: t("Neue Datei …"), icon: <FilePlusIcon size={15} />, onClick: () => createIn("", false) },
+            { label: t("Neuer Ordner …"), icon: <FolderPlusIcon size={15} />, onClick: () => createIn("", true) },
           ])
         }
       >
         <div className="content-list-head">
-          <span>Dateien</span>
+          <span>{t("Dateien")}</span>
           <button
             className="icon-btn"
-            aria-label="Neue Datei"
-            data-tip="Neue Datei"
+            aria-label={t("Neue Datei")}
+            data-tip={t("Neue Datei")}
             onClick={async () => {
-              const rel = await promptDialog("Neue Datei", "Pfad (relativ zum Projekt)", `src/main/java/${project.package.replace(/\./g, "/")}/NeueKlasse.java`, "Erstellen", "Abbrechen");
+              const rel = await promptDialog(t("Neue Datei"), t("Pfad (relativ zum Projekt)"), `src/main/java/${project.package.replace(/\./g, "/")}/NeueKlasse.java`, t("Erstellen"), t("Abbrechen"));
               if (!rel) return;
               try {
                 await filesApi.create(project.id, rel.trim(), false);
@@ -223,9 +224,9 @@ export default function CodeTab({ project }: { project: Project }) {
             <div key={f.rel} className={f.rel === active ? "code-tab active" : "code-tab"} {...contextMenu(() => tabMenu(f.rel))}>
               <button className="code-tab-name" onClick={() => open(f.rel)} title={f.rel}>
                 {f.rel.split("/").pop()}
-                {f.version !== f.saved && <span className="dirty-dot" aria-label="ungespeichert" />}
+                {f.version !== f.saved && <span className="dirty-dot" aria-label={t("ungespeichert")} />}
               </button>
-              <button className="code-tab-close" aria-label={`${f.rel} schließen`} onClick={() => close(f.rel)}>
+              <button className="code-tab-close" aria-label={t("{rel} schließen", { rel: f.rel })} onClick={() => close(f.rel)}>
                 <CloseIcon size={10} />
               </button>
             </div>
@@ -234,7 +235,7 @@ export default function CodeTab({ project }: { project: Project }) {
         <div className="code-editor" ref={host} />
         {!active && (
           <div className="code-empty">
-            <p className="muted">Wähle links eine Datei. Speichern mit <kbd>Strg S</kbd>.</p>
+            <p className="muted">{t("Wähle links eine Datei. Speichern mit")}{" "}<kbd>{t("Strg S")}</kbd>.</p>
           </div>
         )}
       </section>

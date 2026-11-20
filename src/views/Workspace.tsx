@@ -1,3 +1,4 @@
+import { t, translateMessage } from "../i18n";
 import { MenuItem, openMenu } from "../components/Overlay";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { api, contentApi, CrashReport, Project, Task, TASK_LABELS } from "../api";
@@ -15,10 +16,10 @@ type Props = { project: Project; javaReady: boolean; autoRun?: boolean; onBack: 
 
 type RunConfig = "client" | "client-world" | "server" | "data";
 const RUN_CONFIGS: { id: RunConfig; label: string; task: Task }[] = [
-  { id: "client", label: "Client · Hauptmenü", task: "runClient" },
-  { id: "client-world", label: "Client · Direkt in Welt", task: "runClient" },
-  { id: "server", label: "Dedizierter Server", task: "runServer" },
-  { id: "data", label: "Datagen", task: "runData" },
+  { id: "client", label: t("Client · Hauptmenü"), task: "runClient" },
+  { id: "client-world", label: t("Client · Direkt in Welt"), task: "runClient" },
+  { id: "server", label: t("Dedizierter Server"), task: "runServer" },
+  { id: "data", label: t("Datagen"), task: "runData" },
 ];
 
 type Tab = "output" | "problems" | "crash";
@@ -79,15 +80,15 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
 
   useEffect(() => {
     if (!lastExit) return;
-    if (!lastExit.success) toast(`${TASK_LABELS[lastExit.task as Task] ?? lastExit.task} ist fehlgeschlagen.`, "error");
+    if (!lastExit.success) toast(t("{v0} ist fehlgeschlagen.", { v0: TASK_LABELS[lastExit.task as Task] ?? lastExit.task }), "error");
     refreshInfo().then(async () => {
       if (exportPending && lastExit.task === "build") {
         setExportPending(false);
         const list = await api.listJars(project.id);
         if (lastExit.success && list.length) {
           const jar = list[list.length - 1];
-          pushLog(project.id, `Mod-Datei fertig: ${jar}`);
-          toast("Mod-Datei ist fertig gebaut.", "success");
+          pushLog(project.id, t("Mod-Datei fertig: {jar}", { jar: jar }));
+          toast(t("Mod-Datei ist fertig gebaut."), "success");
           api.openPath(jar).catch(() => {});
         }
       }
@@ -109,7 +110,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
 
   async function start(task: Task, opts: { world?: string } = {}) {
     if (!javaReady) {
-      toast("Java 21 fehlt noch – installiere es über die Statusleiste unten.", "error");
+      toast(t("Java 21 fehlt noch – installiere es über die Statusleiste unten."), "error");
       return;
     }
     setTab("output");
@@ -118,7 +119,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
       markStarted(project.id, task);
       await api.runTask(project.id, task, opts.world);
     } catch (e) {
-      pushLog(project.id, `Fehler: ${e}`);
+      pushLog(project.id, t("Fehler: {e}", { e: e }));
       toast(String(e), "error");
       const list = await api.runningTasks();
       if (!list.some((r) => r.projectId === project.id)) markNotRunning(project.id);
@@ -177,7 +178,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
   }, [logs, problems, tab, filter]);
 
   const ide = settings?.defaultIde ?? "code";
-  const ideLabel = ide === "idea" ? "IntelliJ" : "VS Code";
+  const ideLabel = ide === "idea" ? t("IntelliJ") : t("VS Code");
   const otherIde = ide === "idea" ? "code" : "idea";
   const busy = !!running;
   const time = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
@@ -190,7 +191,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
       <div className="toolbar">
         <div className="crumbs">
           <button className="crumb" onClick={onBack}>
-            Projekte
+            {t("Projekte")}
           </button>
           <ChevronIcon size={12} />
           <span className="crumb current">{project.name}</span>
@@ -198,7 +199,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
 
         <div className="run-group">
           <label htmlFor="runcfg" className="sr-only">
-            Startkonfiguration
+            {t("Startkonfiguration")}
           </label>
           <div className="select-wrap">
             <TerminalIcon size={14} />
@@ -211,41 +212,41 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
             </select>
           </div>
           {busy ? (
-            <button className="run-btn stop" onClick={() => api.stopTask(project.id).catch((e) => toast(String(e), "error"))} aria-label="Stoppen" data-tip="Stoppen · Umschalt F5">
+            <button className="run-btn stop" onClick={() => api.stopTask(project.id).catch((e) => toast(String(e), "error"))} aria-label={t("Stoppen")} data-tip={t("Stoppen · Umschalt F5")}>
               <StopIcon size={13} />
             </button>
           ) : (
-            <button className="run-btn" onClick={runSelected} aria-label="Starten" data-tip="Starten · F5">
+            <button className="run-btn" onClick={runSelected} aria-label={t("Starten")} data-tip={t("Starten · F5")}>
               <PlayIcon size={13} />
             </button>
           )}
-          <button className="icon-btn" disabled={busy} onClick={() => start("build")} aria-label="Bauen" data-tip="Bauen · Strg B">
+          <button className="icon-btn" disabled={busy} onClick={() => start("build")} aria-label={t("Bauen")} data-tip={t("Bauen · Strg B")}>
             <HammerIcon size={16} />
           </button>
         </div>
 
         <div className="row gap-6">
           <button className="btn small" onClick={() => openIde(ide)}>
-            <CodeIcon size={14} /> In {ideLabel} öffnen
+            <CodeIcon size={14} />{" "}{t("In {ide} öffnen", { ide: ideLabel })}
           </button>
-          <button className="icon-btn" onClick={() => openIde(otherIde)} aria-label={`In ${ide === "idea" ? "VS Code" : "IntelliJ"} öffnen`} data-tip={ide === "idea" ? "VS Code" : "IntelliJ"}>
+          <button className="icon-btn" onClick={() => openIde(otherIde)} aria-label={t("In {v0} öffnen", { v0: ide === "idea" ? "VS Code" : "IntelliJ" })} data-tip={ide === "idea" ? t("VS Code") : t("IntelliJ")}>
             <CodeIcon size={16} />
           </button>
-          <button className="icon-btn" onClick={() => openIde("folder")} aria-label="Ordner öffnen" data-tip="Ordner öffnen">
+          <button className="icon-btn" onClick={() => openIde("folder")} aria-label={t("Ordner öffnen")} data-tip={t("Ordner öffnen")}>
             <FolderIcon size={16} />
           </button>
         </div>
         <div className={busy ? "run-progress active" : "run-progress"} />
       </div>
 
-      <nav className="view-tabs" aria-label="Bereiche">
+      <nav className="view-tabs" aria-label={t("Bereiche")}>
         {(
           [
-            ["content", "Inhalte", <CubeIcon size={14} />],
-            ["code", "Code", <CodeIcon size={14} />],
-            ["mods", "Mods", <PackageIcon size={14} />],
-            ["settings", "Mod-Einstellungen", <GearIcon size={14} />],
-            ["console", "Konsole", <TerminalIcon size={14} />],
+            ["content", t("Inhalte"), <CubeIcon size={14} />],
+            ["code", t("Code"), <CodeIcon size={14} />],
+            ["mods", t("Mods"), <PackageIcon size={14} />],
+            ["settings", t("Mod-Einstellungen"), <GearIcon size={14} />],
+            ["console", t("Konsole"), <TerminalIcon size={14} />],
           ] as [MainTab, string, React.ReactNode][]
         ).map(([k, label, icon]) => (
           <button key={k} className={mainTab === k ? "view-tab active" : "view-tab"} onClick={() => setMainTab(k)}>
@@ -274,7 +275,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
       )}
       {mainTab === "code" && (
         <div className="ws-view">
-          <Suspense fallback={<div className="content-loading muted">Editor wird geladen …</div>}>
+          <Suspense fallback={<div className="content-loading muted">{t("Editor wird geladen …")}</div>}>
             <CodeTab project={project} />
           </Suspense>
         </div>
@@ -283,20 +284,20 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
       <div className="ws-body" style={{ display: mainTab === "console" ? undefined : "none" }}>
         {/* Explorer */}
         <aside className="explorer">
-          <Section title="Projekt" open={open.project} onToggle={() => setOpen((o) => ({ ...o, project: !o.project }))}>
+          <Section title={t("Projekt")} open={open.project} onToggle={() => setOpen((o) => ({ ...o, project: !o.project }))}>
             <dl className="meta-list">
-              <dt>Mod-ID</dt>
+              <dt>{t("Mod-ID")}</dt>
               <dd className="mono">{project.modId}</dd>
-              <dt>Paket</dt>
+              <dt>{t("Paket")}</dt>
               <dd className="mono">{project.package}</dd>
-              <dt>Minecraft</dt>
-              <dd>{project.mcVersion} · NeoForge</dd>
-              <dt>Ordner</dt>
+              <dt>{t("Minecraft")}</dt>
+              <dd>{project.mcVersion}{" "}{t("· NeoForge")}</dd>
+              <dt>{t("Ordner")}</dt>
               <dd className="mono path">{project.path}</dd>
             </dl>
           </Section>
 
-          <Section title="Export" open={open.export} onToggle={() => setOpen((o) => ({ ...o, export: !o.export }))}>
+          <Section title={t("Export")} open={open.export} onToggle={() => setOpen((o) => ({ ...o, export: !o.export }))}>
             <button
               className="btn small full"
               disabled={busy}
@@ -305,7 +306,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
                 start("build");
               }}
             >
-              <DownloadIcon size={14} /> .jar bauen
+              <DownloadIcon size={14} />{" "}{t("Mod-Datei (.jar) bauen")}
             </button>
             {jars.length > 0 ? (
               <ul className="file-list">
@@ -319,16 +320,16 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
                 ))}
               </ul>
             ) : (
-              <p className="muted small">Noch keine Mod-Datei gebaut.</p>
+              <p className="muted small">{t("Noch keine Mod-Datei gebaut.")}</p>
             )}
           </Section>
 
-          <Section title="Bald verfügbar" open={open.soon} onToggle={() => setOpen((o) => ({ ...o, soon: !o.soon }))}>
+          <Section title={t("Bald verfügbar")} open={open.soon} onToggle={() => setOpen((o) => ({ ...o, soon: !o.soon }))}>
             <ul className="soon">
-              <li>Blöcke &amp; Items per Formular</li>
-              <li>Pixel-Editor für Texturen</li>
-              <li>Andere Mods mitladen</li>
-              <li>Eingebauter Code-Editor</li>
+              <li>{t("Blöcke & Items per Formular")}</li>
+              <li>{t("Pixel-Editor für Texturen")}</li>
+              <li>{t("Andere Mods mitladen")}</li>
+              <li>{t("Eingebauter Code-Editor")}</li>
             </ul>
           </Section>
         </aside>
@@ -337,14 +338,14 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
         <section className="panel-area">
           <div className="tabs">
             <button className={tab === "output" ? "tab active" : "tab"} onClick={() => setTab("output")}>
-              Ausgabe
+              {t("Ausgabe")}
             </button>
             <button className={tab === "problems" ? "tab active" : "tab"} onClick={() => setTab("problems")}>
-              Probleme {problems.length > 0 && <span className="count">{problems.length}</span>}
+              {t("Probleme")}{" "}{problems.length > 0 && <span className="count">{problems.length}</span>}
             </button>
             {crash && (
               <button className={tab === "crash" ? "tab active" : "tab"} onClick={() => setTab("crash")}>
-                <AlertIcon size={13} /> Absturz
+                <AlertIcon size={13} />{" "}{t("Absturz")}
               </button>
             )}
             <span className="grow" />
@@ -353,11 +354,11 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
                 <div className="search small">
                   <SearchIcon size={13} />
                   <label htmlFor="logfilter" className="sr-only">
-                    Ausgabe filtern
+                    {t("Ausgabe filtern")}
                   </label>
-                  <input id="logfilter" placeholder="Filtern …" value={filter} onChange={(e) => setFilter(e.target.value)} />
+                  <input id="logfilter" placeholder={t("Filtern …")} value={filter} onChange={(e) => setFilter(e.target.value)} />
                 </div>
-                <button className="icon-btn" aria-label="Ausgabe leeren" data-tip="Leeren" onClick={() => clearLogs(project.id)}>
+                <button className="icon-btn" aria-label={t("Ausgabe leeren")} data-tip={t("Leeren")} onClick={() => clearLogs(project.id)}>
                   <TrashIcon size={15} />
                 </button>
               </>
@@ -368,11 +369,11 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
             <div className="crash">
               <div className="crash-head">
                 <div>
-                  <div className="callout-title">Letzter Absturz</div>
+                  <div className="callout-title">{t("Letzter Absturz")}</div>
                   <div className="muted small">{new Date(crash.modified * 1000).toLocaleString("de-DE")}</div>
                 </div>
                 <button className="btn small" onClick={() => api.openPath(crash.path)}>
-                  <FileIcon size={14} /> Datei öffnen
+                  <FileIcon size={14} />{" "}{t("Datei öffnen")}
                 </button>
               </div>
               <pre className="crash-body" style={{ fontSize: settings?.consoleFontSize ?? 12 }}>
@@ -387,11 +388,11 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
                 const line = (e.target as HTMLElement).closest(".log")?.textContent ?? "";
                 const sel = window.getSelection()?.toString() ?? "";
                 openMenu(e, [
-                  ...(sel ? [{ label: "Auswahl kopieren", icon: <CopyIcon size={15} />, onClick: () => navigator.clipboard.writeText(sel) } as MenuItem] : []),
-                  ...(line ? [{ label: "Zeile kopieren", icon: <CopyIcon size={15} />, onClick: () => navigator.clipboard.writeText(line) } as MenuItem] : []),
-                  { label: "Alles kopieren", icon: <CopyIcon size={15} />, onClick: () => navigator.clipboard.writeText(shown.map((l) => l.line).join("\n")) },
+                  ...(sel ? [{ label: t("Auswahl kopieren"), icon: <CopyIcon size={15} />, onClick: () => navigator.clipboard.writeText(sel) } as MenuItem] : []),
+                  ...(line ? [{ label: t("Zeile kopieren"), icon: <CopyIcon size={15} />, onClick: () => navigator.clipboard.writeText(line) } as MenuItem] : []),
+                  { label: t("Alles kopieren"), icon: <CopyIcon size={15} />, onClick: () => navigator.clipboard.writeText(shown.map((l) => l.line).join("\n")) },
                   "separator",
-                  { label: "Ausgabe leeren", icon: <TrashIcon size={15} />, onClick: () => clearLogs(project.id) },
+                  { label: t("Ausgabe leeren"), icon: <TrashIcon size={15} />, onClick: () => clearLogs(project.id) },
                 ]);
               }}
               style={{ fontSize: settings?.consoleFontSize ?? 12 }}
@@ -405,12 +406,12 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
                   <SparkIcon size={22} />
                   <div>
                     {tab === "problems" ? (
-                      "Keine Probleme – sauber!"
+                      t("Keine Probleme – sauber!")
                     ) : (
                       <>
-                        Drücke <kbd className="kbd-icon"><PlayIcon size={10} /></kbd>, um Minecraft mit deiner Mod zu starten.
+                        <kbd className="kbd-icon"><PlayIcon size={10} /></kbd> {t("Starte Minecraft mit deiner Mod.")}
                         <br />
-                        <span className="muted">Der erste Start dauert einige Minuten, weil Gradle Minecraft und NeoForge lädt.</span>
+                        <span className="muted">{t("Der erste Start dauert einige Minuten, weil Gradle Minecraft und NeoForge lädt.")}</span>
                       </>
                     )}
                   </div>
@@ -419,7 +420,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
                 shown.map((l) => (
                   <div key={l.id} className={`log ${l.level}`}>
                     {l.level === "system" && <LogIcon line={l.line} />}
-                    {l.line}
+                    {l.level === "system" ? translateMessage(l.line) : l.line}
                   </div>
                 ))
               )}
@@ -429,7 +430,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
 
         {/* Inspector */}
         <aside className="inspector">
-          <div className="side-title">Testlauf</div>
+          <div className="side-title">{t("Testlauf")}</div>
           <div className={running ? "run-card live" : lastExit ? (lastExit.success ? "run-card ok" : "run-card fail") : "run-card"}>
             {running ? (
               <>
@@ -438,7 +439,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
                 </div>
                 <div className="run-time mono">{time}</div>
                 <button className="btn danger full" onClick={() => api.stopTask(project.id).catch((e) => toast(String(e), "error"))}>
-                  <StopIcon size={12} /> Stoppen
+                  <StopIcon size={12} />{" "}{t("Stoppen")}
                 </button>
               </>
             ) : lastExit ? (
@@ -447,33 +448,32 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
                 {TASK_LABELS[lastExit.task as Task] ?? lastExit.task} {lastExit.success ? "beendet" : "fehlgeschlagen"}
               </div>
             ) : (
-              <div className="muted small">Bereit. Wähle oben eine Konfiguration und drücke Start.</div>
+              <div className="muted small">{t("Bereit. Wähle oben eine Konfiguration und drücke Start.")}</div>
             )}
           </div>
 
-          <div className="side-title">Testwelt</div>
+          <div className="side-title">{t("Testwelt")}</div>
           <div className="field">
-            <label htmlFor="world">Weltname</label>
+            <label htmlFor="world">{t("Weltname")}</label>
             <input id="world" className="input" value={world} onChange={(e) => setWorld(e.target.value)} />
           </div>
           <p className="muted small">
-            Wird bei „Client · Direkt in Welt“ sofort geladen. Existiert sie noch nicht, starte einmal über das Hauptmenü und lege sie mit
-            genau diesem Namen an.
+            {t("Wird bei „Client · Direkt in Welt“ sofort geladen. Existiert sie noch nicht, starte einmal über das Hauptmenü und lege sie mit genau diesem Namen an.")}
           </p>
 
-          <div className="side-title">Schnellstart</div>
+          <div className="side-title">{t("Schnellstart")}</div>
           <div className="quick">
             <button className="quick-btn" disabled={busy} onClick={() => start("runClient")}>
-              <PlayIcon size={12} /> Client
+              <PlayIcon size={12} />{" "}{t("Client")}
             </button>
             <button className="quick-btn" disabled={busy} onClick={() => start("runServer")}>
-              <TerminalIcon size={14} /> Server
+              <TerminalIcon size={14} />{" "}{t("Server")}
             </button>
             <button className="quick-btn" disabled={busy} onClick={() => start("runData")}>
-              <SparkIcon size={14} /> Datagen
+              <SparkIcon size={14} />{" "}{t("Datagen")}
             </button>
             <button className="quick-btn" disabled={busy} onClick={() => start("clean")}>
-              <TrashIcon size={14} /> Aufräumen
+              <TrashIcon size={14} />{" "}{t("Aufräumen")}
             </button>
           </div>
         </aside>

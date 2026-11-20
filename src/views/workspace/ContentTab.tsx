@@ -1,6 +1,7 @@
+import { t } from "../../i18n";
 import { confirmDialog, contextMenu, MenuItem } from "../../components/Overlay";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArmorSlot, BlockDef, Content, contentApi, ItemDef, Project, Recipe } from "../../api";
+import { ArmorSlot, BlockDef, Content, contentApi, ItemDef, MobDef, Project, Recipe } from "../../api";
 import { useCatalog } from "../../catalog";
 import { Segmented, Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
@@ -9,11 +10,12 @@ import { BoxIcon, ChestplateIcon, GemIcon, CloseIcon, CopyIcon, CubeIcon, PlusIc
 import { toast } from "../../state";
 import PixelEditor from "./PixelEditor";
 import { ArmorForm, BlockExtras, Field, ItemKindSwitch, ToolForm } from "./ContentForms";
-import { armorPreset, newBlock, newItem, normalizeBlock, normalizeItem, SLOT_EN, SLOT_LABEL, variantIds } from "./contentDefaults";
+import MobEditor from "./MobEditor";
+import { armorPreset, eggDataUrl, newMob, normalizeMob, newBlock, newItem, normalizeBlock, normalizeItem, SLOT_DE, SLOT_EN, variantIds } from "./contentDefaults";
 
-const normalize = (c: Content): Content => ({ ...c, blocks: c.blocks.map(normalizeBlock), items: c.items.map(normalizeItem), tabIcon: c.tabIcon ?? "", tabName: c.tabName ?? "" });
+const normalize = (c: Content): Content => ({ ...c, blocks: c.blocks.map(normalizeBlock), items: c.items.map(normalizeItem), mobs: (c.mobs ?? []).map(normalizeMob), generatedMobs: c.generatedMobs ?? [], tabIcon: c.tabIcon ?? "", tabName: c.tabName ?? "" });
 
-type Sel = { kind: "block" | "item"; index: number } | null;
+type Sel = { kind: "block" | "item" | "mob"; index: number } | null;
 
 export default function ContentTab({ project }: { project: Project }) {
   const [content, setContent] = useState<Content | null>(null);
@@ -64,10 +66,10 @@ export default function ContentTab({ project }: { project: Project }) {
       loadTextures(c);
       if (r.registration === "ok" || r.registration === "added") {
         setHint(null);
-        toast(r.registration === "added" ? "Gespeichert – die Hauptklasse wurde einmalig ergänzt." : "Gespeichert, Code und Dateien erzeugt.", "success");
+        toast(r.registration === "added" ? t("Gespeichert – die Hauptklasse wurde einmalig ergänzt.") : t("Gespeichert, Code und Dateien erzeugt."), "success");
       } else {
         setHint(r.registration);
-        toast("Gespeichert – ein Schritt fehlt noch (siehe Hinweis).", "info");
+        toast(t("Gespeichert – ein Schritt fehlt noch (siehe Hinweis)."), "info");
       }
     } catch (e) {
       toast(String(e), "error");
@@ -87,7 +89,10 @@ export default function ContentTab({ project }: { project: Project }) {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const allIds = useMemo(() => (content ? [...content.blocks.flatMap((b) => variantIds(b).map((v) => v.id)), ...content.items.map((i) => i.id)] : []), [content]);
+  const allIds = useMemo(
+    () => (content ? [...content.blocks.flatMap((b) => variantIds(b).map((v) => v.id)), ...content.items.map((i) => i.id), ...content.mobs.flatMap((m) => [m.id, `${m.id}_spawn_egg`])] : []),
+    [content],
+  );
   const own: OwnEntry[] = useMemo(
     () =>
       content
@@ -96,6 +101,7 @@ export default function ContentTab({ project }: { project: Project }) {
               variantIds(b).map((v) => ({ id: v.id, name: v.name, kind: "block" as const, texture: textures[v.id] ?? textures[b.id], shape: v.shape })),
             ),
             ...content.items.map((i) => ({ id: i.id, name: i.nameDe || i.nameEn || i.id, kind: "item" as const, texture: textures[i.id] })),
+            ...content.mobs.map((m) => ({ id: `${m.id}_spawn_egg`, name: `${m.nameDe || m.id}-Spawn-Ei`, kind: "item" as const, texture: eggDataUrl(m.eggPrimary, m.eggSecondary) })),
           ]
         : [],
     [content, textures],
@@ -129,6 +135,14 @@ export default function ContentTab({ project }: { project: Project }) {
     setFilter("");
   }
 
+  function addMob(from?: MobDef) {
+    if (!content) return;
+    const m: MobDef = from ? { ...structuredClone(from), id: uniqueId(`${from.id}_kopie`), nameDe: `${from.nameDe} (Kopie)`, nameEn: `${from.nameEn} (Copy)` } : newMob(uniqueId("neue_kreatur"));
+    setContent({ ...content, mobs: [...content.mobs, m] });
+    setSel({ kind: "mob", index: content.mobs.length });
+    setFilter("");
+  }
+
   function createArmorSet(from: ItemDef) {
     if (!content) return;
     const mat = from.armorMaterial || "material";
@@ -146,7 +160,7 @@ export default function ContentTab({ project }: { project: Project }) {
       added.push({
         ...structuredClone(from),
         id,
-        nameDe: `${matName}-${SLOT_LABEL[slot]}`,
+        nameDe: `${matName}-${SLOT_DE[slot]}`,
         nameEn: `${matEn} ${SLOT_EN[slot]}`,
         armorSlot: slot,
         defense: armorPreset("iron", slot).defense! + Math.max(0, from.defense - armorPreset("iron", from.armorSlot).defense!),
@@ -154,44 +168,52 @@ export default function ContentTab({ project }: { project: Project }) {
       });
     }
     setContent({ ...content, items: [...content.items, ...added] });
-    toast(`${added.length} Rüstungsteile hinzugefügt.`, "success");
+    toast(t("{length} Rüstungsteile hinzugefügt.", { length: added.length }), "success");
   }
 
-  function entryMenu(kind: "block" | "item", index: number): MenuItem[] {
-    const def = kind === "block" ? content!.blocks[index] : content!.items[index];
+  function entryMenu(kind: "block" | "item" | "mob", index: number): MenuItem[] {
+    const def = kind === "block" ? content!.blocks[index] : kind === "mob" ? content!.mobs[index] : content!.items[index];
     return [
-      { label: "Bearbeiten", icon: <PencilIcon size={15} />, onClick: () => setSel({ kind, index }) },
-      { label: "Duplizieren", icon: <CopyIcon size={15} />, onClick: () => (kind === "block" ? addBlock(def as BlockDef) : addItem(def as ItemDef)) },
+      { label: t("Bearbeiten"), icon: <PencilIcon size={15} />, onClick: () => setSel({ kind, index }) },
+      { label: t("Duplizieren"), icon: <CopyIcon size={15} />, onClick: () => (kind === "block" ? addBlock(def as BlockDef) : kind === "mob" ? addMob(def as MobDef) : addItem(def as ItemDef)) },
       {
-        label: "ID kopieren",
+        label: t("ID kopieren"),
         icon: <TagIcon size={15} />,
         hint: `${project.modId}:${def.id}`,
-        onClick: () => navigator.clipboard.writeText(`${project.modId}:${def.id}`).then(() => toast("ID kopiert.", "success")),
+        onClick: () => navigator.clipboard.writeText(`${project.modId}:${def.id}`).then(() => toast(t("ID kopiert."), "success")),
       },
       "separator",
-      { label: "Entfernen", icon: <TrashIcon size={15} />, danger: true, onClick: () => remove({ kind, index }) },
+      { label: t("Entfernen"), icon: <TrashIcon size={15} />, danger: true, onClick: () => remove({ kind, index }) },
     ];
   }
 
   async function remove(target: Sel = sel) {
     if (!content || !target) return;
-    const name = target.kind === "block" ? content.blocks[target.index].id : content.items[target.index].id;
-    if (!(await confirmDialog(`„${name}“ entfernen?`, "Die erzeugten Dateien werden beim Speichern gelöscht, die Textur bleibt erhalten.", "Entfernen", "Abbrechen", true))) return;
+    const name = target.kind === "block" ? content.blocks[target.index].id : target.kind === "mob" ? content.mobs[target.index].id : content.items[target.index].id;
+    if (!(await confirmDialog(t("„{name}“ entfernen?", { name: name }), t("Die erzeugten Dateien werden beim Speichern gelöscht, die Textur bleibt erhalten."), t("Entfernen"), t("Abbrechen"), true))) return;
     setContent((c) =>
-      !c ? c : target.kind === "block" ? { ...c, blocks: c.blocks.filter((_, i) => i !== target.index) } : { ...c, items: c.items.filter((_, i) => i !== target.index) },
+      !c
+        ? c
+        : target.kind === "block"
+          ? { ...c, blocks: c.blocks.filter((_, i) => i !== target.index) }
+          : target.kind === "mob"
+            ? { ...c, mobs: c.mobs.filter((_, i) => i !== target.index) }
+            : { ...c, items: c.items.filter((_, i) => i !== target.index) },
     );
     setSel(null);
   }
 
-  if (!content) return <div className="content-loading muted">Lade Inhalte …</div>;
+  if (!content) return <div className="content-loading muted">{t("Lade Inhalte …")}</div>;
 
   const block = sel?.kind === "block" ? content.blocks[sel.index] : undefined;
   const item = sel?.kind === "item" ? content.items[sel.index] : undefined;
+  const mob = sel?.kind === "mob" ? content.mobs[sel.index] : undefined;
   const current = block ?? item;
   const q = filter.trim().toLowerCase();
   const matches = (d: { id: string; nameDe: string; nameEn: string }) => !q || `${d.id} ${d.nameDe} ${d.nameEn}`.toLowerCase().includes(q);
 
   const updBlock = (patch: Partial<BlockDef>) => setContent({ ...content, blocks: content.blocks.map((b, i) => (i === sel!.index ? { ...b, ...patch } : b)) });
+  const updMob = (patch: Partial<MobDef>) => setContent({ ...content, mobs: content.mobs.map((m, i) => (i === sel!.index ? { ...m, ...patch } : m)) });
   const updItem = (patch: Partial<ItemDef>) => setContent({ ...content, items: content.items.map((b, i) => (i === sel!.index ? { ...b, ...patch } : b)) });
 
   const entryIcon = (kind: "block" | "item", id: string, name: string) => {
@@ -213,15 +235,15 @@ export default function ContentTab({ project }: { project: Project }) {
           <div className="search">
             <SearchIcon size={13} />
             <label htmlFor="cfilter" className="sr-only">
-              Inhalte durchsuchen
+              {t("Inhalte durchsuchen")}
             </label>
-            <input id="cfilter" placeholder="Inhalte durchsuchen …" value={filter} onChange={(e) => setFilter(e.target.value)} />
+            <input id="cfilter" placeholder={t("Inhalte durchsuchen …")} value={filter} onChange={(e) => setFilter(e.target.value)} />
           </div>
         </div>
         <div className="content-list-scroll">
           <div className="content-list-head">
-            <span>Blöcke · {content.blocks.length}</span>
-            <button className="icon-btn" onClick={() => addBlock()} aria-label="Block hinzufügen" data-tip="Block hinzufügen">
+            <span>{t("Blöcke ·")}{" "}{content.blocks.length}</span>
+            <button className="icon-btn" onClick={() => addBlock()} aria-label={t("Block hinzufügen")} data-tip={t("Block hinzufügen")}>
               <PlusIcon size={15} />
             </button>
           </div>
@@ -240,24 +262,24 @@ export default function ContentTab({ project }: { project: Project }) {
                 </span>
                 {(b.ore.enabled || b.shapes.length > 0) && (
                   <span className="entry-badges">
-                    {b.ore.enabled && <span className="badge-mini">Erz</span>}
+                    {b.ore.enabled && <span className="badge-mini">{t("Erz")}</span>}
                     {b.shapes.length > 0 && <span className="badge-mini">+{b.shapes.length}</span>}
                   </span>
                 )}
               </button>
             ) : null,
           )}
-          {content.blocks.length === 0 && <p className="muted small pad">Noch keine Blöcke.</p>}
+          {content.blocks.length === 0 && <p className="muted small pad">{t("Noch keine Blöcke.")}</p>}
           <div className="content-list-head">
-            <span>Items · {content.items.length}</span>
+            <span>{t("Items ·")}{" "}{content.items.length}</span>
             <span className="row gap-2">
-              <button className="icon-btn" onClick={() => addItem(undefined, "tool")} aria-label="Werkzeug hinzufügen" data-tip="Werkzeug / Waffe">
+              <button className="icon-btn" onClick={() => addItem(undefined, "tool")} aria-label={t("Werkzeug hinzufügen")} data-tip={t("Werkzeug / Waffe")}>
                 <SwordIcon size={15} />
               </button>
-              <button className="icon-btn" onClick={() => addItem(undefined, "armor")} aria-label="Rüstung hinzufügen" data-tip="Rüstung">
+              <button className="icon-btn" onClick={() => addItem(undefined, "armor")} aria-label={t("Rüstung hinzufügen")} data-tip={t("Rüstung")}>
                 <ChestplateIcon size={15} />
               </button>
-              <button className="icon-btn" onClick={() => addItem()} aria-label="Item hinzufügen" data-tip="Item">
+              <button className="icon-btn" onClick={() => addItem()} aria-label={t("Item hinzufügen")} data-tip={t("Item")}>
                 <PlusIcon size={15} />
               </button>
             </span>
@@ -279,13 +301,36 @@ export default function ContentTab({ project }: { project: Project }) {
               </button>
             ) : null,
           )}
-          {content.items.length === 0 && <p className="muted small pad">Noch keine Items.</p>}
+          {content.items.length === 0 && <p className="muted small pad">{t("Noch keine Items.")}</p>}
+          <div className="content-list-head">
+            <span>{t("Kreaturen ·")}{" "}{content.mobs.length}</span>
+            <button className="icon-btn" onClick={() => addMob()} aria-label={t("Kreatur hinzufügen")} data-tip={t("Kreatur")}>
+              <PlusIcon size={15} />
+            </button>
+          </div>
+          {content.mobs.map((m, i) =>
+            matches(m) ? (
+              <button
+                key={`m${i}`}
+                className={sel?.kind === "mob" && sel.index === i ? "entry active" : "entry"}
+                onClick={() => setSel({ kind: "mob", index: i })}
+                {...contextMenu(() => entryMenu("mob", i))}
+              >
+                <img className="egg-icon" src={eggDataUrl(m.eggPrimary, m.eggSecondary)} alt="" />
+                <span className="entry-text">
+                  <span className="entry-name">{m.nameDe || m.id}</span>
+                  <span className="entry-id">{m.id}</span>
+                </span>
+              </button>
+            ) : null,
+          )}
+          {content.mobs.length === 0 && <p className="muted small pad">{t("Noch keine Kreaturen.")}</p>}
         </div>
         <div className="content-save">
           <button className={busy ? "btn primary full loading" : "btn primary full"} disabled={busy || (!dirty && content.generatorVersion > 0)} onClick={save}>
-            <SaveIcon size={14} /> {dirty ? "Speichern & Code erzeugen" : "Alles gespeichert"}
+            <SaveIcon size={14} /> {dirty ? t("Speichern & Code erzeugen") : t("Alles gespeichert")}
           </button>
-          <div className="muted small center">Strg S</div>
+          <div className="muted small center">{t("Strg S")}</div>
         </div>
       </aside>
 
@@ -293,35 +338,47 @@ export default function ContentTab({ project }: { project: Project }) {
         {hint && (
           <div className="callout warn">
             <div>
-              <div className="callout-title">Einmaliger Schritt nötig</div>
+              <div className="callout-title">{t("Einmaliger Schritt nötig")}</div>
               <div className="small mono" style={{ userSelect: "text" }}>
                 {hint}
               </div>
             </div>
           </div>
         )}
-        {!current ? (
+        {mob ? (
+          <MobEditor
+            key={`mob-${sel!.index}`}
+            project={project}
+            mob={mob}
+            own={own}
+            saved={(savedContent?.generatedMobs ?? []).includes(mob.id)}
+            busy={busy}
+            onChange={updMob}
+            onSave={save}
+            onDuplicate={() => addMob(mob)}
+            onRemove={() => remove()}
+          />
+        ) : !current ? (
           <div className="content-empty">
             <div className="empty-icon">
               <CubeIcon size={26} />
             </div>
-            <h2>Blöcke &amp; Items ohne Code</h2>
+            <h2>{t("Blöcke & Items ohne Code")}</h2>
             <p className="muted">
-              Lege Inhalte per Formular an. Beim Speichern erzeugt Anvil Studio Java-Code, Modelle, Loot-Tabellen, Rezepte und Übersetzungen – passend für
-              Minecraft {project.mcVersion}.
+              {t("Lege Inhalte per Formular an. Beim Speichern erzeugt Anvil Studio Java-Code, Modelle, Loot-Tabellen, Rezepte und Übersetzungen – passend für Minecraft")}{" "}{project.mcVersion}.
             </p>
             <div className="row center">
               <button className="btn primary" onClick={() => addBlock()}>
-                <PlusIcon size={15} /> Block
+                <PlusIcon size={15} />{" "}{t("Block")}
               </button>
               <button className="btn" onClick={() => addItem()}>
-                <BoxIcon size={15} /> Item
+                <BoxIcon size={15} />{" "}{t("Item")}
               </button>
               <button className="btn" onClick={() => addItem(undefined, "tool")}>
-                <SwordIcon size={15} /> Werkzeug
+                <SwordIcon size={15} />{" "}{t("Werkzeug")}
               </button>
               <button className="btn" onClick={() => addItem(undefined, "armor")}>
-                <ChestplateIcon size={15} /> Rüstung
+                <ChestplateIcon size={15} />{" "}{t("Rüstung")}
               </button>
             </div>
           </div>
@@ -330,20 +387,20 @@ export default function ContentTab({ project }: { project: Project }) {
             <div className="panel form-panel">
               <div className="panel-head">
                 <div className="row">
-                  {entryIcon(sel!.kind, current.id, current.nameDe)}
-                  <div className="panel-title-lg">{block ? (block.ore.enabled ? "Erz" : "Block") : item!.kind === "tool" ? "Werkzeug" : item!.kind === "armor" ? "Rüstung" : "Item"}</div>
+                  {entryIcon(block ? "block" : "item", current.id, current.nameDe)}
+                  <div className="panel-title-lg">{block ? (block.ore.enabled ? t("Erz") : t("Block")) : item!.kind === "tool" ? t("Werkzeug") : item!.kind === "armor" ? t("Rüstung") : t("Item")}</div>
                 </div>
                 <div className="row gap-6">
-                  <button className="icon-btn" onClick={() => (block ? addBlock(block) : addItem(item))} aria-label="Duplizieren" data-tip="Duplizieren">
+                  <button className="icon-btn" onClick={() => (block ? addBlock(block) : addItem(item))} aria-label={t("Duplizieren")} data-tip={t("Duplizieren")}>
                     <CopyIcon size={15} />
                   </button>
-                  <button className="icon-btn danger" onClick={() => remove()} aria-label="Entfernen" data-tip="Entfernen">
+                  <button className="icon-btn danger" onClick={() => remove()} aria-label={t("Entfernen")} data-tip={t("Entfernen")}>
                     <TrashIcon size={15} />
                   </button>
                 </div>
               </div>
               <div className="form-grid">
-                <Field label="ID" hint={savedIds.includes(current.id) ? "ändern löscht die alten Dateien" : "Kleinbuchstaben, _"}>
+                <Field label={t("ID")} hint={savedIds.includes(current.id) ? t("ändern löscht die alten Dateien") : t("Kleinbuchstaben, _")}>
                   <input
                     className="input mono"
                     value={current.id}
@@ -353,54 +410,54 @@ export default function ContentTab({ project }: { project: Project }) {
                     }}
                   />
                 </Field>
-                <Field label="Vollständige ID">
+                <Field label={t("Vollständige ID")}>
                   <input className="input mono" readOnly value={`${project.modId}:${current.id}`} />
                 </Field>
-                <Field label="Name (Deutsch)">
+                <Field label={t("Name (Deutsch)")}>
                   <input className="input" value={current.nameDe} onChange={(e) => (block ? updBlock({ nameDe: e.target.value }) : updItem({ nameDe: e.target.value }))} />
                 </Field>
-                <Field label="Name (Englisch)">
+                <Field label={t("Name (Englisch)")}>
                   <input className="input" value={current.nameEn} onChange={(e) => (block ? updBlock({ nameEn: e.target.value }) : updItem({ nameEn: e.target.value }))} />
                 </Field>
 
                 {block && (
                   <>
-                    <Field label="Material & Klang">
+                    <Field label={t("Material & Klang")}>
                       <select className="input" value={block.material} onChange={(e) => updBlock({ material: e.target.value as BlockDef["material"] })}>
-                        <option value="stone">Stein</option>
-                        <option value="wood">Holz</option>
-                        <option value="metal">Metall</option>
-                        <option value="glass">Glas (durchsichtig)</option>
-                        <option value="grass">Gras/Pflanze</option>
-                        <option value="sand">Sand</option>
-                        <option value="gravel">Kies</option>
-                        <option value="wool">Wolle</option>
+                        <option value="stone">{t("Stein")}</option>
+                        <option value="wood">{t("Holz")}</option>
+                        <option value="metal">{t("Metall")}</option>
+                        <option value="glass">{t("Glas (durchsichtig)")}</option>
+                        <option value="grass">{t("Gras/Pflanze")}</option>
+                        <option value="sand">{t("Sand")}</option>
+                        <option value="gravel">{t("Kies")}</option>
+                        <option value="wool">{t("Wolle")}</option>
                       </select>
                     </Field>
-                    <Field label={`Leuchtkraft · ${block.light}`}>
+                    <Field label={t("Leuchtkraft · {light}", { light: block.light })}>
                       <input type="range" className="range full" min={0} max={15} value={block.light} onChange={(e) => updBlock({ light: Number(e.target.value) })} />
                     </Field>
-                    <Field label="Härte" hint="Stein 1,5 · Eisenerz 3 · Obsidian 50">
+                    <Field label={t("Härte")} hint={t("Stein 1,5 · Eisenerz 3 · Obsidian 50")}>
                       <input className="input" type="number" min={0} step={0.5} value={block.hardness} onChange={(e) => updBlock({ hardness: Number(e.target.value) })} />
                     </Field>
-                    <Field label="Explosionsresistenz" hint="Stein 6 · Obsidian 1200">
+                    <Field label={t("Explosionsresistenz")} hint={t("Stein 6 · Obsidian 1200")}>
                       <input className="input" type="number" min={0} step={1} value={block.resistance} onChange={(e) => updBlock({ resistance: Number(e.target.value) })} />
                     </Field>
-                    <Field label="Abbauen mit">
+                    <Field label={t("Abbauen mit")}>
                       <select className="input" value={block.tool} onChange={(e) => updBlock({ tool: e.target.value as BlockDef["tool"] })}>
-                        <option value="none">Beliebig (droppt immer)</option>
-                        <option value="pickaxe">Spitzhacke</option>
-                        <option value="axe">Axt</option>
-                        <option value="shovel">Schaufel</option>
-                        <option value="hoe">Hacke</option>
+                        <option value="none">{t("Beliebig (droppt immer)")}</option>
+                        <option value="pickaxe">{t("Spitzhacke")}</option>
+                        <option value="axe">{t("Axt")}</option>
+                        <option value="shovel">{t("Schaufel")}</option>
+                        <option value="hoe">{t("Hacke")}</option>
                       </select>
                     </Field>
-                    <Field label="Mindestens">
+                    <Field label={t("Mindestens")}>
                       <select className="input" value={block.tier} disabled={block.tool === "none"} onChange={(e) => updBlock({ tier: e.target.value as BlockDef["tier"] })}>
-                        <option value="wood">Holz</option>
-                        <option value="stone">Stein</option>
-                        <option value="iron">Eisen</option>
-                        <option value="diamond">Diamant</option>
+                        <option value="wood">{t("Holz")}</option>
+                        <option value="stone">{t("Stein")}</option>
+                        <option value="iron">{t("Eisen")}</option>
+                        <option value="diamond">{t("Diamant")}</option>
                       </select>
                     </Field>
                   </>
@@ -409,23 +466,23 @@ export default function ContentTab({ project }: { project: Project }) {
                 {item && <ItemKindSwitch item={item} onChange={updItem} />}
                 {item && item.kind === "basic" && (
                   <>
-                    <Field label="Stapelgröße">
+                    <Field label={t("Stapelgröße")}>
                       <select className="input" value={item.stackSize} onChange={(e) => updItem({ stackSize: Number(e.target.value) })}>
                         <option value={64}>64</option>
                         <option value={16}>16</option>
-                        <option value={1}>1 (nicht stapelbar)</option>
+                        <option value={1}>{t("1 (nicht stapelbar)")}</option>
                       </select>
                     </Field>
                     <div className="span-2 toggle-row" style={{ flexDirection: "row" }}>
-                      <Toggle label="Essbar" checked={item.food} onChange={(v) => updItem({ food: v })} />
-                      <span>Essbar</span>
+                      <Toggle label={t("Essbar")} checked={item.food} onChange={(v) => updItem({ food: v })} />
+                      <span>{t("Essbar")}</span>
                     </div>
                     {item.food && (
                       <>
-                        <Field label={`Hunger · ${item.nutrition / 2} Keulen`}>
+                        <Field label={t("Hunger · {v0} Keulen", { v0: item.nutrition / 2 })}>
                           <input type="range" className="range full" min={1} max={20} value={item.nutrition} onChange={(e) => updItem({ nutrition: Number(e.target.value) })} />
                         </Field>
-                        <Field label="Sättigung" hint="Apfel 0,3 · Steak 0,8">
+                        <Field label={t("Sättigung")} hint={t("Apfel 0,3 · Steak 0,8")}>
                           <input className="input" type="number" min={0} max={2} step={0.1} value={item.saturation} onChange={(e) => updItem({ saturation: Number(e.target.value) })} />
                         </Field>
                       </>
@@ -433,12 +490,12 @@ export default function ContentTab({ project }: { project: Project }) {
                   </>
                 )}
                 {item && (
-                  <Field label="Seltenheit" hint="Farbe des Namens">
+                  <Field label={t("Seltenheit")} hint={t("Farbe des Namens")}>
                     <select className="input" value={item.rarity} onChange={(e) => updItem({ rarity: e.target.value as ItemDef["rarity"] })}>
-                      <option value="common">Gewöhnlich (weiß)</option>
-                      <option value="uncommon">Ungewöhnlich (gelb)</option>
-                      <option value="rare">Selten (türkis)</option>
-                      <option value="epic">Episch (lila)</option>
+                      <option value="common">{t("Gewöhnlich (weiß)")}</option>
+                      <option value="uncommon">{t("Ungewöhnlich (gelb)")}</option>
+                      <option value="rare">{t("Selten (türkis)")}</option>
+                      <option value="epic">{t("Episch (lila)")}</option>
                     </select>
                   </Field>
                 )}
@@ -469,11 +526,11 @@ export default function ContentTab({ project }: { project: Project }) {
             </div>
 
             <div className="panel texture-panel">
-              <div className="panel-title-lg">Textur</div>
+              <div className="panel-title-lg">{t("Textur")}</div>
               {savedIds.includes(current.id) ? (
                 <PixelEditor
                   projectId={project.id}
-                  kind={sel!.kind}
+                  kind={block ? "block" : "item"}
                   id={current.id}
                   onSaved={(dataUrl) => setTextures((t) => ({ ...t, [current.id]: dataUrl }))}
                 />
@@ -482,7 +539,7 @@ export default function ContentTab({ project }: { project: Project }) {
                 <div className="texture-sub">
                   <div className="texture-sub-head">
                     <GemIcon size={16} />
-                    <span className="panel-title-lg">Tiefenschiefer-Variante</span>
+                    <span className="panel-title-lg">{t("Tiefenschiefer-Variante")}</span>
                   </div>
                   <PixelEditor
                     projectId={project.id}
@@ -496,10 +553,10 @@ export default function ContentTab({ project }: { project: Project }) {
                 <div className="texture-sub">
                   <div className="texture-sub-head">
                     <ChestplateIcon size={16} />
-                    <span className="panel-title-lg">{item.armorSlot === "leggings" ? "Getragen: Hose" : "Getragen: Helm, Brust & Stiefel"}</span>
+                    <span className="panel-title-lg">{item.armorSlot === "leggings" ? t("Getragen: Hose") : t("Getragen: Helm, Brust & Stiefel")}</span>
                   </div>
                   <p className="muted small">
-                    64×32 im Aufbau eines Spieler-Skins. Gilt für alle Teile aus „{item.armorMaterial}“{item.armorSlot === "leggings" ? " (nur Hose)" : " außer der Hose"}.
+                    {item.armorSlot === "leggings" ? t("64×32 im Aufbau eines Spieler-Skins. Gilt für die Hose aus „{material}“.", { material: item.armorMaterial }) : t("64×32 im Aufbau eines Spieler-Skins. Gilt für alle Teile aus „{material}“ außer der Hose.", { material: item.armorMaterial })}
                   </p>
                   <PixelEditor key={`${item.armorMaterial}-${item.armorSlot === "leggings"}`} projectId={project.id} kind={item.armorSlot === "leggings" ? "armor_legs" : "armor"} id={item.armorMaterial} />
                 </div>
@@ -509,9 +566,9 @@ export default function ContentTab({ project }: { project: Project }) {
               ) : (
                 <div className="texture-wait">
                   <SparkIcon size={20} />
-                  <p className="muted small">Speichere zuerst, dann kannst du die Textur malen.</p>
+                  <p className="muted small">{t("Speichere zuerst, dann kannst du die Textur malen.")}</p>
                   <button className="btn small primary" onClick={save} disabled={busy}>
-                    <SaveIcon size={14} /> Jetzt speichern
+                    <SaveIcon size={14} />{" "}{t("Jetzt speichern")}
                   </button>
                 </div>
               )}
@@ -553,17 +610,17 @@ function RecipeEditor({
   return (
     <div className="recipe">
       <div className="recipe-head">
-        <Toggle label="Rezept" checked={recipe.enabled} onChange={(v) => onChange({ ...recipe, enabled: v, grid, kind })} />
-        <span className="panel-title-lg">Rezept</span>
+        <Toggle label={t("Rezept")} checked={recipe.enabled} onChange={(v) => onChange({ ...recipe, enabled: v, grid, kind })} />
+        <span className="panel-title-lg">{t("Rezept")}</span>
         {recipe.enabled && (
           <Segmented
-            label="Rezeptart"
+            label={t("Rezeptart")}
             value={mode}
             onChange={(v) => onChange({ ...recipe, grid, kind: v === "smelting" ? "smelting" : "crafting", shaped: v !== "shapeless" })}
             options={[
-              { value: "shaped", label: "Werkbank" },
-              { value: "shapeless", label: "Ohne Form" },
-              { value: "smelting", label: "Ofen" },
+              { value: "shaped", label: t("Werkbank") },
+              { value: "shapeless", label: t("Ohne Form") },
+              { value: "smelting", label: t("Ofen") },
             ]}
           />
         )}
@@ -579,14 +636,14 @@ function RecipeEditor({
                   key={i}
                   type="button"
                   className={id ? "slot-btn filled" : "slot-btn"}
-                  title={id ? `${info.name}\n${id}` : "Item wählen"}
-                  aria-label={id ? `Feld ${i + 1}: ${info.name}` : `Feld ${i + 1}: leer`}
+                  title={id ? `${info.name}\n${id}` : t("Item wählen")}
+                  aria-label={id ? t("Feld {v0}: {name}", { v0: i + 1, name: info.name }) : t("Feld {v0}: leer", { v0: i + 1 })}
                   onClick={() => setPicking(i)}
                   {...contextMenu(() => [
-                    { label: "Item wählen …", icon: <SearchIcon size={15} />, onClick: () => setPicking(i) },
-                    { label: "Leeren", icon: <TrashIcon size={15} />, disabled: !id, onClick: () => setCell(i, "") },
+                    { label: t("Item wählen …"), icon: <SearchIcon size={15} />, onClick: () => setPicking(i) },
+                    { label: t("Leeren"), icon: <TrashIcon size={15} />, disabled: !id, onClick: () => setCell(i, "") },
                     "separator",
-                    { label: "Alle Felder leeren", icon: <TrashIcon size={15} />, danger: true, onClick: () => onChange({ ...recipe, grid: Array(9).fill("") }) },
+                    { label: t("Alle Felder leeren"), icon: <TrashIcon size={15} />, danger: true, onClick: () => onChange({ ...recipe, grid: Array(9).fill("") }) },
                   ])}
                 >
                   {id ? (
@@ -600,7 +657,7 @@ function RecipeEditor({
                     <span
                       role="button"
                       className="slot-clear"
-                      aria-label="Leeren"
+                      aria-label={t("Leeren")}
                       onClick={(e) => {
                         e.stopPropagation();
                         setCell(i, "");
@@ -625,10 +682,10 @@ function RecipeEditor({
           <div className="recipe-options">
             {kind === "smelting" ? (
               <>
-                <Field label="Erfahrung">
+                <Field label={t("Erfahrung")}>
                   <input className="input" type="number" min={0} step={0.1} value={recipe.experience ?? 0.1} onChange={(e) => onChange({ ...recipe, experience: Number(e.target.value) })} />
                 </Field>
-                <Field label="Dauer (Sekunden)">
+                <Field label={t("Dauer (Sekunden)")}>
                   <input
                     className="input"
                     type="number"
@@ -640,7 +697,7 @@ function RecipeEditor({
                 </Field>
               </>
             ) : (
-              <Field label="Anzahl">
+              <Field label={t("Anzahl")}>
                 <input className="input" type="number" min={1} max={64} value={recipe.count} onChange={(e) => onChange({ ...recipe, count: Number(e.target.value) })} />
               </Field>
             )}
