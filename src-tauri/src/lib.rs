@@ -8,14 +8,17 @@ mod i18n;
 mod java;
 mod mcassets;
 mod migrate;
+mod minecraft;
 mod modsettings;
 mod mods;
+mod play;
 mod projects;
 mod runner;
 mod settings;
 mod template;
 mod updater;
 mod util;
+mod workshop;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -76,6 +79,29 @@ pub fn run() {
             updater::patch_notes_pending,
             updater::patch_notes_seen,
             export::export_jars,
+            minecraft::mc_login_available,
+            minecraft::mc_start_login,
+            minecraft::mc_poll_login,
+            minecraft::mc_account,
+            minecraft::mc_logout,
+            workshop::ws_base_url,
+            workshop::ws_list,
+            workshop::ws_item,
+            workshop::ws_me,
+            workshop::ws_my_items,
+            workshop::ws_delete,
+            workshop::ws_report,
+            workshop::ws_upload,
+            workshop::ws_download,
+            workshop::ws_open_source,
+            workshop::ws_admin_items,
+            workshop::ws_admin_stats,
+            workshop::ws_admin_reports,
+            workshop::ws_admin_action,
+            workshop::ws_admin_patch,
+            workshop::ws_admin_settings,
+            play::play_mod,
+            play::play_running,
             content::content_hot_reload,
             export::export_copy_jar,
             export::export_delete_jar,

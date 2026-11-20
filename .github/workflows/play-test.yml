@@ -1,0 +1,65 @@
+name: Spielen-Test
+
+# Prüft „Spielen“ aus dem Workshop: lädt Minecraft, installiert NeoForge mit dem
+# offiziellen Installer, legt eine mit Anvil Studio erzeugte Mod hinein und startet
+# den Client (ohne Bildschirm über Xvfb) bis ins Hauptmenü.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src-tauri/src/play.rs"
+      - ".github/workflows/play-test.yml"
+  workflow_dispatch:
+
+jobs:
+  play:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mc: ["1.21.1", "1.21.10"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Linux-Bibliotheken
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev xvfb mesa-utils libgl1-mesa-dri
+
+      - name: Mod mit Anvil Studio erzeugen und bauen
+        run: |
+          git clone --depth 1 https://github.com/NeoForgeMDKs/MDK-${{ matrix.mc }}-ModDevGradle mdk-src
+          mkdir -p zipdir && mv mdk-src zipdir/MDK-main && rm -rf zipdir/MDK-main/.git
+          (cd zipdir && zip -qr ../mdk.zip .)
+          mkdir -p dist && echo '<!doctype html>' > dist/index.html
+          cd src-tauri
+          ANVIL_TEST_MDK=$GITHUB_WORKSPACE/mdk.zip cargo test customize_mdk -- --nocapture
+          ANVIL_TEST_PROJECT=/tmp/anvil-test-project ANVIL_TEST_MC=${{ matrix.mc }} cargo test generate_into_mdk
+          cd /tmp/anvil-test-project && chmod +x gradlew && ./gradlew build -x test --no-daemon --console=plain -q
+          ls build/libs
+
+      - name: Minecraft + NeoForge installieren
+        working-directory: src-tauri
+        run: |
+          JAR=$(ls /tmp/anvil-test-project/build/libs/*.jar | grep -v sources | head -1)
+          ANVIL_TEST_PLAY=${{ matrix.mc }} ANVIL_TEST_MOD_JAR=$JAR cargo test install_and_launch -- --nocapture
+
+      - name: Client starten (Xvfb)
+        run: |
+          BASE=/tmp/anvil-play-test
+          cd $BASE/instances/test
+          export LIBGL_ALWAYS_SOFTWARE=1
+          set +e
+          timeout 240 xvfb-run -a -s "-screen 0 1280x720x24" $JAVA_HOME/bin/java $(cat $BASE/launch-args.txt | tr '\n' ' ') > client.log 2>&1
+          set -e
+          tail -n 60 client.log
+          echo "---- latest.log ----"
+          tail -n 40 logs/latest.log || true
+          if ls crash-reports/*.txt >/dev/null 2>&1; then echo "::error::Absturz"; head -n 80 crash-reports/*.txt; exit 1; fi
+          grep -qE "Sound engine started|Created: [0-9]+x[0-9]+x[0-9]+ minecraft:textures/atlas" logs/latest.log || { echo "::error::Client kam nicht bis zum Hauptmenü"; exit 1; }
+          grep -q "kristallhoehlen\|anvil" logs/latest.log && echo "Mod geladen" || echo "::warning::Mod-ID nicht im Log gefunden"

@@ -16,7 +16,7 @@ trash = "5"
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "rustls-tls-native-roots", "http2", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "rustls-tls-native-roots", "http2", "json", "multipart"] }
 tokio = { version = "1", features = ["process", "io-util", "rt", "macros", "time"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 flate2 = "1"

@@ -70,35 +70,35 @@ fn skip(rel: &Path) -> bool {
     rel.components().next().and_then(|c| c.as_os_str().to_str()).map(|first| SKIP.contains(&first)).unwrap_or(false)
 }
 
+/// Projektordner (ohne Build- und Spielordner) als ZIP schreiben. Rückgabe: Anzahl Dateien.
+pub fn zip_project(root: &Path, dest: &Path) -> Result<u64, String> {
+    let file = std::fs::File::create(dest).map_err(|e| format!("ZIP kann nicht angelegt werden: {e}"))?;
+    let mut zip = zip::ZipWriter::new(file);
+    let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let mut count = 0;
+    let dest_abs = dest.canonicalize().unwrap_or(dest.to_path_buf());
+    for entry in walkdir::WalkDir::new(root).into_iter().filter_entry(|e| {
+        let rel = e.path().strip_prefix(root).unwrap_or(e.path());
+        rel.as_os_str().is_empty() || !skip(rel)
+    }) {
+        let entry = entry.map_err(err)?;
+        if !entry.file_type().is_file() || entry.path().canonicalize().ok().as_ref() == Some(&dest_abs) {
+            continue;
+        }
+        let rel = entry.path().strip_prefix(root).map_err(err)?;
+        let name = rel.to_string_lossy().replace('\\', "/");
+        zip.start_file(name, opts).map_err(err)?;
+        zip.write_all(&std::fs::read(entry.path()).map_err(err)?).map_err(err)?;
+        count += 1;
+    }
+    zip.finish().map_err(err)?;
+    Ok(count)
+}
+
 /// Quellcode des Projekts als ZIP speichern (ohne Build- und Spielordner).
 #[tauri::command]
 pub async fn export_source_zip(app: AppHandle, project_id: String, dest: String) -> Result<u64, String> {
     let project = crate::projects::get(&app, &project_id)?;
     let root = PathBuf::from(&project.path);
-    let dest = PathBuf::from(dest);
-    tauri::async_runtime::spawn_blocking(move || -> Result<u64, String> {
-        let file = std::fs::File::create(&dest).map_err(|e| format!("ZIP kann nicht angelegt werden: {e}"))?;
-        let mut zip = zip::ZipWriter::new(file);
-        let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-        let mut count = 0;
-        let dest_abs = dest.canonicalize().unwrap_or(dest.clone());
-        for entry in walkdir::WalkDir::new(&root).into_iter().filter_entry(|e| {
-            let rel = e.path().strip_prefix(&root).unwrap_or(e.path());
-            rel.as_os_str().is_empty() || !skip(rel)
-        }) {
-            let entry = entry.map_err(err)?;
-            if !entry.file_type().is_file() || entry.path().canonicalize().ok().as_ref() == Some(&dest_abs) {
-                continue;
-            }
-            let rel = entry.path().strip_prefix(&root).map_err(err)?;
-            let name = rel.to_string_lossy().replace('\\', "/");
-            zip.start_file(name, opts).map_err(err)?;
-            zip.write_all(&std::fs::read(entry.path()).map_err(err)?).map_err(err)?;
-            count += 1;
-        }
-        zip.finish().map_err(err)?;
-        Ok(count)
-    })
-    .await
-    .map_err(err)?
+    tauri::async_runtime::spawn_blocking(move || zip_project(&root, &PathBuf::from(dest))).await.map_err(err)?
 }

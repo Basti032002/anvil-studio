@@ -29,6 +29,12 @@ pub struct Settings {
     /// Unix-Zeit der letzten Update-Prüfung (nimmt auch Kommazahlen an)
     #[serde(deserialize_with = "lenient_u64")]
     pub last_update_check: u64,
+    /// Adresse des Workshop-Servers
+    pub workshop_url: String,
+    /// Seite beim Start: "workshop" | "projects"
+    pub start_page: String,
+    /// Arbeitsspeicher beim Spielen aus dem Workshop (MB)
+    pub play_memory_mb: u32,
 }
 
 impl Default for Settings {
@@ -45,6 +51,9 @@ impl Default for Settings {
             accent: "green".into(),
             console_font_size: 12,
             last_update_check: 0,
+            workshop_url: DEFAULT_WORKSHOP.into(),
+            start_page: "workshop".into(),
+            play_memory_mb: 4096,
         }
     }
 }
@@ -59,7 +68,20 @@ pub fn load(app: &AppHandle) -> Settings {
     )
 }
 
+pub const DEFAULT_WORKSHOP: &str = "https://workshop.forge-host.net";
+
 fn normalize(mut s: Settings) -> Settings {
+    if s.workshop_url.trim().is_empty() {
+        s.workshop_url = DEFAULT_WORKSHOP.into();
+    }
+    s.workshop_url = s.workshop_url.trim().trim_end_matches('/').to_string();
+    if !matches!(s.start_page.as_str(), "workshop" | "projects") {
+        s.start_page = "workshop".into();
+    }
+    if s.play_memory_mb == 0 {
+        s.play_memory_mb = 4096;
+    }
+    s.play_memory_mb = s.play_memory_mb.clamp(1024, 32768);
     if !matches!(s.update_channel.as_str(), "stable" | "beta" | "dev") {
         s.update_channel = if s.include_prerelease { "beta".into() } else { "stable".into() };
     }
