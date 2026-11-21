@@ -95,6 +95,7 @@ import {
   Lamp,
   Archive,
   Flask,
+  BracketsCurly,
 } from "@phosphor-icons/react";
 
 type P = { size?: number };
@@ -222,3 +223,5 @@ export const WorkshopIcon = ({ size = 16 }: P) => <Storefront size={size} weight
 export const StarIcon = ({ size = 16 }: P) => <Star size={size} weight="bold" aria-hidden="true" />;
 export const StarFillIcon = ({ size = 16 }: P) => <Star size={size} weight="fill" aria-hidden="true" />;
 export const BellIcon = ({ size = 16 }: P) => <Bell size={size} weight="bold" aria-hidden="true" />;
+
+export const VariableIcon = ({ size = 16 }: P) => <BracketsCurly size={size} weight="bold" aria-hidden="true" />;

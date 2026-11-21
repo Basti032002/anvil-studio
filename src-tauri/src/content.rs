@@ -352,6 +352,8 @@ pub struct Content {
     pub tab_name: String,
     /// Zusätzliche Sprachen (Minecraft-Codes wie de_de, fr_fr, ja_jp) – en_us ist immer dabei
     pub languages: Vec<String>,
+    /// Variablen (Variablen-Tab)
+    pub variables: Vec<crate::blueprint::VarDef>,
     /// Eigene Strukturen (im Spiel gebaut)
     pub structures: Vec<crate::structures::StructDef>,
     /// Zuletzt erzeugte Strukturen – zum Aufräumen
@@ -421,6 +423,7 @@ impl Default for Content {
             languages: vec![],
             structures: vec![],
             generated_structures: vec![],
+            variables: vec![],
             translations: Default::default(),
             brewing: vec![],
             events: vec![],
@@ -1654,7 +1657,8 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
         own.extend(c.items.iter().map(|i| i.id.clone()));
         own.extend(c.mobs.iter().map(|m| m.id.clone()));
         own.extend(c.dimensions.iter().map(|d| d.id.clone()));
-        let bp_api = crate::blueprint::BpApi { get_value: api.materials_v2, modid: p.mod_id.clone(), own };
+        let vars = c.variables.iter().filter(|v| !v.name.trim().is_empty()).map(|v| (crate::blueprint::var_name(&v.name), v.clone())).collect();
+        let bp_api = crate::blueprint::BpApi { get_value: api.materials_v2, modid: p.mod_id.clone(), own, vars };
         let (bi, bc, bm) = crate::blueprint::generate(&c.blueprints, &bp_api);
         imports.extend(bi);
         calls.push_str(&bc);
@@ -4065,6 +4069,98 @@ mod tests {
                 link("f", "next", "f1"),
             ];
             c.blueprints.push(Blueprint { name: "Logik".into(), enabled: true, nodes, links });
+            // Variablen aller Arten und Gültigkeiten + neue Aktionen
+            use crate::blueprint::VarDef;
+            for (name, kind, scope, def) in [
+                ("leben", "number", "player", "3"),
+                ("aktiv", "logic", "world", "false"),
+                ("gruss", "text", "session", "Hallo"),
+                ("lieblingsitem", "item", "player_life", "minecraft:apple"),
+                ("bauklotz", "block", "world", "minecraft:stone"),
+                ("blick", "direction", "player", ""),
+                ("heimat", "position", "player", "0 80 0"),
+            ] {
+                c.variables.push(VarDef { name: name.into(), kind: kind.into(), scope: scope.into(), default: def.into(), desc: String::new() });
+            }
+            let steps: Vec<(&str, Vec<(&str, &str)>)> = vec![
+                ("var_set", vec![("var", "leben"), ("op", "add"), ("src", "game"), ("game", "health")]),
+                ("var_set", vec![("var", "leben"), ("op", "mul"), ("src", "var"), ("var2", "leben")]),
+                ("var_set", vec![("var", "aktiv"), ("op", "toggle")]),
+                ("var_set", vec![("var", "aktiv"), ("value", "true")]),
+                ("var_set", vec![("var", "gruss"), ("value", "Hi {player}, du hast {var:leben} Leben")]),
+                ("var_set", vec![("var", "lieblingsitem"), ("src", "game"), ("game", "held_item")]),
+                ("var_set", vec![("var", "bauklotz"), ("src", "game"), ("game", "block_below")]),
+                ("var_set", vec![("var", "blick"), ("src", "game"), ("game", "look")]),
+                ("var_set", vec![("var", "heimat"), ("src", "game"), ("game", "player_pos")]),
+                ("var_set", vec![("var", "gruss"), ("src", "game"), ("game", "dimension")]),
+                ("var_show", vec![("var", "leben")]),
+                ("set_health", vec![("amount", "10")]),
+                ("set_food", vec![("amount", "15")]),
+                ("fly", vec![("on", "true")]),
+                ("xp_level", vec![("amount", "5")]),
+                ("attribute", vec![("attr", "scale"), ("value", "1.5")]),
+                ("attribute", vec![("attr", "speed"), ("value", "0.2")]),
+                ("attribute_reset", vec![]),
+                ("tag_add", vec![("tag", "held")]),
+                ("tag_remove", vec![("tag", "held")]),
+                ("repair", vec![]),
+                ("glow", vec![("on", "true"), ("who", "target")]),
+                ("invisible", vec![("on", "false")]),
+                ("freeze", vec![("on", "true")]),
+                ("knockback", vec![("strength", "2")]),
+                ("extinguish", vec![]),
+                ("break_block", vec![("where", "below"), ("drops", "true")]),
+                ("gamerule", vec![("rule", "keepInventory"), ("value", "true")]),
+                ("worldborder", vec![("size", "5000")]),
+                ("time_add", vec![("ticks", "100")]),
+                ("xp_orb", vec![("amount", "20")]),
+                ("log", vec![("text", "Variable gruss = {var:gruss}")]),
+                ("command", vec![("command", "say {var:gruss} {player}")]),
+                ("tp_var", vec![("var", "heimat")]),
+                ("give_var", vec![("var", "lieblingsitem"), ("count", "2")]),
+                ("setblock_var", vec![("var", "bauklotz"), ("at", "var"), ("pos", "heimat")]),
+                ("summon_at_var", vec![("entity", "minecraft:pig"), ("var", "heimat")]),
+                ("remove_entity", vec![]),
+                ("kick", vec![("text", "Tschüss {player}")]),
+            ];
+            let mut nodes = vec![node("e", "ev_jump", &[])];
+            let mut links = vec![];
+            let mut prev = "e".to_string();
+            for (i, (kind, props)) in steps.iter().enumerate() {
+                let id = format!("v{i}");
+                nodes.push(node(&id, kind, props));
+                links.push(link(&prev, "next", &id));
+                prev = id;
+            }
+            // Bedingungen je Variablenart
+            for (i, (cond, extra)) in [
+                ("var", vec![("var", "leben"), ("cmp", "ge"), ("value", "2")]),
+                ("var", vec![("var", "aktiv"), ("value", "true")]),
+                ("var", vec![("var", "gruss"), ("cmp", "contains"), ("value", "hi")]),
+                ("var", vec![("var", "lieblingsitem"), ("value", "minecraft:apple")]),
+                ("var", vec![("var", "blick"), ("cmp", "ne"), ("value", "north")]),
+                ("has_tag", vec![("value", "held")]),
+                ("biome", vec![("value", "plains")]),
+                ("dark", vec![("value", "7")]),
+                ("entity_is", vec![("value", "minecraft:zombie")]),
+                ("flying", vec![]),
+                ("is_baby", vec![]),
+                ("holding_any", vec![]),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let mut props = vec![("cond", cond)];
+                props.extend(extra);
+                let id = format!("c{i}");
+                nodes.push(node(&id, "if", &props));
+                links.push(link(&prev, "next", &id));
+                let m = format!("cm{i}");
+                nodes.push(node(&m, "message", &[("text", "ok {global:aktiv}")]));
+                links.push(link(&id, "true", &m));
+                prev = id;
+            }
+            c.blueprints.push(Blueprint { name: "Variablen".into(), enabled: true, nodes, links });
         }
         for (i, model) in ["cow", "pig", "chicken", "zombie", "spider", "creeper"].iter().enumerate() {
             c.mobs.push(MobDef {

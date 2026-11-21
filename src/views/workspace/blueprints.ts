@@ -4,7 +4,7 @@ import { Blueprint, BpNode } from "../../api";
 // Katalog der Blueprint-Knoten. Muss zu src-tauri/src/blueprint.rs passen.
 
 export type BpCat = "event" | "flow" | "vars" | "world" | "player" | "other";
-export type PropType = "text" | "number" | "select" | "item" | "block" | "entity" | "effect" | "sound" | "particle" | "who" | "var" | "dim" | "fn";
+export type PropType = "text" | "number" | "select" | "item" | "block" | "entity" | "effect" | "sound" | "particle" | "who" | "var" | "dim" | "fn" | "varvalue" | "varop" | "varcmp" | "game" | "scope";
 export interface PropSpec {
   key: string;
   label: string;
@@ -50,7 +50,42 @@ const numP = (key: string, label: string, def: string): PropSpec => ({ key, labe
 const textP = (key: string, label: string, def: string): PropSpec => ({ key, label, type: "text", def });
 
 const target = (type: PropType, label: string): PropSpec => ({ key: "target", label, type, def: "" });
-const scopeP: PropSpec = { key: "scope", label: t("Gilt für"), type: "select", def: "player", options: [{ id: "player", label: t("Spieler") }, { id: "global", label: t("Ganze Welt") }] };
+/** nur für Variablen, die nicht im Variablen-Tab angelegt sind */
+const scopeP: PropSpec = { key: "scope", label: t("Gilt für"), type: "scope", def: "player", options: [{ id: "player", label: t("Jeden Spieler einzeln") }, { id: "global", label: t("Die ganze Welt") }] };
+
+/** Variable passend zu einem Feld (value → var, b_value → b_var, value2 → var2) */
+export function varKeyFor(key: string): string {
+  const pre = key.startsWith("b_") ? "b_" : "";
+  const rest = key.slice(pre.length);
+  if (rest === "var2" || rest === "value2") return `${pre}var2`;
+  return `${pre}var`;
+}
+
+export const GAME_VALUES: { id: string; label: string; kinds: string[] }[] = [
+  { id: "health", label: t("Leben des Spielers"), kinds: ["number", "text"] },
+  { id: "food", label: t("Hunger des Spielers"), kinds: ["number", "text"] },
+  { id: "level", label: t("Level des Spielers"), kinds: ["number", "text"] },
+  { id: "held_count", label: t("Anzahl Items in der Hand"), kinds: ["number", "text"] },
+  { id: "x", label: t("Position X"), kinds: ["number", "text"] },
+  { id: "y", label: t("Position Y"), kinds: ["number", "text"] },
+  { id: "z", label: t("Position Z"), kinds: ["number", "text"] },
+  { id: "online", label: t("Spieler online"), kinds: ["number", "text"] },
+  { id: "time", label: t("Uhrzeit (0–24000)"), kinds: ["number", "text"] },
+  { id: "random", label: t("Zufallszahl 0–1"), kinds: ["number", "text"] },
+  { id: "target_health", label: t("Leben des Ziels"), kinds: ["number", "text"] },
+  { id: "player_name", label: t("Name des Spielers"), kinds: ["text"] },
+  { id: "target_name", label: t("Name des Ziels"), kinds: ["text"] },
+  { id: "message", label: t("Chatnachricht / Befehl"), kinds: ["text"] },
+  { id: "dimension", label: t("Aktuelle Dimension"), kinds: ["text"] },
+  { id: "held_item", label: t("Item in der Hand"), kinds: ["item", "text"] },
+  { id: "event_item", label: t("Item des Ereignisses"), kinds: ["item", "text"] },
+  { id: "block_below", label: t("Block unter dem Spieler"), kinds: ["block", "text"] },
+  { id: "event_block", label: t("Block des Ereignisses"), kinds: ["block", "text"] },
+  { id: "look", label: t("Blickrichtung"), kinds: ["direction", "text"] },
+  { id: "player_pos", label: t("Position des Spielers"), kinds: ["position", "text"] },
+  { id: "target_pos", label: t("Position des Ziels"), kinds: ["position", "text"] },
+  { id: "event_pos", label: t("Position des Ereignisses"), kinds: ["position", "text"] },
+];
 
 /** Felder einer Bedingung (prefix "b_" für die zweite) */
 function condProps(prefix: string, extra?: { key: string; values: string[] }): PropSpec[] {
@@ -83,6 +118,13 @@ function condProps(prefix: string, extra?: { key: string; values: string[] }): P
         ["on_fire", t("Ziel brennt")],
         ["is_player_target", t("Ziel ist ein Spieler")],
         ["players_online", t("Spieler online mindestens")],
+        ["has_tag", t("Ziel hat Markierung (Tag)")],
+        ["biome", t("In Biom")],
+        ["dark", t("Lichtlevel unter")],
+        ["entity_is", t("Ziel ist Kreatur")],
+        ["flying", t("Spieler fliegt")],
+        ["is_baby", t("Ziel ist ein Baby")],
+        ["holding_any", t("Hält irgendetwas")],
       ]),
       ...(extra ? { when: extra } : {}),
     },
@@ -93,7 +135,7 @@ function condProps(prefix: string, extra?: { key: string; values: string[] }): P
       {
         key: "cmp",
         label: t("Vergleich"),
-        type: "select",
+        type: "varcmp",
         def: "ge",
         options: [
           { id: "ge", label: "≥" },
@@ -106,7 +148,11 @@ function condProps(prefix: string, extra?: { key: string; values: string[] }): P
       },
       ["var"],
     ),
-    P({ key: "value", label: t("Wert"), type: "number", def: "10" }, ["var"]),
+    P({ key: "value", label: t("Wert"), type: "varvalue", def: "10" }, ["var"]),
+    P({ key: "value", label: t("Markierung"), type: "text", def: "" }, ["has_tag"]),
+    P({ key: "value", label: t("Biom"), type: "text", def: "minecraft:plains" }, ["biome"]),
+    P({ key: "value", label: t("Licht (0–15)"), type: "number", def: "8" }, ["dark"]),
+    P({ key: "value", label: t("Kreatur"), type: "entity", def: "minecraft:zombie" }, ["entity_is"]),
     P({ key: "value", label: t("Item"), type: "item", def: "" }, ["has_item"]),
     P({ key: "count", label: t("Anzahl"), type: "number", def: "1" }, ["has_item"]),
     P({ key: "value", label: t("Level"), type: "number", def: "5" }, ["level_at_least"]),
@@ -233,14 +279,17 @@ export const NODES: NodeSpec[] = [
   {
     kind: "var_set",
     cat: "vars",
-    label: t("Variable ändern"),
-    desc: t("Im Text mit {var:name} bzw. {global:name} anzeigen"),
+    label: t("Variable setzen"),
+    desc: t("Im Text mit {var:name} anzeigen"),
     outs: NEXT,
     props: [
       { key: "var", label: t("Variable"), type: "var", def: "punkte" },
-      { key: "scope", label: t("Gilt für"), type: "select", def: "player", options: [{ id: "player", label: t("Jeden Spieler einzeln") }, { id: "global", label: t("Die ganze Welt") }] },
-      sel("op", t("Rechnung"), "add", [["set", t("Setzen auf")], ["add", t("Erhöhen um")], ["sub", t("Verringern um")], ["random", t("Zufallszahl unter")]]),
-      numP("value", t("Wert"), "1"),
+      { ...scopeP },
+      { key: "op", label: t("Rechnung"), type: "varop", def: "set" },
+      sel("src", t("Wert kommt von"), "value", [["value", t("Fester Wert")], ["var", t("Andere Variable")], ["game", t("Aus dem Spiel")]]),
+      { key: "value", label: t("Wert"), type: "varvalue", def: "1", when: { key: "src", values: ["value"] } },
+      { key: "var2", label: t("Andere Variable"), type: "var", def: "", when: { key: "src", values: ["var"] } },
+      { key: "game", label: t("Spielwert"), type: "game", def: "health", when: { key: "src", values: ["game"] } },
     ],
   },
   {
@@ -251,16 +300,31 @@ export const NODES: NodeSpec[] = [
     outs: NEXT,
     props: [
       { key: "var", label: t("Variable"), type: "var", def: "punkte" },
-      { key: "scope", label: t("Gilt für"), type: "select", def: "player", options: [{ id: "player", label: t("Jeden Spieler einzeln") }, { id: "global", label: t("Die ganze Welt") }] },
+      { ...scopeP },
       sel("op", t("Rechnung"), "add", [["add", "+"], ["sub", "−"], ["mul", "×"], ["div", "÷"], ["mod", t("Rest (mod)")], ["min", t("Kleinerer Wert (min)")], ["max", t("Größerer Wert (max)")], ["set", t("Setzen auf")], ["rand", t("Zufallszahl unter")]]),
       sel("src", t("Mit"), "num", [["num", t("Zahl")], ["var", t("Anderer Variable")]]),
       { ...numP("value", t("Zahl"), "1"), when: { key: "src", values: ["num"] } },
       { key: "var2", label: t("Andere Variable"), type: "var", def: "", when: { key: "src", values: ["var"] } },
-      { key: "scope2", label: t("Andere gilt für"), type: "select", def: "player", options: [{ id: "player", label: t("Jeden Spieler einzeln") }, { id: "global", label: t("Die ganze Welt") }], when: { key: "src", values: ["var"] } },
+      { ...scopeP, key: "scope2", label: t("Andere gilt für"), when: { key: "src", values: ["var"] } },
     ],
   },
   { kind: "var_show", cat: "vars", label: t("Variable anzeigen"), desc: t("Als Tabelle am Bildschirmrand"), outs: NEXT, props: [{ key: "var", label: t("Variable"), type: "var", def: "punkte" }, sel("slot", t("Ort"), "sidebar", [["sidebar", t("Rechts am Rand")], ["list", t("Spielerliste (Tab)")]])] },
   { kind: "var_hide", cat: "vars", label: t("Anzeige ausblenden"), desc: t("Tabelle am Rand entfernen"), outs: NEXT, props: [] },
+  { kind: "tp_var", cat: "vars", label: t("Zu Position-Variable teleportieren"), desc: t("Variable vom Typ Position"), outs: NEXT, props: [{ key: "var", label: t("Variable"), type: "var", def: "heimat" }, who] },
+  { kind: "give_var", cat: "vars", label: t("Item aus Variable geben"), desc: t("Variable vom Typ Item"), outs: NEXT, props: [{ key: "var", label: t("Variable"), type: "var", def: "" }, numP("count", t("Anzahl"), "1")] },
+  {
+    kind: "setblock_var",
+    cat: "vars",
+    label: t("Block aus Variable setzen"),
+    desc: t("Variable vom Typ Block"),
+    outs: NEXT,
+    props: [
+      { key: "var", label: t("Variable (Block)"), type: "var", def: "" },
+      sel("at", t("Wo"), "here", [["here", t("An der Position")], ["below", t("Darunter")], ["var", t("An Position-Variable")]]),
+      { key: "pos", label: t("Position-Variable"), type: "var", def: "", when: { key: "at", values: ["var"] } },
+    ],
+  },
+  { kind: "summon_at_var", cat: "vars", label: t("Kreatur an Position-Variable"), desc: "", outs: NEXT, props: [{ key: "entity", label: t("Kreatur"), type: "entity", def: "minecraft:pig" }, { key: "var", label: t("Position-Variable"), type: "var", def: "" }] },
 
   // ---- Welt ----
   { kind: "weather", cat: "world", label: t("Wetter ändern"), desc: "", outs: NEXT, props: [sel("weather", t("Wetter"), "rain", [["clear", t("Klar")], ["rain", t("Regen")], ["thunder", t("Gewitter")]]), numP("seconds", t("Dauer (Sek.)"), "300")] },
@@ -380,7 +444,51 @@ export const NODES: NodeSpec[] = [
   { kind: "kill", cat: "player", label: t("Töten"), desc: "", outs: NEXT, props: [who] },
 
   // ---- Sonstiges ----
-  { kind: "command", cat: "other", label: t("Befehl ausführen"), desc: t("Beliebiger Minecraft-Befehl, @s = Spieler"), outs: NEXT, props: [textP("command", t("Befehl"), "say Hallo")] },
+  // ---- neue Aktionen ----
+  { kind: "set_health", cat: "player", label: t("Leben setzen"), desc: t("2 = ein Herz"), outs: NEXT, props: [numP("amount", t("Leben"), "20"), who] },
+  { kind: "set_food", cat: "player", label: t("Hunger setzen"), desc: t("0–20"), outs: NEXT, props: [numP("amount", t("Hunger"), "20")] },
+  { kind: "fly", cat: "player", label: t("Fliegen erlauben"), desc: t("Wie im Kreativmodus"), outs: NEXT, props: [sel("on", t("Zustand"), "true", [["true", t("An")], ["false", t("Aus")]])] },
+  { kind: "xp_level", cat: "player", label: t("Level setzen"), desc: "", outs: NEXT, props: [numP("amount", t("Level"), "10")] },
+  {
+    kind: "attribute",
+    cat: "player",
+    label: t("Eigenschaft ändern"),
+    desc: t("Größe, Tempo, Sprungkraft …"),
+    outs: NEXT,
+    props: [
+      sel("attr", t("Eigenschaft"), "scale", [["scale", t("Größe (1 = normal)")], ["speed", t("Tempo (0.1 = normal)")], ["jump", t("Sprungkraft (0.42 = normal)")], ["max_health", t("Max. Leben (20 = normal)")], ["damage", t("Angriffsschaden (1 = normal)")], ["reach", t("Reichweite (4.5 = normal)")], ["gravity", t("Schwerkraft (0.08 = normal)")], ["step", t("Stufenhöhe (0.6 = normal)")]]),
+      numP("value", t("Wert"), "1.5"),
+      who,
+    ],
+  },
+  { kind: "attribute_reset", cat: "player", label: t("Eigenschaften zurücksetzen"), desc: t("Alle Werte wieder normal"), outs: NEXT, props: [who] },
+  { kind: "tag_add", cat: "player", label: t("Markierung (Tag) setzen"), desc: t("Für /tag und Bedingungen"), outs: NEXT, props: [textP("tag", t("Markierung"), "vip"), who] },
+  { kind: "tag_remove", cat: "player", label: t("Markierung (Tag) entfernen"), desc: "", outs: NEXT, props: [textP("tag", t("Markierung"), "vip"), who] },
+  { kind: "repair", cat: "player", label: t("Item in der Hand reparieren"), desc: "", outs: NEXT, props: [] },
+  { kind: "glow", cat: "player", label: t("Leuchten (durch Wände sichtbar)"), desc: "", outs: NEXT, props: [sel("on", t("Zustand"), "true", [["true", t("An")], ["false", t("Aus")]]), who] },
+  { kind: "invisible", cat: "player", label: t("Unsichtbar machen"), desc: "", outs: NEXT, props: [sel("on", t("Zustand"), "true", [["true", t("An")], ["false", t("Aus")]]), who] },
+  { kind: "freeze", cat: "player", label: t("Kreatur einfrieren (keine KI)"), desc: t("Wirkt auf das Ziel"), outs: NEXT, props: [sel("on", t("Zustand"), "true", [["true", t("An")], ["false", t("Aus")]])] },
+  { kind: "knockback", cat: "player", label: t("Ziel wegstoßen"), desc: "", outs: NEXT, props: [numP("strength", t("Stärke"), "1.5")] },
+  { kind: "remove_entity", cat: "player", label: t("Ziel entfernen"), desc: t("Ohne Drops, nicht bei Spielern"), outs: NEXT, props: [] },
+  { kind: "extinguish", cat: "player", label: t("Feuer löschen"), desc: "", outs: NEXT, props: [who] },
+  { kind: "kick", cat: "player", label: t("Spieler rauswerfen"), desc: t("Trennt die Verbindung"), outs: NEXT, props: [textP("text", t("Grund"), "Tschüss {player}")] },
+  { kind: "break_block", cat: "world", label: t("Block abbauen"), desc: "", outs: NEXT, props: [sel("where", t("Wo"), "here", [["here", t("An der Position")], ["below", t("Darunter")]]), sel("drops", t("Drops"), "true", [["true", t("Mit Drops")], ["false", t("Ohne Drops")]])] },
+  {
+    kind: "gamerule",
+    cat: "world",
+    label: t("Spielregel ändern"),
+    desc: "",
+    outs: NEXT,
+    props: [
+      sel("rule", t("Regel"), "keepInventory", [["keepInventory", t("Inventar behalten")], ["doDaylightCycle", t("Tageszeit läuft")], ["doWeatherCycle", t("Wetter wechselt")], ["mobGriefing", t("Kreaturen zerstören Blöcke")], ["doMobSpawning", t("Kreaturen spawnen")], ["doFireTick", t("Feuer breitet sich aus")], ["naturalRegeneration", t("Natürliche Heilung")], ["doImmediateRespawn", t("Sofort wiederbeleben")], ["showDeathMessages", t("Todesnachrichten")], ["doInsomnia", t("Phantome")]]),
+      sel("value", t("Wert"), "true", [["true", t("An")], ["false", t("Aus")]]),
+    ],
+  },
+  { kind: "worldborder", cat: "world", label: t("Weltbarriere setzen"), desc: "", outs: NEXT, props: [numP("size", t("Größe (Blöcke)"), "1000")] },
+  { kind: "time_add", cat: "world", label: t("Zeit vorspulen"), desc: t("1000 Ticks ≈ 1 Stunde"), outs: NEXT, props: [numP("ticks", t("Ticks"), "1000")] },
+  { kind: "xp_orb", cat: "world", label: t("Erfahrungskugel erzeugen"), desc: "", outs: NEXT, props: [numP("amount", t("Erfahrung"), "10")] },
+  { kind: "log", cat: "other", label: t("In Konsole schreiben"), desc: t("Zum Testen, erscheint im Konsolen-Tab"), outs: NEXT, props: [textP("text", t("Text"), "Wert: {var:punkte}")] },
+  { kind: "command", cat: "other", label: t("Befehl ausführen"), desc: t("@s = Spieler, {var:name} setzt Variablen ein"), outs: NEXT, props: [textP("command", t("Befehl"), "say Hallo"), who] },
 ];
 
 export const nodeSpec = (kind: string) => NODES.find((n) => n.kind === kind);

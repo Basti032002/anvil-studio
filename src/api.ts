@@ -239,7 +239,12 @@ export type Content = {
   dimensions: DimDef[];
   /** Eigene Strukturen (im Spiel mit dem Strukturblock gebaut) */
   structures?: StructDef[];
+  /** Variablen (Variablen-Tab) */
+  variables?: VarDef[];
 };
+export type VarKind = "number" | "logic" | "text" | "item" | "block" | "direction" | "position";
+export type VarScope = "world" | "session" | "player" | "player_life";
+export type VarDef = { name: string; kind: VarKind; scope: VarScope; default: string; desc: string };
 export type BrewDef = { input: string; ingredient: string; output: string };
 export type EventTrigger = "right_click_block" | "right_click_item" | "break_block" | "place_block" | "use_item" | "entity_hurt" | "entity_killed";
 export type ActionKind = "effect" | "give_item" | "message" | "sound" | "explode" | "fire" | "xp" | "heal" | "launch";

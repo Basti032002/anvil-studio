@@ -30,7 +30,8 @@ import {
 } from "../../icons";
 import { ItemField } from "./ContentForms";
 import { EFFECTS, SOUNDS } from "./LogicEditors";
-import { BpCat, CATS, ENTITIES, isEvent, makeNode, NODES, nodeId, nodeSpec, NodeSpec, PARTICLES, PropSpec, visibleProps } from "./blueprints";
+import { BpCat, CATS, ENTITIES, isEvent, makeNode, NODES, nodeId, nodeSpec, NodeSpec, PARTICLES, PropSpec, visibleProps, varKeyFor, GAME_VALUES } from "./blueprints";
+import { varKindLabel, varScopeLabel } from "./variables";
 
 type View = { x: number; y: number; zoom: number };
 type Pt = { x: number; y: number };
@@ -660,7 +661,16 @@ function NodePalette({ at, connecting, onPick, onClose }: { at: Palette; connect
 
 function NodeFields({ project, content, own, spec, node, onChange }: { project: Project; content: Content; own: OwnEntry[]; spec: NodeSpec; node: BpNode; onChange: (p: Record<string, string>) => void }) {
   const props = node.props;
-  const fields = visibleProps(spec, props);
+  const vars = content.variables ?? [];
+  const fields = visibleProps(spec, props).filter((p) => {
+    const v = vars.find((x) => x.name === (props[varKeyFor(p.key)] ?? ""));
+    // „Gilt für“ nur bei Variablen ohne Eintrag im Variablen-Tab
+    if (p.type === "scope") return !vars.find((x) => x.name === (props[p.key === "scope2" ? "var2" : varKeyFor(p.key)] ?? ""));
+    if (!v) return true;
+    if (v.kind === "logic" && p.type === "varcmp") return false;
+    if (v.kind === "logic" && (props[varKeyFor(p.key).replace("var", "op")] ?? "") === "toggle" && (p.type === "varvalue" || p.key.endsWith("src") || p.type === "game")) return false;
+    return true;
+  });
   if (!fields.length) return null;
   const set = (key: string, v: string) => {
     const next = { ...props, [key]: v };
@@ -673,15 +683,64 @@ function NodeFields({ project, content, own, spec, node, onChange }: { project: 
       {fields.map((p) => (
         <label key={`${p.key}-${p.label}`} className="bp-field">
           <span className="bp-field-label">{p.label}</span>
-          <PropInput project={project} content={content} own={own} spec={p} value={props[p.key] ?? p.def} onChange={(v) => set(p.key, v)} />
+          <PropInput project={project} content={content} own={own} spec={p} props={props} value={props[p.key] ?? p.def} onChange={(v) => set(p.key, v)} />
         </label>
       ))}
     </div>
   );
 }
 
-function PropInput({ project, content, own, spec, value, onChange }: { project: Project; content: Content; own: OwnEntry[]; spec: PropSpec; value: string; onChange: (v: string) => void }) {
+function PropInput({ project, content, own, spec, props = {}, value, onChange }: { project: Project; content: Content; own: OwnEntry[]; spec: PropSpec; props?: Record<string, string>; value: string; onChange: (v: string) => void }) {
+  const varDef = (content.variables ?? []).find((v) => v.name === (props[varKeyFor(spec.key)] ?? ""));
+  const kind = varDef?.kind ?? "number";
+  const opts = (list: [string, string][]) => {
+    const cur = list.some(([id]) => id === value) ? value : list[0][0];
+    return (
+      <select className="input" value={cur} onChange={(e) => onChange(e.target.value)}>
+        {list.map(([id, label]) => (
+          <option key={id} value={id}>
+            {label}
+          </option>
+        ))}
+      </select>
+    );
+  };
   switch (spec.type) {
+    case "varop":
+      return opts(
+        kind === "number"
+          ? [["set", t("Setzen auf")], ["add", t("Erhöhen um")], ["sub", t("Verringern um")], ["mul", t("Malnehmen mit")], ["div", t("Teilen durch")], ["random", t("Zufallszahl unter")]]
+          : kind === "logic"
+            ? [["set", t("Setzen auf")], ["toggle", t("Umschalten (an ↔ aus)")]]
+            : [["set", t("Setzen auf")]],
+      );
+    case "varcmp":
+      return opts(
+        kind === "number"
+          ? [["ge", "≥"], ["gt", ">"], ["eq", "="], ["ne", "≠"], ["le", "≤"], ["lt", "<"]]
+          : kind === "text"
+            ? [["eq", t("ist gleich")], ["ne", t("ist nicht")], ["contains", t("enthält")], ["empty", t("ist leer")]]
+            : [["eq", t("ist gleich")], ["ne", t("ist nicht")]],
+      );
+    case "game":
+      return opts(GAME_VALUES.filter((g) => g.kinds.includes(kind)).map((g) => [g.id, g.label]));
+    case "varvalue":
+      switch (kind) {
+        case "logic":
+          return opts([["true", t("Wahr (an)")], ["false", t("Falsch (aus)")]]);
+        case "text":
+          return <input className="input" value={value} onChange={(e) => onChange(e.target.value)} placeholder={t("Text, {player}, {var:name}")} />;
+        case "item":
+        case "block":
+          return <PropInput project={project} content={content} own={own} spec={{ ...spec, type: kind }} value={value} onChange={onChange} />;
+        case "direction":
+          return opts([["north", t("Norden")], ["south", t("Süden")], ["east", t("Osten")], ["west", t("Westen")], ["up", t("Oben")], ["down", t("Unten")]]);
+        case "position":
+          return <input className="input mono" value={value} onChange={(e) => onChange(e.target.value)} placeholder="0 64 0" />;
+        default:
+          return <input className="input" type="number" step="any" value={value} onChange={(e) => onChange(e.target.value)} />;
+      }
+    case "scope":
     case "select":
     case "who":
       return (
@@ -708,7 +767,9 @@ function PropInput({ project, content, own, spec, value, onChange }: { project: 
       );
     }
     case "var": {
-      const names = [...new Set(content.blueprints.flatMap((b) => b.nodes.flatMap((n) => [n.props.var, n.props.var2, n.props.b_var]).filter(Boolean)))].sort();
+      const defined = (content.variables ?? []).map((v) => v.name);
+      const names = [...new Set([...defined, ...content.blueprints.flatMap((b) => b.nodes.flatMap((n) => [n.props.var, n.props.var2, n.props.b_var]).filter(Boolean))])];
+      const own = (content.variables ?? []).find((v) => v.name === value);
       return (
         <>
           <input
@@ -720,9 +781,10 @@ function PropInput({ project, content, own, spec, value, onChange }: { project: 
           />
           <datalist id="bp-vars">
             {names.map((n) => (
-              <option key={n} value={n} />
+              <option key={n} value={n} label={(content.variables ?? []).find((v) => v.name === n) ? varKindLabel((content.variables ?? []).find((v) => v.name === n)!.kind) : undefined} />
             ))}
           </datalist>
+          {value && (own ? <span className="muted tiny">{varKindLabel(own.kind)} · {varScopeLabel(own.scope)}</span> : <span className="muted tiny">{t("Nicht im Variablen-Tab angelegt – gilt als Zahl.")}</span>)}
         </>
       );
     }
