@@ -374,7 +374,7 @@ pub fn power_java(api: &EnergyApi, blocks: &[PowerBlock], be_ctor: &str, on_remo
         if (!cfg.gui().isEmpty() && player instanceof net.minecraft.server.level.ServerPlayer sp && anvilPowerGui(sp, cfg.gui(), be, be.guiData, pos, state.getBlock().getName())) {{
             return InteractionResult.SUCCESS;
         }}
-        String extra = cfg.kind().equals("generator") ? (be.producing ? " · erzeugt " + cfg.gen() + " FE/t" : " · erzeugt gerade nichts") : "";
+        String extra = cfg.kind().equals("generator") ? (be.producing ? " · +" + cfg.gen() + " FE/t" : " · idle") : "";
         player.displayClientMessage(Component.literal(state.getBlock().getName().getString() + ": " + anvilFe(be.energy.get()) + " / " + anvilFe(be.energy.capacity()) + " FE" + extra), true);
         return InteractionResult.SUCCESS;
     }}
