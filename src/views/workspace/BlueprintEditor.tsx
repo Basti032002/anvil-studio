@@ -741,6 +741,17 @@ function PropInput({ project, content, own, spec, props = {}, value, onChange }:
         default:
           return <input className="input" type="number" step="any" value={value} onChange={(e) => onChange(e.target.value)} />;
       }
+    case "gui":
+      return (
+        <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+          <option value="">{t("– Oberfläche wählen –")}</option>
+          {(content.guis ?? []).map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.nameEn || g.id}
+            </option>
+          ))}
+        </select>
+      );
     case "tag": {
       const reg = /holding/.test(props[spec.key.replace("value", "cond")] ?? "") ? "item" : /target/.test(props[spec.key.replace("value", "cond")] ?? "") ? "entity_type" : "block";
       const list = [...(content.tags ?? []).filter((x) => x.registry === reg).map((x) => x.id), ...KNOWN_TAGS.filter((k) => k.reg === reg).map((k) => k.id)];

@@ -23,8 +23,7 @@ import {
   ShovelIcon,
   SkullIcon,
   SparkIcon,
-  SwordIcon,
-} from "../../icons";
+  SwordIcon, GuiIcon } from "../../icons";
 import { MOB_MODELS } from "./contentDefaults";
 import { TEMPLATES } from "./blueprints";
 
@@ -37,7 +36,8 @@ export type CreateChoice =
   | { kind: "event" }
   | { kind: "brew" }
   | { kind: "dimension"; preset: DimTemplate }
-  | { kind: "structure" };
+  | { kind: "structure" }
+  | { kind: "gui"; preset: "machine" | "panel" | "empty" };
 
 interface Card {
   choice: CreateChoice;
@@ -147,6 +147,14 @@ function cards(group: CreateGroup): { title: string; cards: Card[] }[] {
         {
           title: t("Blueprint (Knoten-Editor)"),
           cards: TEMPLATES.map((tp) => ({ choice: { kind: "blueprint", template: tp.id } as CreateChoice, icon: <BlueprintIcon size={20} />, title: tp.label, desc: tp.desc })),
+        },
+        {
+          title: t("Oberfläche (GUI-Editor)"),
+          cards: [
+            { choice: { kind: "gui", preset: "machine" }, icon: <GuiIcon size={20} />, title: t("Maschinen-Oberfläche"), desc: t("Slots, Fortschrittspfeil und Inventar – für Maschinen-Blöcke") },
+            { choice: { kind: "gui", preset: "panel" }, icon: <GuiIcon size={20} />, title: t("Bedienfeld"), desc: t("Knöpfe, Schalter und Anzeigen – per Blueprint öffnen") },
+            { choice: { kind: "gui", preset: "empty" }, icon: <GuiIcon size={20} />, title: t("Leere Oberfläche"), desc: t("Alles selbst gestalten") },
+          ],
         },
         {
           title: t("Einfach"),

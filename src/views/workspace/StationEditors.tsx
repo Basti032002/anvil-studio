@@ -1,6 +1,6 @@
 import { t } from "../../i18n";
 import { useState } from "react";
-import { BlockDef, MachineRecipe, Project, WorkbenchRecipe } from "../../api";
+import { BlockDef, MachineRecipe, Project, WorkbenchRecipe, GuiDef } from "../../api";
 import { useCatalog } from "../../catalog";
 import { Segmented, Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
@@ -123,7 +123,7 @@ export function WorkbenchRecipes({ project, block, own, onChange }: { project: P
 }
 
 /** Maschine: Eingabe → Ausgabe über eine Dauer, wahlweise mit Brennstoff */
-export function MachineEditor({ project, block, own, onChange }: { project: Project; block: BlockDef; own: OwnEntry[]; onChange: (patch: Partial<BlockDef>) => void }) {
+export function MachineEditor({ project, block, own, onChange, guis = [] }: { project: Project; block: BlockDef; own: OwnEntry[]; onChange: (patch: Partial<BlockDef>) => void; guis?: GuiDef[] }) {
   const machine = block.machine ?? { fuel: true, recipes: [] };
   const recipes = machine.recipes;
   const [pick, setPick] = useState<{ r: number; field: "input" | "output" } | null>(null);
@@ -132,7 +132,22 @@ export function MachineEditor({ project, block, own, onChange }: { project: Proj
 
   return (
     <div className="station">
-      <div className="muted small">{t("Rechtsklick öffnet eine Ofen-Oberfläche: oben die Eingabe, unten der Brennstoff, rechts das Ergebnis. Ein Pfeil zeigt den Fortschritt.")}</div>
+      <label className="field">
+        <span className="field-label">{t("Oberfläche")}</span>
+        <select className="input" value={machine.gui ?? ""} onChange={(e) => setMachine({ gui: e.target.value })}>
+          <option value="">{t("Ofen-Oberfläche (Standard)")}</option>
+          {guis.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.nameEn || g.id}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="muted small">
+        {machine.gui
+          ? t("Rechtsklick öffnet deine eigene Oberfläche aus dem GUI-Editor.")
+          : t("Rechtsklick öffnet eine Ofen-Oberfläche: oben die Eingabe, unten der Brennstoff, rechts das Ergebnis. Ein Pfeil zeigt den Fortschritt. Eine eigene Oberfläche legst du unter „Neu → Oberfläche“ an.")}
+      </div>
       <Toggle label={t("Braucht Brennstoff (Kohle, Holz …)")} checked={machine.fuel} onChange={(v) => setMachine({ fuel: v })} />
       {!machine.fuel && <div className="muted small">{t("Ohne Brennstoff arbeitet die Maschine von selbst, sobald etwas Passendes in der Eingabe liegt.")}</div>}
       {recipes.map((r, i) => (

@@ -7,7 +7,7 @@ import { useCatalog } from "../../catalog";
 import { Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
 import McIcon from "../../components/McIcon";
-import { BoxIcon, ChevronIcon, GridIcon, PawIcon, GlobeIcon, BlueprintIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, FlaskIcon, GemIcon, LampIcon, LightningIcon, PencilIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TagIcon, TrashIcon } from "../../icons";
+import { BoxIcon, ChevronIcon, GridIcon, PawIcon, GlobeIcon, BlueprintIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, FlaskIcon, GemIcon, LampIcon, LightningIcon, PencilIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TagIcon, TrashIcon, GuiIcon } from "../../icons";
 import { toast } from "../../state";
 import { useRunning } from "../../store";
 import PixelEditor from "./PixelEditor";
@@ -17,6 +17,7 @@ import BlueprintEditor from "./BlueprintEditor";
 import { ModelPreview } from "./ModelEditor";
 import DimensionEditor, { newDimension } from "./DimensionEditor";
 import StructureEditor, { newStructure } from "./StructureEditor";
+import GuiEditor, { newGui } from "./GuiEditor";
 import CreateMenu, { CreateChoice, CreateGroup } from "./CreateMenu";
 import { TEMPLATES } from "./blueprints";
 import { BrewEditor, brewLabel, EventEditor, eventLabel, NamesField, newBrew, newEvent } from "./LogicEditors";
@@ -63,7 +64,7 @@ function ListGroup({ id, label, icon, count, forceOpen, children }: { id: string
 type BlockTab = "general" | "mining" | "function" | "model" | "shapes" | "recipe";
 type ItemTab = "general" | "function" | "recipe";
 
-type Sel = { kind: "block" | "item" | "mob" | "event" | "brew" | "blueprint" | "dimension" | "structure"; index: number } | null;
+type Sel = { kind: "block" | "item" | "mob" | "event" | "brew" | "blueprint" | "dimension" | "structure" | "gui"; index: number } | null;
 
 export default function ContentTab({ project }: { project: Project }) {
   const [content, setContent] = useState<Content | null>(null);
@@ -314,6 +315,13 @@ export default function ContentTab({ project }: { project: Project }) {
       for (let n = 2; used.has(id); n++) id = `${id.replace(/_\d+$/, "")}_${n}`;
       setContent({ ...content, dimensions: [...content.dimensions, newDimension(id, choice.preset)] });
       setSel({ kind: "dimension", index: content.dimensions.length });
+    } else if (choice.kind === "gui") {
+      const list = content.guis ?? [];
+      const used = new Set(list.map((d) => d.id));
+      let id = choice.preset === "panel" ? "bedienfeld" : "oberflaeche";
+      for (let n = 2; used.has(id); n++) id = `${id.replace(/_\d+$/, "")}_${n}`;
+      setContent({ ...content, guis: [...list, newGui(id, choice.preset)] });
+      setSel({ kind: "gui", index: list.length });
     } else if (choice.kind === "structure") {
       const list = content.structures ?? [];
       const used = new Set(list.map((d) => d.id));
@@ -380,6 +388,13 @@ export default function ContentTab({ project }: { project: Project }) {
       const d = content.dimensions[target.index];
       if (!(await confirmDialog(t("„{name}“ entfernen?", { name: d.nameEn || d.nameDe || d.id }), t("Die Dimension wird beim Speichern aus der Mod entfernt. Bereits erkundete Gebiete bleiben in der Welt gespeichert."), t("Entfernen"), t("Abbrechen"), true))) return;
       setContent((c) => (c ? { ...c, dimensions: c.dimensions.filter((_, i) => i !== target.index) } : c));
+      setSel(null);
+      return;
+    }
+    if (target.kind === "gui") {
+      const g = (content.guis ?? [])[target.index];
+      if (!(await confirmDialog(t("„{name}“ entfernen?", { name: g.nameEn || g.id }), t("Die Oberfläche wird gelöscht. Verbundene Maschinen nutzen wieder die Ofen-Oberfläche."), t("Entfernen"), t("Abbrechen"), true))) return;
+      setContent((c) => (c ? { ...c, guis: (c.guis ?? []).filter((_, i) => i !== target.index), blocks: c.blocks.map((b) => (b.machine?.gui === g.id ? { ...b, machine: { ...b.machine, gui: "" } } : b)) } : c));
       setSel(null);
       return;
     }
@@ -631,7 +646,7 @@ export default function ContentTab({ project }: { project: Project }) {
               ) : null,
             )}
           </ListGroup>
-          <ListGroup id="logic" label={t("Logik")} icon={<BlueprintIcon size={13} />} count={content.blueprints.length + content.events.length} forceOpen={!!q}>
+          <ListGroup id="logic" label={t("Logik")} icon={<BlueprintIcon size={13} />} count={content.blueprints.length + content.events.length + (content.guis ?? []).length} forceOpen={!!q}>
             {content.blueprints.map((b, i) =>
               !q || b.name.toLowerCase().includes(q) ? (
                 <button
@@ -652,6 +667,31 @@ export default function ContentTab({ project }: { project: Project }) {
                   <span className="entry-text">
                     <span className="entry-name">{b.name || t("Blueprint")}</span>
                     <span className="entry-id">{b.enabled ? t("{n} Knoten", { n: b.nodes.length }) : t("ausgeschaltet")}</span>
+                  </span>
+                </button>
+              ) : null,
+            )}
+            {(content.guis ?? []).map((g, i) =>
+              !q || `${g.id} ${g.nameEn}`.toLowerCase().includes(q) ? (
+                <button
+                  key={`gui${i}`}
+                  className={sel?.kind === "gui" && sel.index === i ? "entry active" : "entry"}
+                  onClick={() => setSel({ kind: "gui", index: i })}
+                  {...contextMenu(() => [
+                    { label: t("Bearbeiten"), icon: <PencilIcon size={15} />, onClick: () => setSel({ kind: "gui", index: i }) },
+                    "separator",
+                    { label: t("Entfernen"), icon: <TrashIcon size={15} />, danger: true, onClick: () => remove({ kind: "gui", index: i }) },
+                  ])}
+                >
+                  <span className="logic-icon">
+                    <GuiIcon size={14} />
+                  </span>
+                  <span className="entry-text">
+                    <span className="entry-name">{g.nameEn || g.id}</span>
+                    <span className="entry-id">{g.id}</span>
+                  </span>
+                  <span className="entry-badges">
+                    <span className="badge-mini">{t("Oberfläche")}</span>
                   </span>
                 </button>
               ) : null,
@@ -711,7 +751,23 @@ export default function ContentTab({ project }: { project: Project }) {
             </div>
           </div>
         )}
-        {sel?.kind === "structure" && (content.structures ?? [])[sel.index] ? (
+        {sel?.kind === "gui" && (content.guis ?? [])[sel.index] ? (
+          <GuiEditor
+            key={`gui-${sel.index}`}
+            project={project}
+            content={content}
+            gui={(content.guis ?? [])[sel.index]}
+            onChange={(g) => setContent((c) => (c ? { ...c, guis: (c.guis ?? []).map((x, i) => (i === sel.index ? g : x)) } : c))}
+            onLinkMachine={(blockId, guiId) => setContent((c) => (c ? { ...c, blocks: c.blocks.map((b) => (b.id === blockId ? { ...b, machine: { ...(b.machine ?? { fuel: true, recipes: [] }), gui: guiId } } : b)) } : c))}
+            onDuplicate={() => {
+              const list = content.guis ?? [];
+              const d = list[sel.index];
+              setContent({ ...content, guis: [...list, { ...structuredClone(d), id: `${d.id}_kopie` }] });
+              setSel({ kind: "gui", index: list.length });
+            }}
+            onRemove={() => remove()}
+          />
+        ) : sel?.kind === "structure" && (content.structures ?? [])[sel.index] ? (
           <StructureEditor
             key={`st-${sel.index}`}
             project={project}
@@ -929,7 +985,7 @@ export default function ContentTab({ project }: { project: Project }) {
                 </>
               )}
               {block && (blockTab === "function" || blockTab === "model" || blockTab === "shapes") && (
-                <BlockExtras project={project} block={block} own={own} texture={textures[block.id]} onChange={updBlock} part={blockTab} />
+                <BlockExtras project={project} block={block} own={own} texture={textures[block.id]} onChange={updBlock} part={blockTab} guis={content.guis ?? []} />
               )}
               {item && itemTabEff === "function" && (
                 <>
@@ -1219,7 +1275,7 @@ function ContentOverview({
     { g: "item", label: t("Items"), desc: t("Materialien, Werkzeuge, Rüstung, Essen"), icon: <GemIcon size={17} />, n: content.items.length },
     { g: "mob", label: t("Kreaturen"), desc: t("Tiere und Monster mit eigenem Verhalten"), icon: <PawIcon size={17} />, n: content.mobs.length },
     { g: "world", label: t("Welt"), desc: t("Eigene Dimensionen und Weltgenerierung"), icon: <GlobeIcon size={17} />, n: content.dimensions.length },
-    { g: "logic", label: t("Logik"), desc: t("Blueprints und Ereignisse: Wenn … dann …"), icon: <BlueprintIcon size={17} />, n: content.blueprints.length + content.events.length },
+    { g: "logic", label: t("Logik"), desc: t("Blueprints, Oberflächen und Ereignisse: Wenn … dann …"), icon: <BlueprintIcon size={17} />, n: content.blueprints.length + content.events.length + (content.guis ?? []).length },
     { g: "logic", label: t("Brauen"), desc: t("Eigene Tränke im Braustand"), icon: <FlaskIcon size={17} />, n: content.brewing.length },
   ];
   const todos: Todo[] = [];

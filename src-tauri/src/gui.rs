@@ -300,7 +300,7 @@ pub fn client_java(guis: &[GuiDef], get_value: bool) -> (String, String) {
             for (int i = 0; i < switches.size(); i++) {{
                 AnvilContent.AnvilGuiEl e = switchEls.get(i);
                 boolean on = e.data() >= 0 && menu.data.get(e.data()) != 0;
-                switches.get(i).setMessage(net.minecraft.network.chat.Component.literal((e.text().isEmpty() ? "" : e.text() + ": ") + (on ? "AN" : "AUS")));
+                switches.get(i).setMessage(net.minecraft.network.chat.Component.literal((e.text().isEmpty() ? "" : e.text() + ": ") + (on ? "ON" : "OFF")));
             }}
         }}
 

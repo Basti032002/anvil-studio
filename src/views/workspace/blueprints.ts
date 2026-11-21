@@ -4,7 +4,7 @@ import { Blueprint, BpNode } from "../../api";
 // Katalog der Blueprint-Knoten. Muss zu src-tauri/src/blueprint.rs passen.
 
 export type BpCat = "event" | "flow" | "vars" | "world" | "player" | "other";
-export type PropType = "text" | "number" | "select" | "item" | "block" | "entity" | "effect" | "sound" | "particle" | "who" | "var" | "dim" | "fn" | "varvalue" | "varop" | "varcmp" | "game" | "scope" | "tag";
+export type PropType = "text" | "number" | "select" | "item" | "block" | "entity" | "effect" | "sound" | "particle" | "who" | "var" | "dim" | "fn" | "varvalue" | "varop" | "varcmp" | "game" | "scope" | "tag" | "gui";
 export interface PropSpec {
   key: string;
   label: string;
@@ -492,6 +492,8 @@ export const NODES: NodeSpec[] = [
   { kind: "worldborder", cat: "world", label: t("Weltbarriere setzen"), desc: "", outs: NEXT, props: [numP("size", t("Größe (Blöcke)"), "1000")] },
   { kind: "time_add", cat: "world", label: t("Zeit vorspulen"), desc: t("1000 Ticks ≈ 1 Stunde"), outs: NEXT, props: [numP("ticks", t("Ticks"), "1000")] },
   { kind: "xp_orb", cat: "world", label: t("Erfahrungskugel erzeugen"), desc: "", outs: NEXT, props: [numP("amount", t("Erfahrung"), "10")] },
+  { kind: "open_gui", cat: "other", label: t("Oberfläche öffnen"), desc: t("Zeigt dem Spieler eine Oberfläche aus dem GUI-Editor"), outs: NEXT, props: [{ key: "gui", label: t("Oberfläche"), type: "gui", def: "" }] },
+  { kind: "close_gui", cat: "other", label: t("Oberfläche schließen"), desc: "", outs: NEXT, props: [] },
   { kind: "log", cat: "other", label: t("In Konsole schreiben"), desc: t("Zum Testen, erscheint im Konsolen-Tab"), outs: NEXT, props: [textP("text", t("Text"), "Wert: {var:punkte}")] },
   { kind: "command", cat: "other", label: t("Befehl ausführen"), desc: t("@s = Spieler, {var:name} setzt Variablen ein"), outs: NEXT, props: [textP("command", t("Befehl"), "say Hallo"), who] },
 ];

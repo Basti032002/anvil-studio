@@ -144,7 +144,7 @@ export type BlockDef = {
   kind: "normal" | "lamp" | "storage" | "workbench" | "machine";
   rows: number;
   workbenchRecipes: WorkbenchRecipe[];
-  machine: { fuel: boolean; recipes: MachineRecipe[] };
+  machine: { fuel: boolean; recipes: MachineRecipe[]; gui?: string };
   names: Record<string, string>;
   model: Cuboid[];
   rotate: boolean;
@@ -243,7 +243,12 @@ export type Content = {
   variables?: VarDef[];
   /** Tags (Tags-Tab) */
   tags?: TagDef[];
+  /** Eigene Oberflächen (GUI-Editor) */
+  guis?: GuiDef[];
 };
+export type GuiElKind = "slot_in" | "slot_fuel" | "slot_out" | "player_inv" | "arrow" | "flame" | "energy" | "tank" | "button" | "switch" | "text" | "value" | "item" | "panel";
+export type GuiEl = { id: string; kind: GuiElKind; x: number; y: number; w: number; h: number; text: string; color: string; var: string; max: number; action: string; item: string };
+export type GuiDef = { id: string; nameEn: string; nameDe: string; width: number; height: number; style: "light" | "dark" | "stone" | "wood"; showTitle: boolean; elements: GuiEl[] };
 export type TagRegistry = "block" | "item" | "entity_type" | "worldgen/biome";
 export type TagDef = { registry: TagRegistry; id: string; values: string[]; desc: string };
 export type VarKind = "number" | "logic" | "text" | "item" | "block" | "direction" | "position";

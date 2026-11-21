@@ -1,7 +1,7 @@
 import { t } from "../../i18n";
 import ModelEditor, { MODEL_PRESETS, ModelPreview, useTexFor } from "./ModelEditor";
 import { useState } from "react";
-import { ArmorSlot, BlockDef, ItemDef, OreDef, Project, ToolType } from "../../api";
+import { ArmorSlot, BlockDef, ItemDef, OreDef, Project, ToolType, GuiDef } from "../../api";
 import { useCatalog } from "../../catalog";
 import { Segmented, Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
@@ -129,6 +129,7 @@ export function BlockExtras({
   texture,
   onChange,
   part,
+  guis = [],
 }: {
   project: Project;
   block: BlockDef;
@@ -137,6 +138,8 @@ export function BlockExtras({
   onChange: (patch: Partial<BlockDef>) => void;
   /** nur einen Bereich zeigen (Unterreiter) */
   part?: BlockPart;
+  /** Oberflächen aus dem GUI-Editor */
+  guis?: GuiDef[];
 }) {
   const [modelOpen, setModelOpen] = useState(false);
   const texFor = useTexFor(project, block, own, texture);
@@ -177,7 +180,7 @@ export function BlockExtras({
         </div>
         {block.kind === "lamp" && <div className="muted small">{t("Leuchtet, sobald Redstone-Strom anliegt. Die Leuchtkraft oben gilt im eingeschalteten Zustand (0 = 15). Nach dem Speichern kannst du rechts eine eigene Textur für „an“ malen.")}</div>}
         {block.kind === "workbench" && <WorkbenchRecipes project={project} block={block} own={own} onChange={onChange} />}
-        {block.kind === "machine" && <MachineEditor project={project} block={block} own={own} onChange={onChange} />}
+        {block.kind === "machine" && <MachineEditor project={project} block={block} own={own} onChange={onChange} guis={guis} />}
         {block.kind === "storage" && (
           <Field label={t("Reihen · {rows} × 9 = {slots} Plätze", { rows: block.rows, slots: block.rows * 9 })} hint={t("Truhe 3 · Doppeltruhe 6")}>
             <input type="range" className="range full" min={1} max={6} value={block.rows} onChange={(e) => onChange({ rows: Number(e.target.value) })} />
