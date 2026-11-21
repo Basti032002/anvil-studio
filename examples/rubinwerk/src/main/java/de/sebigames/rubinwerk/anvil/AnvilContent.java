@@ -28,9 +28,10 @@ import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.minecraft.Util;
 import net.neoforged.neoforge.common.SimpleTier;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import com.mojang.serialization.MapCodec;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.world.Container;
 import net.minecraft.world.Containers;
@@ -39,7 +40,6 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
@@ -113,6 +113,18 @@ public final class AnvilContent {
     public static final DeferredBlock<AnvilMachineBlock> RUBY_PRESS = BLOCKS.registerBlock("ruby_press", AnvilMachineBlock::new, BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.5f, 6.0f).sound(SoundType.METAL).requiresCorrectToolForDrops());
     public static final DeferredItem<BlockItem> RUBY_PRESS_ITEM = ITEMS.registerSimpleBlockItem("ruby_press", RUBY_PRESS);
 
+    public static final DeferredBlock<AnvilGeneratorBlock> RUBY_GENERATOR = BLOCKS.registerBlock("ruby_generator", AnvilGeneratorBlock::new, BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.5f, 6.0f).sound(SoundType.METAL).requiresCorrectToolForDrops());
+    public static final DeferredItem<BlockItem> RUBY_GENERATOR_ITEM = ITEMS.registerSimpleBlockItem("ruby_generator", RUBY_GENERATOR);
+
+    public static final DeferredBlock<AnvilGeneratorBlock> RUBY_SOLAR_PANEL = BLOCKS.registerBlock("ruby_solar_panel", AnvilGeneratorBlock::new, BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(2.0f, 4.0f).sound(SoundType.METAL).requiresCorrectToolForDrops());
+    public static final DeferredItem<BlockItem> RUBY_SOLAR_PANEL_ITEM = ITEMS.registerSimpleBlockItem("ruby_solar_panel", RUBY_SOLAR_PANEL);
+
+    public static final DeferredBlock<AnvilBatteryBlock> RUBY_BATTERY = BLOCKS.registerBlock("ruby_battery", AnvilBatteryBlock::new, BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.0f, 6.0f).sound(SoundType.METAL).requiresCorrectToolForDrops());
+    public static final DeferredItem<BlockItem> RUBY_BATTERY_ITEM = ITEMS.registerSimpleBlockItem("ruby_battery", RUBY_BATTERY);
+
+    public static final DeferredBlock<AnvilCableBlock> RUBY_CABLE = BLOCKS.registerBlock("ruby_cable", AnvilCableBlock::new, BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(0.5f, 1.0f).sound(SoundType.METAL).requiresCorrectToolForDrops());
+    public static final DeferredItem<BlockItem> RUBY_CABLE_ITEM = ITEMS.registerSimpleBlockItem("ruby_cable", RUBY_CABLE);
+
     public static final DeferredItem<Item> RUBY = ITEMS.registerSimpleItem("ruby", new Item.Properties().stacksTo(64).rarity(Rarity.UNCOMMON));
 
     public static final DeferredItem<Item> RUBY_DUST = ITEMS.registerSimpleItem("ruby_dust", new Item.Properties().stacksTo(64));
@@ -137,6 +149,8 @@ public final class AnvilContent {
     public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITIES = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, MODID);
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<AnvilMachineBlockEntity>> MACHINE_BE = BLOCK_ENTITIES.register("machine", () -> BlockEntityType.Builder.of(AnvilMachineBlockEntity::new, RUBY_PRESS.get()).build(null));
 
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<AnvilPowerBlockEntity>> POWER_BE = BLOCK_ENTITIES.register("power", () -> BlockEntityType.Builder.of(AnvilPowerBlockEntity::new, RUBY_GENERATOR.get(), RUBY_SOLAR_PANEL.get(), RUBY_BATTERY.get(), RUBY_CABLE.get()).build(null));
+
     public static final DeferredRegister<net.minecraft.world.inventory.MenuType<?>> MENUS = DeferredRegister.create(Registries.MENU, MODID);
     public static final DeferredHolder<net.minecraft.world.inventory.MenuType<?>, net.minecraft.world.inventory.MenuType<AnvilGuiMenu>> GUI_MENU = MENUS.register("gui", () -> net.neoforged.neoforge.common.extensions.IMenuTypeExtension.create(AnvilGuiMenu::new));
 
@@ -153,6 +167,10 @@ public final class AnvilContent {
                 output.accept(RUBY_BRICKS_WALL_ITEM.get());
                 output.accept(RUBY_LAMP_ITEM.get());
                 output.accept(RUBY_PRESS_ITEM.get());
+                output.accept(RUBY_GENERATOR_ITEM.get());
+                output.accept(RUBY_SOLAR_PANEL_ITEM.get());
+                output.accept(RUBY_BATTERY_ITEM.get());
+                output.accept(RUBY_CABLE_ITEM.get());
                 output.accept(RUBY.get());
                 output.accept(RUBY_DUST.get());
                 output.accept(RUBY_WAND.get());
@@ -174,6 +192,7 @@ public final class AnvilContent {
         TABS.register(modEventBus);
         AnvilDevReload.init();
         BLOCK_ENTITIES.register(modEventBus);
+        modEventBus.addListener(AnvilContent::anvilRegisterCaps);
         MENUS.register(modEventBus);
         NeoForge.EVENT_BUS.addListener(AnvilContent::anvilTick);
         NeoForge.EVENT_BUS.addListener(AnvilContent::anvilVarsLoad);
@@ -185,6 +204,146 @@ public final class AnvilContent {
         NeoForge.EVENT_BUS.addListener(AnvilContent::anvilBp4);
         NeoForge.EVENT_BUS.addListener(AnvilContent::anvilBp6);
         NeoForge.EVENT_BUS.addListener(AnvilContent::registerBrewing);
+    }
+
+    // ---- Strom (Forge Energy) ----
+    /** Energiespeicher eines Blocks */
+    public static class AnvilEnergy {
+        int energy, capacity, maxIn, maxOut;
+        final Runnable changed;
+
+        public AnvilEnergy(int capacity, int maxIn, int maxOut, Runnable changed) {
+            this.capacity = Math.max(0, capacity);
+            this.maxIn = Math.max(0, maxIn);
+            this.maxOut = Math.max(0, maxOut);
+            this.changed = changed;
+        }
+
+        public int get() {
+            return energy;
+        }
+
+        public int capacity() {
+            return capacity;
+        }
+
+        public void set(int e) {
+            energy = Math.max(0, Math.min(capacity, e));
+        }
+
+        public int add(int n) {
+            int a = Math.max(0, Math.min(capacity - energy, n));
+            energy += a;
+            if (a > 0) changed.run();
+            return a;
+        }
+
+        public int take(int n) {
+            int a = Math.max(0, Math.min(energy, n));
+            energy -= a;
+            if (a > 0) changed.run();
+            return a;
+        }
+
+        /** Für Oberflächen: Wert in 16-Bit-Stücken (Datenplätze sind klein) */
+        public int slot(int i) {
+            return switch (i) {
+                case 0 -> energy & 0xFFFF;
+                case 1 -> energy >>> 16;
+                case 2 -> capacity & 0xFFFF;
+                default -> capacity >>> 16;
+            };
+        }
+    }
+
+    /** Zugriff von einer Seite (andere Mods, Kabel) */
+    public static class AnvilEnergyCap implements net.neoforged.neoforge.energy.IEnergyStorage {
+        final AnvilEnergy e;
+        final boolean in, out;
+
+        AnvilEnergyCap(AnvilEnergy e, boolean in, boolean out) {
+            this.e = e;
+            this.in = in;
+            this.out = out;
+        }
+
+        @Override
+        public int receiveEnergy(int amount, boolean simulate) {
+            if (!in || amount <= 0) return 0;
+            int n = Math.min(amount, Math.min(e.maxIn, e.capacity - e.energy));
+            if (n > 0 && !simulate) e.add(n);
+            return Math.max(0, n);
+        }
+
+        @Override
+        public int extractEnergy(int amount, boolean simulate) {
+            if (!out || amount <= 0) return 0;
+            int n = Math.min(amount, Math.min(e.maxOut, e.energy));
+            if (n > 0 && !simulate) e.take(n);
+            return Math.max(0, n);
+        }
+
+        @Override
+        public int getEnergyStored() {
+            return e.energy;
+        }
+
+        @Override
+        public int getMaxEnergyStored() {
+            return e.capacity;
+        }
+
+        @Override
+        public boolean canExtract() {
+            return out;
+        }
+
+        @Override
+        public boolean canReceive() {
+            return in;
+        }
+    }
+
+    /** FE an einen Nachbarn geben, gibt die angenommene Menge zurück */
+    static int anvilSendEnergy(Level level, BlockPos to, net.minecraft.core.Direction side, int amount) {
+        if (amount <= 0) return 0;
+        net.neoforged.neoforge.energy.IEnergyStorage t = level.getCapability(net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK, to, side);
+        if (t == null || !t.canReceive()) return 0;
+        return t.receiveEnergy(amount, false);
+    }
+
+    static int anvilEnergyAt(Level level, BlockPos pos) {
+        net.neoforged.neoforge.energy.IEnergyStorage t = level.getCapability(net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK, pos, null);
+        return t == null ? 0 : t.getEnergyStored();
+    }
+
+    static int anvilEnergyAdd(Level level, BlockPos pos, int amount) {
+        return anvilSendEnergy(level, pos, null, amount);
+    }
+
+    static int anvilEnergyTake(Level level, BlockPos pos, int amount) {
+        net.neoforged.neoforge.energy.IEnergyStorage t = level.getCapability(net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK, pos, null);
+        if (t == null || amount <= 0) return 0;
+        return t.extractEnergy(amount, false);
+    }
+
+    static boolean anvilHasEnergy(Level level, BlockPos pos, net.minecraft.core.Direction side) {
+        return level.getCapability(net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK, pos, side) != null;
+    }
+
+    /** An alle Nachbarn verteilen (höchstens rate pro Tick) */
+    static void anvilPushAll(Level level, BlockPos pos, AnvilEnergy e, int rate) {
+        int left = Math.min(rate, e.get());
+        for (net.minecraft.core.Direction d : net.minecraft.core.Direction.values()) {
+            if (left <= 0) return;
+            int n = anvilSendEnergy(level, pos.relative(d), d.getOpposite(), left);
+            e.take(n);
+            left -= n;
+        }
+    }
+
+    static String anvilFe(int v) {
+        return v >= 1_000_000 ? String.format("%.1fM", v / 1_000_000.0) : v >= 10_000 ? String.format("%.1fk", v / 1000.0) : String.valueOf(v);
     }
 
     /** Passt der Stapel zu "ns:id" oder "#ns:tag"? Leer passt nur zu leer. */
@@ -214,7 +373,7 @@ public final class AnvilContent {
         new AnvilMachineRecipe("ruby_press", "minecraft:raw_gold", 1, "minecraft:gold_ingot", 2, 160),
     };
 
-    static final java.util.Set<String> ANVIL_MACHINE_FUEL = java.util.Set.of("ruby_press");
+    static final java.util.Set<String> ANVIL_MACHINE_FUEL = java.util.Set.of();
 
     /** Maschine: verarbeitet Eingabe → Ausgabe über die Zeit (Ofen-Oberfläche). */
     public static class AnvilMachineBlock extends BaseEntityBlock {
@@ -248,7 +407,7 @@ public final class AnvilContent {
         protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hit) {
             if (!level.isClientSide() && level.getBlockEntity(pos) instanceof AnvilMachineBlockEntity machine) {
                 String anvilGui = ANVIL_MACHINE_GUI.get(anvilBlockKey(state.getBlock()));
-                if (anvilGui != null && player instanceof net.minecraft.server.level.ServerPlayer sp) anvilOpenGui(sp, anvilGui, machine, machine.data, pos, state.getBlock().getName());
+                if (anvilGui != null && player instanceof net.minecraft.server.level.ServerPlayer sp) anvilOpenGui(sp, anvilGui, machine, machine.guiData, pos, state.getBlock().getName());
                 else player.openMenu(machine);
             }
             return InteractionResult.SUCCESS;
@@ -289,10 +448,36 @@ public final class AnvilContent {
                 return 4;
             }
         };
+        /** Für eigene Oberflächen: zusätzlich Strom (Plätze 4–7) */
+        final net.minecraft.world.inventory.ContainerData guiData = new net.minecraft.world.inventory.ContainerData() {
+            @Override
+            public int get(int index) {
+                return index < 4 ? data.get(index) : energy.slot(index - 4);
+            }
+
+            @Override
+            public void set(int index, int value) {
+                if (index < 4) data.set(index, value);
+            }
+
+            @Override
+            public int getCount() {
+                return 8;
+            }
+        };
+        final AnvilEnergy energy;
+        static final java.util.Map<String, int[]> ENERGY = java.util.Map.ofEntries(java.util.Map.entry("ruby_press", new int[] { 20000, 400, 20 }));
 
         public AnvilMachineBlockEntity(BlockPos pos, BlockState state) {
             super(MACHINE_BE.get(), pos, state);
+            int[] cfg = ENERGY.getOrDefault(anvilBlockKey(state.getBlock()), new int[] { 0, 0, 0 });
+            energy = new AnvilEnergy(cfg[0], cfg[1], 0, this::setChanged);
         }
+
+        public AnvilEnergyCap cap(net.minecraft.core.Direction side) {
+            return energy.capacity() > 0 ? new AnvilEnergyCap(energy, true, false) : null;
+        }
+
 
         @Override
         public int getContainerSize() {
@@ -340,7 +525,13 @@ public final class AnvilContent {
             ItemStack result = r == null ? ItemStack.EMPTY : anvilStack(r.output(), r.outputCount());
             boolean fits = !result.isEmpty() && (out.isEmpty() || (ItemStack.isSameItemSameComponents(out, result) && out.getCount() + result.getCount() <= out.getMaxStackSize()));
             if (fits) {
-                if (!needsFuel) {
+                int[] ecfg = ENERGY.get(key);
+                if (ecfg != null) {
+                    if (be.energy.get() >= ecfg[2]) {
+                        be.energy.take(ecfg[2]);
+                        be.litTime = be.litDuration = 1;
+                    } else be.litTime = 0;
+                } else if (!needsFuel) {
                     be.litTime = be.litDuration = 1;
                 } else if (be.litTime <= 0) {
                     ItemStack fuel = be.items.get(1);
@@ -383,6 +574,7 @@ public final class AnvilContent {
             litDuration = tag.getInt("AnvilLitTotal");
             progress = tag.getInt("AnvilProgress");
             total = tag.getInt("AnvilTotal");
+            energy.set(tag.getInt("AnvilEnergy"));
         }
 
         @Override
@@ -393,6 +585,7 @@ public final class AnvilContent {
             tag.putInt("AnvilLitTotal", litDuration);
             tag.putInt("AnvilProgress", progress);
             tag.putInt("AnvilTotal", total);
+            tag.putInt("AnvilEnergy", energy.get());
         }
     }
 
@@ -408,30 +601,403 @@ public final class AnvilContent {
         return BuiltInRegistries.SOUND_EVENT.get(ResourceLocation.parse(id));
     }
 
+    public record AnvilPower(String kind, int capacity, int rate, int gen, String source, String gui) {}
+
+    static final java.util.Map<String, AnvilPower> ANVIL_POWER = java.util.Map.ofEntries(java.util.Map.entry("ruby_generator", new AnvilPower("generator", 40000, 400, 40, "fuel", "rubin_generator")), java.util.Map.entry("ruby_solar_panel", new AnvilPower("generator", 8000, 100, 15, "solar", "")), java.util.Map.entry("ruby_battery", new AnvilPower("battery", 250000, 1000, 0, "fuel", "rubin_akku")), java.util.Map.entry("ruby_cable", new AnvilPower("cable", 1000, 1000, 0, "fuel", "")));
+
+    static AnvilPower anvilPower(net.minecraft.world.level.block.Block block) {
+        return ANVIL_POWER.getOrDefault(anvilBlockKey(block), new AnvilPower("battery", 10000, 100, 0, "fuel", ""));
+    }
+
+    static void anvilPowerRegisterCaps(net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent event) {
+        event.registerBlockEntity(net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK, POWER_BE.get(), (be, side) -> be.cap(side));
+    }
+
+    /** Gemeinsame Bedienung: Oberfläche öffnen, Brennstoff einlegen oder Füllstand zeigen */
+    static InteractionResult anvilPowerUse(BlockState state, Level level, BlockPos pos, Player player) {
+        if (level.isClientSide() || !(level.getBlockEntity(pos) instanceof AnvilPowerBlockEntity be)) return InteractionResult.SUCCESS;
+        AnvilPower cfg = anvilPower(state.getBlock());
+        ItemStack hand = player.getMainHandItem();
+        if (cfg.kind().equals("generator") && cfg.source().equals("fuel") && !hand.isEmpty() && AnvilPowerBlockEntity.burnTime(level, hand) > 0) {
+            ItemStack slot = be.items.get(1);
+            if (slot.isEmpty()) {
+                be.items.set(1, hand.split(hand.getCount()));
+            } else if (ItemStack.isSameItemSameComponents(slot, hand)) {
+                int n = Math.min(hand.getCount(), slot.getMaxStackSize() - slot.getCount());
+                slot.grow(n);
+                hand.shrink(n);
+            }
+            be.setChanged();
+            return InteractionResult.SUCCESS;
+        }
+        if (!cfg.gui().isEmpty() && player instanceof net.minecraft.server.level.ServerPlayer sp && anvilPowerGui(sp, cfg.gui(), be, be.guiData, pos, state.getBlock().getName())) {
+            return InteractionResult.SUCCESS;
+        }
+        String extra = cfg.kind().equals("generator") ? (be.producing ? " · +" + cfg.gen() + " FE/t" : " · idle") : "";
+        player.displayClientMessage(Component.literal(state.getBlock().getName().getString() + ": " + anvilFe(be.energy.get()) + " / " + anvilFe(be.energy.capacity()) + " FE" + extra), true);
+        return InteractionResult.SUCCESS;
+    }
+
+    /** Generator: erzeugt Strom und gibt ihn an alle Nachbarn ab */
+    public static class AnvilGeneratorBlock extends BaseEntityBlock {
+        public static final MapCodec<AnvilGeneratorBlock> CODEC = simpleCodec(AnvilGeneratorBlock::new);
+
+        public AnvilGeneratorBlock(BlockBehaviour.Properties properties) {
+            super(properties);
+        }
+
+        @Override
+        protected MapCodec<? extends BaseEntityBlock> codec() {
+            return CODEC;
+        }
+
+        @Override
+        protected RenderShape getRenderShape(BlockState state) {
+            return RenderShape.MODEL;
+        }
+
+        @Override
+        public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
+            return new AnvilPowerBlockEntity(pos, state);
+        }
+
+        @Override
+        public <T extends BlockEntity> net.minecraft.world.level.block.entity.BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type) {
+            return level.isClientSide() ? null : createTickerHelper(type, POWER_BE.get(), AnvilPowerBlockEntity::serverTick);
+        }
+
+        @Override
+        protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hit) {
+            return anvilPowerUse(state, level, pos, player);
+        }
+        @Override
+        protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean moved) {
+            if (!state.is(newState.getBlock()) && level.getBlockEntity(pos) instanceof Container container) Containers.dropContents(level, pos, container);
+            super.onRemove(state, level, pos, newState, moved);
+        }
+    }
+
+    /** Akku: nimmt an allen Seiten Strom an und gibt ihn vorne wieder ab */
+    public static class AnvilBatteryBlock extends BaseEntityBlock {
+        public static final MapCodec<AnvilBatteryBlock> CODEC = simpleCodec(AnvilBatteryBlock::new);
+
+        public AnvilBatteryBlock(BlockBehaviour.Properties properties) {
+            super(properties);
+            registerDefaultState(stateDefinition.any().setValue(net.minecraft.world.level.block.HorizontalDirectionalBlock.FACING, net.minecraft.core.Direction.NORTH));
+        }
+
+        @Override
+        protected MapCodec<? extends BaseEntityBlock> codec() {
+            return CODEC;
+        }
+
+        @Override
+        protected void createBlockStateDefinition(net.minecraft.world.level.block.state.StateDefinition.Builder<net.minecraft.world.level.block.Block, BlockState> builder) {
+            builder.add(net.minecraft.world.level.block.HorizontalDirectionalBlock.FACING);
+        }
+
+        @Override
+        public BlockState getStateForPlacement(net.minecraft.world.item.context.BlockPlaceContext context) {
+            return defaultBlockState().setValue(net.minecraft.world.level.block.HorizontalDirectionalBlock.FACING, context.getHorizontalDirection().getOpposite());
+        }
+
+        @Override
+        protected RenderShape getRenderShape(BlockState state) {
+            return RenderShape.MODEL;
+        }
+
+        @Override
+        public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
+            return new AnvilPowerBlockEntity(pos, state);
+        }
+
+        @Override
+        public <T extends BlockEntity> net.minecraft.world.level.block.entity.BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type) {
+            return level.isClientSide() ? null : createTickerHelper(type, POWER_BE.get(), AnvilPowerBlockEntity::serverTick);
+        }
+
+        @Override
+        protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hit) {
+            return anvilPowerUse(state, level, pos, player);
+        }
+        @Override
+        protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean moved) {
+            if (!state.is(newState.getBlock()) && level.getBlockEntity(pos) instanceof Container container) Containers.dropContents(level, pos, container);
+            super.onRemove(state, level, pos, newState, moved);
+        }
+    }
+
+    /** Kabel: verbindet sich mit allem, was Strom hat, und gleicht den Füllstand aus */
+    public static class AnvilCableBlock extends BaseEntityBlock {
+        public static final MapCodec<AnvilCableBlock> CODEC = simpleCodec(AnvilCableBlock::new);
+        static final net.minecraft.world.level.block.state.properties.BooleanProperty[] SIDES = {
+            net.minecraft.world.level.block.state.properties.BlockStateProperties.DOWN,
+            net.minecraft.world.level.block.state.properties.BlockStateProperties.UP,
+            net.minecraft.world.level.block.state.properties.BlockStateProperties.NORTH,
+            net.minecraft.world.level.block.state.properties.BlockStateProperties.SOUTH,
+            net.minecraft.world.level.block.state.properties.BlockStateProperties.WEST,
+            net.minecraft.world.level.block.state.properties.BlockStateProperties.EAST
+        };
+        private static final net.minecraft.world.phys.shapes.VoxelShape CORE = net.minecraft.world.level.block.Block.box(5, 5, 5, 11, 11, 11);
+
+        public AnvilCableBlock(BlockBehaviour.Properties properties) {
+            super(properties);
+            BlockState s = stateDefinition.any();
+            for (var p : SIDES) s = s.setValue(p, false);
+            registerDefaultState(s);
+        }
+
+        @Override
+        protected MapCodec<? extends BaseEntityBlock> codec() {
+            return CODEC;
+        }
+
+        @Override
+        protected void createBlockStateDefinition(net.minecraft.world.level.block.state.StateDefinition.Builder<net.minecraft.world.level.block.Block, BlockState> builder) {
+            builder.add(SIDES);
+        }
+
+        static BlockState connect(Level level, BlockPos pos, BlockState state) {
+            for (net.minecraft.core.Direction d : net.minecraft.core.Direction.values()) {
+                BlockPos np = pos.relative(d);
+                boolean c = level.getBlockState(np).getBlock() instanceof AnvilCableBlock || anvilHasEnergy(level, np, d.getOpposite());
+                state = state.setValue(SIDES[d.ordinal()], c);
+            }
+            return state;
+        }
+
+        @Override
+        public BlockState getStateForPlacement(net.minecraft.world.item.context.BlockPlaceContext context) {
+            return connect(context.getLevel(), context.getClickedPos(), defaultBlockState());
+        }
+
+        @Override
+        protected net.minecraft.world.phys.shapes.VoxelShape getShape(BlockState state, net.minecraft.world.level.BlockGetter level, BlockPos pos, net.minecraft.world.phys.shapes.CollisionContext context) {
+            net.minecraft.world.phys.shapes.VoxelShape s = CORE;
+            if (state.getValue(SIDES[0])) s = net.minecraft.world.phys.shapes.Shapes.or(s, net.minecraft.world.level.block.Block.box(5, 0, 5, 11, 5, 11));
+            if (state.getValue(SIDES[1])) s = net.minecraft.world.phys.shapes.Shapes.or(s, net.minecraft.world.level.block.Block.box(5, 11, 5, 11, 16, 11));
+            if (state.getValue(SIDES[2])) s = net.minecraft.world.phys.shapes.Shapes.or(s, net.minecraft.world.level.block.Block.box(5, 5, 0, 11, 11, 5));
+            if (state.getValue(SIDES[3])) s = net.minecraft.world.phys.shapes.Shapes.or(s, net.minecraft.world.level.block.Block.box(5, 5, 11, 11, 11, 16));
+            if (state.getValue(SIDES[4])) s = net.minecraft.world.phys.shapes.Shapes.or(s, net.minecraft.world.level.block.Block.box(0, 5, 5, 5, 11, 11));
+            if (state.getValue(SIDES[5])) s = net.minecraft.world.phys.shapes.Shapes.or(s, net.minecraft.world.level.block.Block.box(11, 5, 5, 16, 11, 11));
+            return s;
+        }
+
+        @Override
+        protected RenderShape getRenderShape(BlockState state) {
+            return RenderShape.MODEL;
+        }
+
+        @Override
+        public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
+            return new AnvilPowerBlockEntity(pos, state);
+        }
+
+        @Override
+        public <T extends BlockEntity> net.minecraft.world.level.block.entity.BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type) {
+            return level.isClientSide() ? null : createTickerHelper(type, POWER_BE.get(), AnvilPowerBlockEntity::serverTick);
+        }
+
+        @Override
+        protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hit) {
+            return anvilPowerUse(state, level, pos, player);
+        }
+    }
+
+    public static class AnvilPowerBlockEntity extends net.minecraft.world.level.block.entity.BaseContainerBlockEntity {
+        NonNullList<ItemStack> items = NonNullList.withSize(3, ItemStack.EMPTY);
+        int litTime, litDuration;
+        boolean producing;
+        final AnvilEnergy energy;
+        final AnvilPower cfg;
+        final net.minecraft.world.inventory.ContainerData guiData = new net.minecraft.world.inventory.ContainerData() {
+            @Override
+            public int get(int index) {
+                return switch (index) {
+                    case 0 -> litTime;
+                    case 1 -> litDuration;
+                    case 2, 3 -> 0;
+                    default -> energy.slot(index - 4);
+                };
+            }
+
+            @Override
+            public void set(int index, int value) {}
+
+            @Override
+            public int getCount() {
+                return 8;
+            }
+        };
+
+        public AnvilPowerBlockEntity(BlockPos pos, BlockState state) {
+            super(POWER_BE.get(), pos, state);
+            cfg = anvilPower(state.getBlock());
+            int in = cfg.kind().equals("generator") ? 0 : cfg.rate();
+            energy = new AnvilEnergy(cfg.capacity(), in, cfg.rate(), this::setChanged);
+        }
+
+        /** Seitenzugriff: Akku gibt nur vorne ab und nimmt vorne nichts an */
+        public AnvilEnergyCap cap(net.minecraft.core.Direction side) {
+            if (cfg.kind().equals("battery") && side != null) {
+                boolean front = getBlockState().hasProperty(net.minecraft.world.level.block.HorizontalDirectionalBlock.FACING) && getBlockState().getValue(net.minecraft.world.level.block.HorizontalDirectionalBlock.FACING) == side;
+                return new AnvilEnergyCap(energy, !front, front);
+            }
+            return new AnvilEnergyCap(energy, !cfg.kind().equals("generator"), true);
+        }
+
+        static int burnTime(Level level, ItemStack stack) {
+            return stack.isEmpty() ? 0 : stack.getBurnTime(net.minecraft.world.item.crafting.RecipeType.SMELTING);
+        }
+
+        @Override
+        public int getContainerSize() {
+            return 3;
+        }
+
+        @Override
+        protected NonNullList<ItemStack> getItems() {
+            return items;
+        }
+
+        @Override
+        protected void setItems(NonNullList<ItemStack> items) {
+            this.items = items;
+        }
+
+        @Override
+        protected Component getDefaultName() {
+            return getBlockState().getBlock().getName();
+        }
+
+        @Override
+        protected net.minecraft.world.inventory.AbstractContainerMenu createMenu(int id, net.minecraft.world.entity.player.Inventory inventory) {
+            return new net.minecraft.world.inventory.FurnaceMenu(id, inventory, this, new net.minecraft.world.inventory.SimpleContainerData(4));
+        }
+
+        public static void serverTick(Level level, BlockPos pos, BlockState state, AnvilPowerBlockEntity be) {
+            AnvilPower cfg = be.cfg;
+            switch (cfg.kind()) {
+                case "generator" -> {
+                    boolean on = switch (cfg.source()) {
+                        case "solar" -> (level.getDayTime() % 24000L < 12300L || level.getDayTime() % 24000L > 23850L) && level.canSeeSky(pos.above()) && !level.isRaining();
+                        case "redstone" -> level.hasNeighborSignal(pos);
+                        case "always" -> true;
+                        default -> false;
+                    };
+                    if (cfg.source().equals("fuel")) {
+                        if (be.litTime > 0) be.litTime--;
+                        if (be.litTime <= 0 && be.energy.get() < be.energy.capacity()) {
+                            ItemStack fuel = be.items.get(1);
+                            int burn = burnTime(level, fuel);
+                            if (burn > 0) {
+                                be.litTime = be.litDuration = burn;
+                                boolean bucket = fuel.is(net.minecraft.world.item.Items.LAVA_BUCKET);
+                                fuel.shrink(1);
+                                if (bucket) be.items.set(1, new ItemStack(net.minecraft.world.item.Items.BUCKET));
+                                be.setChanged();
+                            }
+                        }
+                        on = be.litTime > 0;
+                    }
+                    be.producing = on && be.energy.get() < be.energy.capacity();
+                    if (on) be.energy.add(cfg.gen());
+                    anvilPushAll(level, pos, be.energy, cfg.rate());
+                }
+                case "battery" -> {
+                    if (state.hasProperty(net.minecraft.world.level.block.HorizontalDirectionalBlock.FACING)) {
+                        net.minecraft.core.Direction d = state.getValue(net.minecraft.world.level.block.HorizontalDirectionalBlock.FACING);
+                        be.energy.take(anvilSendEnergy(level, pos.relative(d), d.getOpposite(), Math.min(cfg.rate(), be.energy.get())));
+                    }
+                }
+                case "cable" -> {
+                    if (level.getGameTime() % 10 == pos.asLong() % 10 && state.getBlock() instanceof AnvilCableBlock) {
+                        BlockState c = AnvilCableBlock.connect(level, pos, state);
+                        if (c != state) level.setBlock(pos, c, 3);
+                    }
+                    for (net.minecraft.core.Direction d : net.minecraft.core.Direction.values()) {
+                        if (be.energy.get() <= 0) break;
+                        BlockPos np = pos.relative(d);
+                        if (level.getBlockEntity(np) instanceof AnvilPowerBlockEntity other && other.cfg.kind().equals("cable")) {
+                            int diff = (be.energy.get() - other.energy.get()) / 2;
+                            if (diff > 0) be.energy.take(other.energy.add(Math.min(diff, cfg.rate())));
+                        } else {
+                            be.energy.take(anvilSendEnergy(level, np, d.getOpposite(), Math.min(cfg.rate(), be.energy.get())));
+                        }
+                    }
+                }
+                default -> {}
+            }
+        }
+
+        @Override
+        protected void loadAdditional(net.minecraft.nbt.CompoundTag tag, net.minecraft.core.HolderLookup.Provider registries) {
+            super.loadAdditional(tag, registries);
+            items = NonNullList.withSize(3, ItemStack.EMPTY);
+            ContainerHelper.loadAllItems(tag, items, registries);
+            litTime = tag.getInt("AnvilLit");
+            litDuration = tag.getInt("AnvilLitTotal");
+            energy.set(tag.getInt("AnvilEnergy"));
+        }
+
+        @Override
+        protected void saveAdditional(net.minecraft.nbt.CompoundTag tag, net.minecraft.core.HolderLookup.Provider registries) {
+            super.saveAdditional(tag, registries);
+            ContainerHelper.saveAllItems(tag, items, registries);
+            tag.putInt("AnvilLit", litTime);
+            tag.putInt("AnvilLitTotal", litDuration);
+            tag.putInt("AnvilEnergy", energy.get());
+        }
+    }
+
+    static boolean anvilPowerGui(net.minecraft.server.level.ServerPlayer sp, String key, net.minecraft.world.Container c, net.minecraft.world.inventory.ContainerData data, BlockPos pos, Component title) {
+        if (!ANVIL_GUIS.containsKey(key)) return false;
+        anvilOpenGui(sp, key, c, data, pos, title);
+        return true;
+    }
+
+    private static void anvilRegisterCaps(net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent event) {
+        event.registerBlockEntity(net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK, POWER_BE.get(), (be, side) -> be.cap(side));
+        event.registerBlockEntity(net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK, MACHINE_BE.get(), (be, side) -> be.cap(side));
+    }
+
     // ---- Eigene Oberflächen (GUI-Editor) ----
     public record AnvilGuiEl(String kind, int x, int y, int w, int h, String text, int color, int data, long max, String item) {}
 
     public record AnvilGui(int w, int h, String style, String title, int vars, AnvilGuiEl[] els) {}
 
     public static final java.util.Map<String, AnvilGui> ANVIL_GUIS = java.util.Map.ofEntries(
-        java.util.Map.entry("rubin_presse", new AnvilGui(176, 166, "light", "Ruby Press", 2, new AnvilGuiEl[] {
+        java.util.Map.entry("rubin_presse", new AnvilGui(176, 166, "light", "Ruby Press", 0, new AnvilGuiEl[] {
             new AnvilGuiEl("slot_in", 55, 16, 18, 18, "", 0xFF404040, -1, 100, ""),
             new AnvilGuiEl("slot_fuel", 55, 52, 18, 18, "", 0xFF404040, -1, 100, ""),
             new AnvilGuiEl("flame", 57, 36, 14, 14, "", 0xFF404040, -1, 100, ""),
             new AnvilGuiEl("arrow", 79, 34, 24, 17, "", 0xFF404040, -1, 100, ""),
             new AnvilGuiEl("slot_out", 111, 31, 26, 26, "", 0xFF404040, -1, 100, ""),
-            new AnvilGuiEl("energy", 12, 16, 12, 54, "", 0xFFD01C3A, 4, 1000, ""),
-            new AnvilGuiEl("switch", 132, 62, 38, 14, "Turbo", 0xFF404040, 5, 100, ""),
+            new AnvilGuiEl("energy", 12, 16, 12, 54, "", 0xFFD01C3A, -2, 1000, ""),
+            new AnvilGuiEl("value", 30, 70, 100, 9, "", 0xFF404040, -2, 100, ""),
             new AnvilGuiEl("player_inv", 7, 83, 162, 76, "", 0xFF404040, -1, 100, ""),
+        })),
+        java.util.Map.entry("rubin_generator", new AnvilGui(176, 166, "light", "Ruby Generator", 0, new AnvilGuiEl[] {
+            new AnvilGuiEl("slot_fuel", 79, 50, 18, 18, "", 0xFF404040, -1, 100, ""),
+            new AnvilGuiEl("flame", 81, 32, 14, 14, "", 0xFF404040, -1, 100, ""),
+            new AnvilGuiEl("energy", 150, 16, 14, 58, "", 0xFFD01C3A, -2, 100, ""),
+            new AnvilGuiEl("value", 8, 20, 120, 9, "", 0xFF404040, -2, 100, ""),
+            new AnvilGuiEl("text", 8, 64, 70, 9, "+40 FE/t", 0xFF2F9E44, -1, 100, ""),
+            new AnvilGuiEl("player_inv", 7, 83, 162, 76, "", 0xFF404040, -1, 100, ""),
+        })),
+        java.util.Map.entry("rubin_akku", new AnvilGui(176, 90, "dark", "Ruby Battery Cell", 0, new AnvilGuiEl[] {
+            new AnvilGuiEl("energy", 12, 20, 152, 22, "", 0xFF6FCF5A, -2, 100, ""),
+            new AnvilGuiEl("value", 12, 50, 152, 9, "", 0xFFFFFFFF, -2, 100, ""),
+            new AnvilGuiEl("text", 12, 66, 152, 9, "Output: front side", 0xFF9D9D9D, -1, 100, ""),
         })),
         java.util.Map.entry("rubin_zentrale", new AnvilGui(200, 124, "dark", "Ruby Control", 4, new AnvilGuiEl[] {
             new AnvilGuiEl("panel", 8, 20, 184, 40, "", 0xFF3A1820, -1, 100, ""),
             new AnvilGuiEl("item", 16, 32, 16, 16, "", 0xFF404040, -1, 100, "rubinwerk:ruby"),
-            new AnvilGuiEl("value", 40, 28, 140, 9, "Rubine: ", 0xFFFFD0D8, 4, 100, ""),
-            new AnvilGuiEl("value", 40, 42, 140, 9, "Energie: ", 0xFFFFD0D8, 5, 100, ""),
-            new AnvilGuiEl("energy", 176, 24, 10, 32, "", 0xFFD01C3A, 6, 1000, ""),
+            new AnvilGuiEl("value", 40, 28, 140, 9, "Rubine: ", 0xFFFFD0D8, 8, 100, ""),
+            new AnvilGuiEl("value", 40, 42, 140, 9, "Magie: ", 0xFFFFD0D8, 9, 100, ""),
+            new AnvilGuiEl("energy", 176, 24, 10, 32, "", 0xFF9B5DE5, 10, 1000, ""),
             new AnvilGuiEl("button", 8, 70, 90, 20, "Belohnung (5)", 0xFF404040, -1, 100, ""),
-            new AnvilGuiEl("switch", 102, 70, 90, 20, "Turbo", 0xFF404040, 7, 100, ""),
+            new AnvilGuiEl("switch", 102, 70, 90, 20, "Turbo", 0xFF404040, 11, 100, ""),
             new AnvilGuiEl("text", 8, 100, 184, 9, "Tipp: /rubin oeffnet dieses Fenster", 0xFF9D9D9D, -1, 100, ""),
         }))
     );
@@ -448,7 +1014,7 @@ public final class AnvilContent {
         sp.openMenu(new net.minecraft.world.SimpleMenuProvider((id, inv, p) -> anvilGuiMenu(id, inv, key, c, base, pos), t), buf -> {
             buf.writeUtf(key);
             buf.writeVarInt(c.getContainerSize());
-            buf.writeVarInt(4 + g.vars());
+            buf.writeVarInt(8 + g.vars());
             buf.writeBlockPos(pos);
         });
     }
@@ -459,18 +1025,18 @@ public final class AnvilContent {
         net.minecraft.world.inventory.ContainerData d = new net.minecraft.world.inventory.ContainerData() {
             @Override
             public int get(int i) {
-                if (i < 4) return base == null ? 0 : base.get(i);
-                return player.level() instanceof net.minecraft.server.level.ServerLevel sl ? anvilGuiValue(sl, player, key, i - 4) : 0;
+                if (i < 8) return base == null || i >= base.getCount() ? 0 : base.get(i);
+                return player.level() instanceof net.minecraft.server.level.ServerLevel sl ? anvilGuiValue(sl, player, key, i - 8) : 0;
             }
 
             @Override
             public void set(int i, int v) {
-                if (i < 4 && base != null) base.set(i, v);
+                if (i < 8 && base != null && i < base.getCount()) base.set(i, v);
             }
 
             @Override
             public int getCount() {
-                return 4 + (g == null ? 0 : g.vars());
+                return 8 + (g == null ? 0 : g.vars());
             }
         };
         return new AnvilGuiMenu(id, inv, key, c, d, pos);
@@ -485,7 +1051,7 @@ public final class AnvilContent {
         private final int ownSlots;
 
         public AnvilGuiMenu(int id, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.RegistryFriendlyByteBuf buf) {
-            this(id, inv, buf.readUtf(), new net.minecraft.world.SimpleContainer(Math.max(0, buf.readVarInt())), new net.minecraft.world.inventory.SimpleContainerData(Math.max(4, buf.readVarInt())), buf.readBlockPos());
+            this(id, inv, buf.readUtf(), new net.minecraft.world.SimpleContainer(Math.max(0, buf.readVarInt())), new net.minecraft.world.inventory.SimpleContainerData(Math.max(8, buf.readVarInt())), buf.readBlockPos());
         }
 
         public AnvilGuiMenu(int id, net.minecraft.world.entity.player.Inventory inv, String key, net.minecraft.world.Container container, net.minecraft.world.inventory.ContainerData data, net.minecraft.core.BlockPos pos) {
@@ -728,7 +1294,7 @@ public final class AnvilContent {
             anvilRun(level, player, x, y, z, "title @s subtitle \"Suche Rubin-Erz unter Y 24\"");
             anvilRun(level, player, x, y, z, "title @s title \"Willkommen im Rubinwerk!\"");
             anvilRun(level, player, x, y, z, "give @s rubinwerk:ruby 3");
-            if (player != null) player.displayClientMessage(Component.literal("Tipp: Mit /rubin öffnest du die Rubin-Zentrale."), false);
+            if (player != null) player.displayClientMessage(Component.literal("Tipp: /rubin öffnet die Rubin-Zentrale. Strom: Rubin-Generator oder Solarpanel → Rubin-Kabel → Rubin-Presse oder Rubin-Akku."), false);
             anvilPut(level, player, "p", "begruesst", String.valueOf("true"));
             anvilObj(level, "rubine");
             anvilShow(level, "p", "rubine", "0");
@@ -785,14 +1351,14 @@ public final class AnvilContent {
         final ItemStack stack = event.getItemStack();
         final String message = "";
         if (!(stack.is(anvilBpItem("rubinwerk:ruby_wand")))) return;
-        if ((anvilNum(level, null, "w", "energie", 0.0) >= 100.0)) {
-            anvilPutNum(level, null, "w", "energie", anvilNum(level, null, "w", "energie", 0.0) - 100.0);
+        if ((anvilNum(level, null, "w", "magie", 0.0) >= 100.0)) {
+            anvilPutNum(level, null, "w", "magie", anvilNum(level, null, "w", "magie", 0.0) - 100.0);
             if (player != null) { player.setDeltaMovement(player.getDeltaMovement().add(0, 0.80, 0)); player.hurtMarked = true; }
             anvilRun(level, null, x, y, z, "particle minecraft:crit ~ ~1 ~ 0.5 0.5 0.5 0.05 30");
             anvilRun(level, null, x, y, z, "playsound minecraft:entity.firework_rocket.launch master @a ~ ~ ~ 1 1");
             anvilRun(level, player, x, y, z, "effect give @s slow_falling 6 0");
         } else {
-            if (player != null) player.displayClientMessage(Component.literal("Zu wenig Energie! (" + String.valueOf(anvilVar(level, null, "w", "energie", "0")) + "/100) – lade die Rubin-Presse auf."), true);
+            if (player != null) player.displayClientMessage(Component.literal("Zu wenig Magie! (" + String.valueOf(anvilVar(level, null, "w", "magie", "0")) + "/100) – warte etwas oder schalte Turbo in /rubin ein."), true);
         }
     }
 
@@ -820,7 +1386,6 @@ public final class AnvilContent {
         final ItemStack stack = sp.getMainHandItem();
         final String message = "";
         switch (key + "#" + el) {
-            case "rubin_presse#6" -> { anvilPut(level, null, "w", "turbo", String.valueOf(!"true".equals(anvilVar(level, null, "w", "turbo", "false")))); }
             case "rubin_zentrale#5" -> anvilFn_belohnung(level, player, target, x, y, z, state, stack, message);
             case "rubin_zentrale#6" -> { anvilPut(level, null, "w", "turbo", String.valueOf(!"true".equals(anvilVar(level, null, "w", "turbo", "false")))); }
             default -> {}
@@ -829,11 +1394,9 @@ public final class AnvilContent {
 
     static int anvilGuiValue(ServerLevel level, Player player, String key, int k) {
         return switch (key + "#" + k) {
-            case "rubin_presse#0" -> (int) Math.round(anvilNum(level, null, "w", "energie", 0.0));
-            case "rubin_presse#1" -> "true".equals(anvilVar(level, null, "w", "turbo", "false")) ? 1 : 0;
             case "rubin_zentrale#0" -> (int) Math.round(anvilNum(level, player, "p", "rubine", 0.0));
-            case "rubin_zentrale#1" -> (int) Math.round(anvilNum(level, null, "w", "energie", 0.0));
-            case "rubin_zentrale#2" -> (int) Math.round(anvilNum(level, null, "w", "energie", 0.0));
+            case "rubin_zentrale#1" -> (int) Math.round(anvilNum(level, null, "w", "magie", 0.0));
+            case "rubin_zentrale#2" -> (int) Math.round(anvilNum(level, null, "w", "magie", 0.0));
             case "rubin_zentrale#3" -> "true".equals(anvilVar(level, null, "w", "turbo", "false")) ? 1 : 0;
             default -> 0;
         };
@@ -868,11 +1431,11 @@ public final class AnvilContent {
                 final ItemStack stack = player.getMainHandItem();
                 final String message = "";
             if (("true".equals(anvilVar(level, null, "w", "turbo", "false")))) {
-                anvilPutNum(level, null, "w", "energie", anvilNum(level, null, "w", "energie", 0.0) + 40.0);
-                anvilPutNum(level, null, "w", "energie", Math.min(anvilNum(level, null, "w", "energie", 0.0), 1000.0));
+                anvilPutNum(level, null, "w", "magie", anvilNum(level, null, "w", "magie", 0.0) + 40.0);
+                anvilPutNum(level, null, "w", "magie", Math.min(anvilNum(level, null, "w", "magie", 0.0), 1000.0));
             } else {
-                anvilPutNum(level, null, "w", "energie", anvilNum(level, null, "w", "energie", 0.0) + 10.0);
-                anvilPutNum(level, null, "w", "energie", Math.min(anvilNum(level, null, "w", "energie", 0.0), 1000.0));
+                anvilPutNum(level, null, "w", "magie", anvilNum(level, null, "w", "magie", 0.0) + 10.0);
+                anvilPutNum(level, null, "w", "magie", Math.min(anvilNum(level, null, "w", "magie", 0.0), 1000.0));
             }
             }
         }

@@ -45,7 +45,8 @@
       "machine": {
         "fuel": true,
         "recipes": [],
-        "gui": ""
+        "gui": "",
+        "electric": false
       },
       "faces": {
         "mode": "",
@@ -57,7 +58,15 @@
         "south": "",
         "east": "",
         "west": ""
-      }
+      },
+      "energy": {
+        "capacity": 10000,
+        "rate": 200,
+        "generate": 20,
+        "source": "fuel",
+        "usePerTick": 20
+      },
+      "gui": ""
     },
     {
       "id": "ruby_block",
@@ -112,7 +121,8 @@
       "machine": {
         "fuel": true,
         "recipes": [],
-        "gui": ""
+        "gui": "",
+        "electric": false
       },
       "faces": {
         "mode": "all",
@@ -124,7 +134,15 @@
         "south": "",
         "east": "",
         "west": ""
-      }
+      },
+      "energy": {
+        "capacity": 10000,
+        "rate": 200,
+        "generate": 20,
+        "source": "fuel",
+        "usePerTick": 20
+      },
+      "gui": ""
     },
     {
       "id": "ruby_bricks",
@@ -178,7 +196,8 @@
       "machine": {
         "fuel": true,
         "recipes": [],
-        "gui": ""
+        "gui": "",
+        "electric": false
       },
       "faces": {
         "mode": "all",
@@ -190,7 +209,15 @@
         "south": "",
         "east": "",
         "west": ""
-      }
+      },
+      "energy": {
+        "capacity": 10000,
+        "rate": 200,
+        "generate": 20,
+        "source": "fuel",
+        "usePerTick": 20
+      },
+      "gui": ""
     },
     {
       "id": "ruby_lamp",
@@ -245,7 +272,8 @@
       "machine": {
         "fuel": true,
         "recipes": [],
-        "gui": ""
+        "gui": "",
+        "electric": false
       },
       "faces": {
         "mode": "",
@@ -257,7 +285,15 @@
         "south": "",
         "east": "",
         "west": ""
-      }
+      },
+      "energy": {
+        "capacity": 10000,
+        "rate": 200,
+        "generate": 20,
+        "source": "fuel",
+        "usePerTick": 20
+      },
+      "gui": ""
     },
     {
       "id": "ruby_press",
@@ -310,7 +346,7 @@
       "rotate": false,
       "workbenchRecipes": [],
       "machine": {
-        "fuel": true,
+        "fuel": false,
         "recipes": [
           {
             "input": "rubinwerk:ruby",
@@ -334,7 +370,8 @@
             "time": 160
           }
         ],
-        "gui": "rubin_presse"
+        "gui": "rubin_presse",
+        "electric": true
       },
       "faces": {
         "mode": "each",
@@ -346,7 +383,319 @@
         "south": "presse_seite",
         "east": "presse_seite",
         "west": "presse_seite"
-      }
+      },
+      "energy": {
+        "capacity": 20000,
+        "rate": 400,
+        "generate": 0,
+        "source": "fuel",
+        "usePerTick": 20
+      },
+      "gui": ""
+    },
+    {
+      "id": "ruby_generator",
+      "nameDe": "Rubin-Generator",
+      "nameEn": "Ruby Generator",
+      "material": "metal",
+      "hardness": 3.5,
+      "resistance": 6.0,
+      "light": 0,
+      "tool": "pickaxe",
+      "tier": "stone",
+      "recipe": {
+        "enabled": true,
+        "kind": "crafting",
+        "shaped": true,
+        "grid": [
+          "minecraft:iron_ingot",
+          "minecraft:iron_ingot",
+          "minecraft:iron_ingot",
+          "minecraft:iron_ingot",
+          "minecraft:redstone_block",
+          "minecraft:iron_ingot",
+          "minecraft:iron_ingot",
+          "minecraft:furnace",
+          "minecraft:iron_ingot"
+        ],
+        "count": 1,
+        "experience": 0.10000000149011612,
+        "cookingTime": 200
+      },
+      "shapes": [],
+      "ore": {
+        "enabled": false,
+        "drop": "",
+        "dropMin": 1,
+        "dropMax": 1,
+        "xpMin": 0,
+        "xpMax": 0,
+        "deepslate": true,
+        "dimension": "overworld",
+        "veinSize": 8,
+        "veinsPerChunk": 6,
+        "minY": -64,
+        "maxY": 32
+      },
+      "kind": "generator",
+      "rows": 3,
+      "names": {},
+      "model": [],
+      "rotate": false,
+      "workbenchRecipes": [],
+      "machine": {
+        "fuel": true,
+        "recipes": [],
+        "gui": "",
+        "electric": false
+      },
+      "faces": {
+        "mode": "each",
+        "all": "",
+        "top": "presse_oben",
+        "bottom": "presse_oben",
+        "side": "",
+        "north": "generator_vorne",
+        "south": "presse_seite",
+        "east": "presse_seite",
+        "west": "presse_seite"
+      },
+      "energy": {
+        "capacity": 40000,
+        "rate": 400,
+        "generate": 40,
+        "source": "fuel",
+        "usePerTick": 0
+      },
+      "gui": "rubin_generator"
+    },
+    {
+      "id": "ruby_solar_panel",
+      "nameDe": "Rubin-Solarpanel",
+      "nameEn": "Ruby Solar Panel",
+      "material": "metal",
+      "hardness": 2.0,
+      "resistance": 4.0,
+      "light": 0,
+      "tool": "pickaxe",
+      "tier": "wood",
+      "recipe": {
+        "enabled": true,
+        "kind": "crafting",
+        "shaped": true,
+        "grid": [
+          "minecraft:glass",
+          "minecraft:glass",
+          "minecraft:glass",
+          "rubinwerk:ruby_dust",
+          "minecraft:daylight_detector",
+          "rubinwerk:ruby_dust",
+          "minecraft:iron_ingot",
+          "minecraft:iron_ingot",
+          "minecraft:iron_ingot"
+        ],
+        "count": 1,
+        "experience": 0.10000000149011612,
+        "cookingTime": 200
+      },
+      "shapes": [],
+      "ore": {
+        "enabled": false,
+        "drop": "",
+        "dropMin": 1,
+        "dropMax": 1,
+        "xpMin": 0,
+        "xpMax": 0,
+        "deepslate": true,
+        "dimension": "overworld",
+        "veinSize": 8,
+        "veinsPerChunk": 6,
+        "minY": -64,
+        "maxY": 32
+      },
+      "kind": "generator",
+      "rows": 3,
+      "names": {},
+      "model": [],
+      "rotate": false,
+      "workbenchRecipes": [],
+      "machine": {
+        "fuel": true,
+        "recipes": [],
+        "gui": "",
+        "electric": false
+      },
+      "faces": {
+        "mode": "pillar",
+        "all": "",
+        "top": "solar_oben",
+        "bottom": "presse_oben",
+        "side": "presse_seite",
+        "north": "",
+        "south": "",
+        "east": "",
+        "west": ""
+      },
+      "energy": {
+        "capacity": 8000,
+        "rate": 100,
+        "generate": 15,
+        "source": "solar",
+        "usePerTick": 0
+      },
+      "gui": ""
+    },
+    {
+      "id": "ruby_battery",
+      "nameDe": "Rubin-Akku",
+      "nameEn": "Ruby Battery Cell",
+      "material": "metal",
+      "hardness": 3.0,
+      "resistance": 6.0,
+      "light": 0,
+      "tool": "pickaxe",
+      "tier": "stone",
+      "recipe": {
+        "enabled": true,
+        "kind": "crafting",
+        "shaped": true,
+        "grid": [
+          "minecraft:iron_ingot",
+          "minecraft:redstone",
+          "minecraft:iron_ingot",
+          "minecraft:redstone",
+          "rubinwerk:ruby_block",
+          "minecraft:redstone",
+          "minecraft:iron_ingot",
+          "minecraft:redstone",
+          "minecraft:iron_ingot"
+        ],
+        "count": 1,
+        "experience": 0.10000000149011612,
+        "cookingTime": 200
+      },
+      "shapes": [],
+      "ore": {
+        "enabled": false,
+        "drop": "",
+        "dropMin": 1,
+        "dropMax": 1,
+        "xpMin": 0,
+        "xpMax": 0,
+        "deepslate": true,
+        "dimension": "overworld",
+        "veinSize": 8,
+        "veinsPerChunk": 6,
+        "minY": -64,
+        "maxY": 32
+      },
+      "kind": "battery",
+      "rows": 3,
+      "names": {},
+      "model": [],
+      "rotate": false,
+      "workbenchRecipes": [],
+      "machine": {
+        "fuel": true,
+        "recipes": [],
+        "gui": "",
+        "electric": false
+      },
+      "faces": {
+        "mode": "each",
+        "all": "",
+        "top": "presse_oben",
+        "bottom": "presse_oben",
+        "side": "",
+        "north": "akku_vorne",
+        "south": "presse_seite",
+        "east": "presse_seite",
+        "west": "presse_seite"
+      },
+      "energy": {
+        "capacity": 250000,
+        "rate": 1000,
+        "generate": 0,
+        "source": "fuel",
+        "usePerTick": 0
+      },
+      "gui": "rubin_akku"
+    },
+    {
+      "id": "ruby_cable",
+      "nameDe": "Rubin-Kabel",
+      "nameEn": "Ruby Cable",
+      "material": "metal",
+      "hardness": 0.5,
+      "resistance": 1.0,
+      "light": 0,
+      "tool": "pickaxe",
+      "tier": "wood",
+      "recipe": {
+        "enabled": true,
+        "kind": "crafting",
+        "shaped": true,
+        "grid": [
+          "",
+          "",
+          "",
+          "rubinwerk:ruby_dust",
+          "minecraft:gold_ingot",
+          "rubinwerk:ruby_dust",
+          "",
+          "",
+          ""
+        ],
+        "count": 8,
+        "experience": 0.10000000149011612,
+        "cookingTime": 200
+      },
+      "shapes": [],
+      "ore": {
+        "enabled": false,
+        "drop": "",
+        "dropMin": 1,
+        "dropMax": 1,
+        "xpMin": 0,
+        "xpMax": 0,
+        "deepslate": true,
+        "dimension": "overworld",
+        "veinSize": 8,
+        "veinsPerChunk": 6,
+        "minY": -64,
+        "maxY": 32
+      },
+      "kind": "cable",
+      "rows": 3,
+      "names": {},
+      "model": [],
+      "rotate": false,
+      "workbenchRecipes": [],
+      "machine": {
+        "fuel": true,
+        "recipes": [],
+        "gui": "",
+        "electric": false
+      },
+      "faces": {
+        "mode": "",
+        "all": "",
+        "top": "",
+        "bottom": "",
+        "side": "",
+        "north": "",
+        "south": "",
+        "east": "",
+        "west": ""
+      },
+      "energy": {
+        "capacity": 1000,
+        "rate": 1000,
+        "generate": 0,
+        "source": "fuel",
+        "usePerTick": 0
+      },
+      "gui": ""
     }
   ],
   "items": [
@@ -711,7 +1060,11 @@
     "ruby_bricks_slab",
     "ruby_bricks_wall",
     "ruby_lamp",
-    "ruby_press"
+    "ruby_press",
+    "ruby_generator",
+    "ruby_solar_panel",
+    "ruby_battery",
+    "ruby_cable"
   ],
   "generatedItems": [
     "ruby",
@@ -738,18 +1091,18 @@
       "desc": "Wie viele Rubin-Erze der Spieler abgebaut hat"
     },
     {
-      "name": "energie",
+      "name": "magie",
       "kind": "number",
       "scope": "world",
       "default": "0",
-      "desc": "Energie der Rubin-Presse (0–1000)"
+      "desc": "Magie für den Rubin-Stab (0–1000), lädt sich von selbst"
     },
     {
       "name": "turbo",
       "kind": "logic",
       "scope": "world",
       "default": "false",
-      "desc": "Turbo-Modus: lädt die Energie schneller"
+      "desc": "Turbo-Modus: lädt die Magie schneller"
     },
     {
       "name": "begruesst",
@@ -848,21 +1201,21 @@
           "h": 54,
           "text": "",
           "color": "#d01c3a",
-          "var": "energie",
+          "var": "@fe",
           "max": 1000.0,
           "action": "",
           "item": ""
         },
         {
-          "id": "switch13262",
-          "kind": "switch",
-          "x": 132,
-          "y": 62,
-          "w": 38,
-          "h": 14,
-          "text": "Turbo",
+          "id": "value3070",
+          "kind": "value",
+          "x": 30,
+          "y": 70,
+          "w": 100,
+          "h": 9,
+          "text": "",
           "color": "#404040",
-          "var": "turbo",
+          "var": "@fe",
           "max": 100.0,
           "action": "",
           "item": ""
@@ -876,6 +1229,154 @@
           "h": 76,
           "text": "",
           "color": "#404040",
+          "var": "",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        }
+      ]
+    },
+    {
+      "id": "rubin_generator",
+      "nameEn": "Ruby Generator",
+      "nameDe": "Rubin-Generator",
+      "width": 176,
+      "height": 166,
+      "style": "light",
+      "showTitle": true,
+      "elements": [
+        {
+          "id": "slot_fuel7950",
+          "kind": "slot_fuel",
+          "x": 79,
+          "y": 50,
+          "w": 18,
+          "h": 18,
+          "text": "",
+          "color": "#404040",
+          "var": "",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "flame8132",
+          "kind": "flame",
+          "x": 81,
+          "y": 32,
+          "w": 14,
+          "h": 14,
+          "text": "",
+          "color": "#404040",
+          "var": "",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "energy15016",
+          "kind": "energy",
+          "x": 150,
+          "y": 16,
+          "w": 14,
+          "h": 58,
+          "text": "",
+          "color": "#d01c3a",
+          "var": "@fe",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "value820",
+          "kind": "value",
+          "x": 8,
+          "y": 20,
+          "w": 120,
+          "h": 9,
+          "text": "",
+          "color": "#404040",
+          "var": "@fe",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "text864",
+          "kind": "text",
+          "x": 8,
+          "y": 64,
+          "w": 70,
+          "h": 9,
+          "text": "+40 FE/t",
+          "color": "#2f9e44",
+          "var": "",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "player_inv783",
+          "kind": "player_inv",
+          "x": 7,
+          "y": 83,
+          "w": 162,
+          "h": 76,
+          "text": "",
+          "color": "#404040",
+          "var": "",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        }
+      ]
+    },
+    {
+      "id": "rubin_akku",
+      "nameEn": "Ruby Battery Cell",
+      "nameDe": "Rubin-Akku",
+      "width": 176,
+      "height": 90,
+      "style": "dark",
+      "showTitle": true,
+      "elements": [
+        {
+          "id": "energy1220",
+          "kind": "energy",
+          "x": 12,
+          "y": 20,
+          "w": 152,
+          "h": 22,
+          "text": "",
+          "color": "#6fcf5a",
+          "var": "@fe",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "value1250",
+          "kind": "value",
+          "x": 12,
+          "y": 50,
+          "w": 152,
+          "h": 9,
+          "text": "",
+          "color": "#ffffff",
+          "var": "@fe",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "text1266",
+          "kind": "text",
+          "x": 12,
+          "y": 66,
+          "w": 152,
+          "h": 9,
+          "text": "Output: front side",
+          "color": "#9d9d9d",
           "var": "",
           "max": 100.0,
           "action": "",
@@ -941,9 +1442,9 @@
           "y": 42,
           "w": 140,
           "h": 9,
-          "text": "Energie: ",
+          "text": "Magie: ",
           "color": "#ffd0d8",
-          "var": "energie",
+          "var": "magie",
           "max": 100.0,
           "action": "",
           "item": ""
@@ -956,8 +1457,8 @@
           "w": 10,
           "h": 32,
           "text": "",
-          "color": "#d01c3a",
-          "var": "energie",
+          "color": "#9b5de5",
+          "var": "magie",
           "max": 1000.0,
           "action": "",
           "item": ""
@@ -1155,7 +1656,7 @@
           "x": 1260.0,
           "y": 40.0,
           "props": {
-            "text": "Tipp: Mit /rubin öffnest du die Rubin-Zentrale.",
+            "text": "Tipp: /rubin öffnet die Rubin-Zentrale. Strom: Rubin-Generator oder Solarpanel → Rubin-Kabel → Rubin-Presse oder Rubin-Akku.",
             "to": "player"
           }
         },
@@ -1382,7 +1883,7 @@
             "cmp": "ge",
             "cond": "var",
             "value": "100",
-            "var": "energie"
+            "var": "magie"
           }
         },
         {
@@ -1394,7 +1895,7 @@
             "op": "sub",
             "src": "num",
             "value": "100",
-            "var": "energie"
+            "var": "magie"
           }
         },
         {
@@ -1444,7 +1945,7 @@
           "x": 660.0,
           "y": 240.0,
           "props": {
-            "text": "Zu wenig Energie! ({var:energie}/100) – lade die Rubin-Presse auf."
+            "text": "Zu wenig Magie! ({var:magie}/100) – warte etwas oder schalte Turbo in /rubin ein."
           }
         }
       ],
@@ -1487,7 +1988,7 @@
       ]
     },
     {
-      "name": "Energie laden",
+      "name": "Magie laden",
       "enabled": true,
       "nodes": [
         {
@@ -1519,7 +2020,7 @@
             "op": "add",
             "src": "num",
             "value": "40",
-            "var": "energie"
+            "var": "magie"
           }
         },
         {
@@ -1531,7 +2032,7 @@
             "op": "add",
             "src": "num",
             "value": "10",
-            "var": "energie"
+            "var": "magie"
           }
         },
         {
@@ -1543,7 +2044,7 @@
             "op": "min",
             "src": "num",
             "value": "1000",
-            "var": "energie"
+            "var": "magie"
           }
         }
       ],

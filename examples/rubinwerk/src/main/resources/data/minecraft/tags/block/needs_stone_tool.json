@@ -1,6 +1,8 @@
 {
   "replace": false,
   "values": [
-    "rubinwerk:ruby_press"
+    "rubinwerk:ruby_press",
+    "rubinwerk:ruby_generator",
+    "rubinwerk:ruby_battery"
   ]
 }

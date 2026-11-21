@@ -85,7 +85,13 @@ public final class AnvilClient {
         }
 
         private int value(AnvilContent.AnvilGuiEl e) {
+            if (e.data() == -2) return (menu.data.get(4) & 0xFFFF) | ((menu.data.get(5) & 0xFFFF) << 16);
             return e.data() >= 0 ? menu.data.get(e.data()) : 0;
+        }
+
+        private long maxOf(AnvilContent.AnvilGuiEl e) {
+            if (e.data() == -2) return Math.max(1, (menu.data.get(6) & 0xFFFF) | ((menu.data.get(7) & 0xFFFF) << 16));
+            return Math.max(1, e.max());
         }
 
         @Override
@@ -135,7 +141,7 @@ public final class AnvilClient {
                     }
                     case "energy", "tank" -> {
                         bevel(g, x, y, e.w(), e.h(), 0xFF373737, 0xFFFFFFFF, 0xFF2A2A2A);
-                        long max = Math.max(1, e.max());
+                        long max = maxOf(e);
                         int fill = (int) Math.max(0, Math.min(e.h() - 2, (long) value(e) * (e.h() - 2) / max));
                         if (fill > 0) g.fill(x + 1, y + e.h() - 1 - fill, x + e.w() - 1, y + e.h() - 1, e.color());
                     }
@@ -154,7 +160,7 @@ public final class AnvilClient {
             if (inventoryLabelY > -1000) g.drawString(font, playerInventoryTitle, inventoryLabelX, inventoryLabelY, 0xFF404040, false);
             for (AnvilContent.AnvilGuiEl e : menu.gui.els()) {
                 if (e.kind().equals("text")) g.drawString(font, e.text(), e.x(), e.y(), e.color(), false);
-                else if (e.kind().equals("value")) g.drawString(font, e.text() + value(e), e.x(), e.y(), e.color(), false);
+                else if (e.kind().equals("value")) g.drawString(font, e.text() + value(e) + (e.data() == -2 ? " FE" : ""), e.x(), e.y(), e.color(), false);
             }
         }
 

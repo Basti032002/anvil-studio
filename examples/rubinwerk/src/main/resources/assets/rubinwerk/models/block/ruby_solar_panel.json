@@ -1,0 +1,9 @@
+{
+  "parent": "minecraft:block/cube_bottom_top",
+  "textures": {
+    "top": "rubinwerk:block/lib/solar_oben",
+    "bottom": "rubinwerk:block/lib/presse_oben",
+    "side": "rubinwerk:block/lib/presse_seite",
+    "particle": "rubinwerk:block/lib/presse_seite"
+  }
+}

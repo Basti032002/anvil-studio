@@ -8,6 +8,10 @@
     "rubinwerk:ruby_bricks_stairs",
     "rubinwerk:ruby_bricks_slab",
     "rubinwerk:ruby_bricks_wall",
-    "rubinwerk:ruby_press"
+    "rubinwerk:ruby_press",
+    "rubinwerk:ruby_generator",
+    "rubinwerk:ruby_solar_panel",
+    "rubinwerk:ruby_battery",
+    "rubinwerk:ruby_cable"
   ]
 }
