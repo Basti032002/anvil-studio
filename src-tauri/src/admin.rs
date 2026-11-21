@@ -611,3 +611,52 @@ mod tests {
         assert!(out.contains("\"version\": \"0.3.0\""));
     }
 }
+
+// ---- Workshop zentral steuern (Datei workshop.json im Zweig „config“) -------------------
+
+const CONFIG_BRANCH: &str = "config";
+const CONFIG_FILE: &str = "workshop.json";
+
+/// Aktuelle zentrale Workshop-Einstellung direkt aus GitHub (ohne Zwischenspeicher)
+#[tauri::command]
+pub async fn admin_workshop_config() -> Result<crate::workshop::RemoteConfig, String> {
+    require_admin().await?;
+    match get(&format!("/repos/{CODE_REPO}/contents/{CONFIG_FILE}?ref={CONFIG_BRANCH}")).await {
+        Ok(v) => {
+            let b64: String = v["content"].as_str().unwrap_or_default().chars().filter(|c| !c.is_whitespace()).collect();
+            let bytes = base64::engine::general_purpose::STANDARD.decode(b64).map_err(err)?;
+            Ok(serde_json::from_slice(&bytes).unwrap_or_default())
+        }
+        Err(_) => Ok(Default::default()),
+    }
+}
+
+/// Zentrale Workshop-Einstellung ändern – alle Anvil-Studio-Installationen übernehmen sie
+#[tauri::command]
+pub async fn admin_set_workshop_config(app: tauri::AppHandle, enabled: bool, url: String) -> Result<crate::workshop::RemoteConfig, String> {
+    require_admin().await?;
+    let url = url.trim().trim_end_matches('/').to_string();
+    if !crate::workshop::valid_workshop_url(&url) {
+        return Err("Die Adresse muss mit https:// beginnen.".into());
+    }
+    let cfg = crate::workshop::RemoteConfig { enabled, url };
+    // Zweig anlegen, falls es ihn noch nicht gibt
+    if get(&format!("/repos/{CODE_REPO}/git/ref/heads/{CONFIG_BRANCH}")).await.is_err() {
+        let head = get(&format!("/repos/{CODE_REPO}/git/ref/heads/main")).await?;
+        let sha = head["object"]["sha"].as_str().ok_or("main nicht gefunden")?;
+        gh(reqwest::Method::POST, &format!("/repos/{CODE_REPO}/git/refs"), Some(json!({ "ref": format!("refs/heads/{CONFIG_BRANCH}"), "sha": sha }))).await?;
+    }
+    let old_sha = get(&format!("/repos/{CODE_REPO}/contents/{CONFIG_FILE}?ref={CONFIG_BRANCH}")).await.ok().and_then(|v| v["sha"].as_str().map(String::from));
+    let text = serde_json::to_string_pretty(&cfg).map_err(err)? + "\n";
+    let mut body = json!({
+        "message": format!("Workshop: {} · {}", if cfg.enabled { "an" } else { "aus" }, cfg.url),
+        "content": base64::engine::general_purpose::STANDARD.encode(text),
+        "branch": CONFIG_BRANCH,
+    });
+    if let Some(s) = old_sha {
+        body["sha"] = json!(s);
+    }
+    gh(reqwest::Method::PUT, &format!("/repos/{CODE_REPO}/contents/{CONFIG_FILE}"), Some(body)).await?;
+    crate::workshop::apply_remote(&app, &cfg);
+    Ok(cfg)
+}

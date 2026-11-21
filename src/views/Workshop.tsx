@@ -26,9 +26,10 @@ import {
   UserIcon,
   WorkshopIcon,
 } from "../icons";
-import { toast } from "../state";
+import { toast, useSettings } from "../state";
 import { CATEGORIES, categoryLabel, fmtSize, mcLogout, McProfile, refreshMe, useWorkshop, WsItem, wsApi, wsUrl, youtubeEmbed } from "../workshop";
 
+type Pic = { key: string; old?: number; path?: string; src: string };
 type Route = { page: "home" } | { page: "item"; id: string } | { page: "upload"; item?: WsItem } | { page: "mine" } | { page: "subs" };
 const MC_VERSIONS = ["1.21.1", "1.21.4", "1.21.8", "1.21.10"];
 
@@ -36,6 +37,7 @@ export default function Workshop({ projects, onOpenProject }: { projects: Projec
   const [route, setRoute] = useState<Route>({ page: "home" });
   const [login, setLogin] = useState<{ reason: string; then: (p: McProfile) => void } | null>(null);
   const ws = useWorkshop();
+  const settings = useSettings();
   useSubscriptionSync();
   // Angemeldet, aber Workshop-Konto fehlt (z. B. Server war beim Start nicht erreichbar) → nachholen
   useEffect(() => {
@@ -50,6 +52,12 @@ export default function Workshop({ projects, onOpenProject }: { projects: Projec
 
   return (
     <div className="page workshop">
+      {settings?.workshopEnabled === false && (
+        <div className="callout warn ws-off-banner">
+          <AlertIcon size={16} />
+          <div className="grow small">{t("Der Workshop ist für Nutzer ausgeschaltet – du siehst ihn nur, weil du Admin bist. Einschalten im Entwicklerbereich → Workshop.")}</div>
+        </div>
+      )}
       {route.page === "subs" && <Subscriptions onBack={() => setRoute({ page: "home" })} onOpen={(id) => setRoute({ page: "item", id })} />}
       {route.page === "home" && <Home onSubs={() => withLogin(t("Melde dich an, um deine Abos zu sehen."), () => setRoute({ page: "subs" }))} onOpen={(id) => setRoute({ page: "item", id })} onUpload={() => withLogin(t("Zum Hochladen brauchst du dein Minecraft-Konto."), () => setRoute({ page: "upload" }))} onMine={() => withLogin(t("Melde dich an, um deine Uploads zu sehen."), () => setRoute({ page: "mine" }))} onLogin={() => setLogin({ reason: "", then: () => {} })} />}
       {route.page === "item" && (
@@ -374,10 +382,11 @@ function ItemPage({
     );
   if (!item) return <div className="skeleton" style={{ height: 420 }} />;
 
-  const embed = youtubeEmbed(item.trailerUrl);
+  const embeds = (item.videos?.length ? item.videos : [item.trailerUrl]).map(youtubeEmbed).filter((x): x is string => !!x);
   const slides: ({ kind: "video"; src: string } | { kind: "image"; src: string })[] = [
-    ...(embed ? [{ kind: "video" as const, src: embed }] : []),
-    ...item.images.map((p) => ({ kind: "image" as const, src: wsUrl(p) })),
+    ...item.images.slice(0, 1).map((p) => ({ kind: "image" as const, src: wsUrl(p) })),
+    ...embeds.map((src) => ({ kind: "video" as const, src })),
+    ...item.images.slice(1).map((p) => ({ kind: "image" as const, src: wsUrl(p) })),
   ];
   const slide = slides[Math.min(media, slides.length - 1)];
   const own = ws.profile && ws.profile.uuid.replace(/-/g, "") === item.owner.uuid;
@@ -538,7 +547,7 @@ function ItemPage({
 
 // ---- Spielen ---------------------------------------------------------------------
 
-function PlayDialog({ item, onClose }: { item: WsItem; onClose: () => void }) {
+export function PlayDialog({ item, onClose }: { item: WsItem; onClose: () => void }) {
   const ws = useWorkshop();
   const [step, setStep] = useState<{ step: string; done: number; total: number }>({ step: t("Vorbereiten …"), done: 0, total: 0 });
   const [state, setState] = useState<"running" | "started" | "error">("running");
@@ -644,9 +653,10 @@ function UploadPage({ projects, item, onBack, onDone }: { projects: Project[]; i
   const [summary, setSummary] = useState(item?.summary ?? "");
   const [description, setDescription] = useState(item?.description ?? "");
   const [categories, setCategories] = useState<string[]>(item?.categories ?? []);
-  const [trailer, setTrailer] = useState(item?.trailerUrl ?? "");
+  const [videos, setVideos] = useState<string[]>(() => (item?.videos?.length ? item.videos : item?.trailerUrl ? [item.trailerUrl] : []));
   const [deps, setDeps] = useState<{ id: string; title: string }[]>(() => (item?.dependencies ?? []).map((d) => ({ id: d.id, title: d.title })));
-  const [images, setImages] = useState<string[]>([]);
+  const [pics, setPics] = useState<Pic[]>(() => (item?.images ?? []).map((p, i) => ({ key: `old${i}`, old: i, src: wsUrl(p) })));
+  const [dragKey, setDragKey] = useState<string | null>(null);
   const [agree, setAgree] = useState(!!item);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ step: string; sent: number; total: number } | null>(null);
@@ -675,8 +685,42 @@ function UploadPage({ projects, item, onBack, onDone }: { projects: Project[]; i
   async function addImages() {
     const { open } = await import("@tauri-apps/plugin-dialog");
     const r = await open({ multiple: true, title: t("Bilder auswählen"), filters: [{ name: t("Bilder"), extensions: ["png", "jpg", "jpeg", "webp"] }] });
-    const list = Array.isArray(r) ? r : r ? [r] : [];
-    setImages((old) => [...old, ...list.map(String)].slice(0, 8));
+    const list = (Array.isArray(r) ? r : r ? [r] : []).map(String);
+    const added: Pic[] = [];
+    for (const path of list) {
+      const src = await wsApi.imagePreview(path).catch(() => "");
+      added.push({ key: `new${Date.now()}${Math.random()}`, path, src });
+    }
+    setPics((old) => [...old, ...added].slice(0, 8));
+  }
+  // Ziehen mit der Maus (ohne HTML-Drag&Drop, das im Fenster für Dateien reserviert ist)
+  useEffect(() => {
+    if (!dragKey) return;
+    const move = (e: PointerEvent) => {
+      const el = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest("[data-pic]") as HTMLElement | null;
+      if (el?.dataset.pic) moveTo(el.dataset.pic);
+    };
+    const up = () => setDragKey(null);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragKey]);
+  /** Bild beim Ziehen an die Stelle eines anderen schieben */
+  function moveTo(target: string) {
+    if (!dragKey || dragKey === target) return;
+    setPics((old) => {
+      const from = old.findIndex((p) => p.key === dragKey);
+      const to = old.findIndex((p) => p.key === target);
+      if (from < 0 || to < 0) return old;
+      const next = [...old];
+      const [m] = next.splice(from, 1);
+      next.splice(to, 0, m);
+      return next;
+    });
   }
 
   async function submit() {
@@ -685,7 +729,24 @@ function UploadPage({ projects, item, onBack, onDone }: { projects: Project[]; i
     setProgress({ step: "prepare", sent: 0, total: 0 });
     const un = await listen<{ step: string; sent: number; total: number }>("ws-upload-progress", (e) => setProgress(e.payload));
     try {
-      const r = await wsApi.upload({ projectId: project.id, itemId: item?.id ?? null, includeMod, includeSource, title, summary, description, categories, trailerUrl: trailer.trim(), images, dependencies: includeMod ? deps.map((d) => d.id) : [] });
+      const fresh = pics.filter((p) => p.path);
+      const imageOrder = pics.map((p) => (p.old !== undefined ? `old:${p.old}` : `new:${fresh.indexOf(p)}`));
+      const vids = videos.map((v) => v.trim()).filter(Boolean);
+      const r = await wsApi.upload({
+        projectId: project.id,
+        itemId: item?.id ?? null,
+        includeMod,
+        includeSource,
+        title,
+        summary,
+        description,
+        categories,
+        trailerUrl: vids[0] ?? "",
+        videos: vids,
+        images: fresh.map((p) => p.path!),
+        imageOrder,
+        dependencies: includeMod ? deps.map((d) => d.id) : [],
+      });
       toast(r.status === "public" ? t("Veröffentlicht!") : t("Eingereicht – du siehst den Stand unter „Meine Uploads“."), "success");
       onDone();
     } catch (e) {
@@ -712,7 +773,6 @@ function UploadPage({ projects, item, onBack, onDone }: { projects: Project[]; i
             ? t("Server verarbeitet den Upload …")
             : t("Wird vorbereitet …");
 
-  const fileName = (p: string) => p.split(/[\\/]/).pop();
   const canSubmit = !!project && (includeMod || includeSource) && title.trim() && agree && !busy && !(includeMod && jars === 0);
 
   return (
@@ -787,31 +847,57 @@ function UploadPage({ projects, item, onBack, onDone }: { projects: Project[]; i
               </label>
               <div className="field">
                 <span className="field-label">
-                  {t("Bilder")} <span className="muted">· {item && !images.length ? t("leer lassen = bisherige Bilder behalten") : t("bis zu 8, das erste ist das Titelbild")}</span>
+                  {t("Bilder")} <span className="muted">· {t("bis zu 8 – ziehe sie in die richtige Reihenfolge, das erste ist das Vorschaubild")}</span>
                 </span>
-                <div className="ws-images">
-                  {images.map((p, i) => (
-                    <div key={p + i} className="ws-image-chip">
-                      <ImageIcon size={14} />
-                      <span className="ellipsis">{fileName(p)}</span>
-                      <button className="icon-btn" onClick={() => setImages(images.filter((_, j) => j !== i))} aria-label={t("Entfernen")}>
+                <div className="ws-pics">
+                  {pics.map((p, i) => (
+                    <div
+                      key={p.key}
+                      data-pic={p.key}
+                      className={dragKey === p.key ? "ws-pic dragging" : "ws-pic"}
+                      onPointerDown={(e) => {
+                        if ((e.target as HTMLElement).closest("button")) return;
+                        e.preventDefault();
+                        setDragKey(p.key);
+                      }}
+                    >
+                      {p.src ? <img src={p.src} alt="" draggable={false} /> : <ImageIcon size={20} />}
+                      {i === 0 && <span className="ws-pic-badge">{t("Vorschau")}</span>}
+                      <span className="ws-pic-num">{i + 1}</span>
+                      <button className="ws-pic-x" onClick={() => setPics(pics.filter((x) => x.key !== p.key))} aria-label={t("Entfernen")}>
                         <CloseIcon size={11} />
                       </button>
                     </div>
                   ))}
-                  {images.length < 8 && (
-                    <button className="btn small" onClick={addImages}>
-                      <PlusIcon size={13} /> {t("Bilder hinzufügen")}
+                  {pics.length < 8 && (
+                    <button className="ws-pic add" onClick={addImages}>
+                      <PlusIcon size={18} />
+                      <span>{t("Bilder hinzufügen")}</span>
                     </button>
                   )}
                 </div>
               </div>
-              <label className="field">
+              <div className="field">
                 <span className="field-label">
-                  {t("Trailer")} <span className="muted">· {t("YouTube-Link, optional")}</span>
+                  {t("Videos")} <span className="muted">· {t("YouTube-Links, optional, bis zu 6")}</span>
                 </span>
-                <input className="input" placeholder="https://youtu.be/…" value={trailer} onChange={(e) => setTrailer(e.target.value)} />
-              </label>
+                <div className="ws-videos">
+                  {videos.map((v, i) => (
+                    <div key={i} className="row gap-6">
+                      <input className="input grow" placeholder="https://youtu.be/…" value={v} onChange={(e) => setVideos(videos.map((x, j) => (j === i ? e.target.value : x)))} />
+                      {v.trim() && !youtubeEmbed(v) && <span className="small error-text">{t("Kein YouTube-Link")}</span>}
+                      <button className="icon-btn" onClick={() => setVideos(videos.filter((_, j) => j !== i))} aria-label={t("Entfernen")}>
+                        <CloseIcon size={12} />
+                      </button>
+                    </div>
+                  ))}
+                  {videos.length < 6 && (
+                    <button className="btn small" onClick={() => setVideos([...videos, ""])}>
+                      <PlusIcon size={13} /> {t("Video hinzufügen")}
+                    </button>
+                  )}
+                </div>
+              </div>
               {includeMod && (
                 <div className="field">
                   <span className="field-label">

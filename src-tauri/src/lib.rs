@@ -30,6 +30,7 @@ pub fn run() {
             if let Err(e) = migrate::run(app.handle()) {
                 eprintln!("Migration fehlgeschlagen: {e}");
             }
+            workshop::start_remote_poll(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -39,6 +40,11 @@ pub fn run() {
             content::content_load,
             content::content_lang_entries,
             content::structures_scan,
+            workshop::ws_remote_config,
+            workshop::ws_check_url,
+            workshop::ws_image_preview,
+            admin::admin_workshop_config,
+            admin::admin_set_workshop_config,
             content::structures_imported,
             content::structure_import,
             content::lang_export,

@@ -8,7 +8,7 @@ import { api, importProject, JavaStatus, pickFolder, Project } from "./api";
 import { ActivityBar, NavKey, StatusBar, TitleBar, Toasts } from "./components/Chrome";
 import CommandPalette, { Command } from "./components/CommandPalette";
 import { WorkshopIcon, CubeIcon, GearIcon, GridIcon, HammerIcon, PlayIcon, PlusIcon, RefreshIcon, RocketIcon, ShieldIcon, StopIcon } from "./icons";
-import { checkForUpdate, toast, useUpdate } from "./state";
+import { checkForUpdate, toast, useSettings, useUpdate } from "./state";
 import Admin from "./views/Admin";
 import NewProject from "./views/NewProject";
 import ProjectList from "./views/ProjectList";
@@ -43,6 +43,12 @@ export default function App() {
   const update = useUpdate();
   const account = useAccount();
   const admin = account?.isAdmin ?? false;
+  const settings = useSettings();
+  // Workshop ausgeschaltet: nur Admins sehen ihn noch
+  const workshopVisible = settings?.workshopEnabled !== false || admin || !!ws.me?.admin;
+  useEffect(() => {
+    if (!workshopVisible && nav === "workshop") setNavRaw("projects");
+  }, [workshopVisible, nav]);
 
   const reload = useCallback(async () => {
     try {
@@ -62,7 +68,7 @@ export default function App() {
       settingsApi
         .get()
         .then((s) => {
-          if (!navigated.current && s.startPage === "workshop") setNavRaw("workshop");
+          if (!navigated.current && s.startPage === "workshop" && s.workshopEnabled !== false) setNavRaw("workshop");
         })
         .catch(() => {});
     // Startbildschirm ausblenden
@@ -184,6 +190,7 @@ export default function App() {
           onNavigate={setNav}
           settingsBadge={update.phase === "available"}
           showAdmin={admin || !!ws.me?.admin}
+          showWorkshop={workshopVisible}
         />
         <main className="main">
           <div className="view" key={nav === "workspace" ? `ws-${current?.id}` : nav}>

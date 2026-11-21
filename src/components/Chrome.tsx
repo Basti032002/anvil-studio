@@ -78,15 +78,17 @@ export function ActivityBar({
   onNavigate,
   settingsBadge,
   showAdmin,
+  showWorkshop = true,
 }: {
   active: NavKey;
   hasWorkspace: boolean;
   onNavigate: (k: NavKey) => void;
   settingsBadge: boolean;
   showAdmin: boolean;
+  showWorkshop?: boolean;
 }) {
   const top: { key: NavKey; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
-    { key: "workshop", label: t("Workshop"), icon: <WorkshopIcon size={19} /> },
+    ...(showWorkshop ? [{ key: "workshop" as NavKey, label: t("Workshop"), icon: <WorkshopIcon size={19} /> }] : []),
     { key: "projects", label: t("Projekte  ·  Strg 1"), icon: <GridIcon size={19} /> },
     { key: "workspace", label: t("Arbeitsbereich"), icon: <CubeIcon size={19} />, disabled: !hasWorkspace },
     { key: "new", label: t("Neues Projekt  ·  Strg N"), icon: <PlusIcon size={19} /> },

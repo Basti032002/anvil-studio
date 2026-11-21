@@ -102,6 +102,7 @@ export function openDb(dataDir) {
   // Spalten, die später dazukamen
   const cols = db.prepare("PRAGMA table_info(items)").all().map((c) => c.name);
   if (!cols.includes("dependencies")) db.exec("ALTER TABLE items ADD COLUMN dependencies TEXT NOT NULL DEFAULT '[]'");
+  if (!cols.includes("videos")) db.exec("ALTER TABLE items ADD COLUMN videos TEXT NOT NULL DEFAULT '[]'");
   return db;
 }
 

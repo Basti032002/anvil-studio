@@ -58,6 +58,13 @@ darkQuery.addEventListener("change", () => {
   if (s?.theme === "system") applyTheme("system", s.accent);
 });
 
+// Zentrale Workshop-Einstellung hat sich geändert (kommt vom Hintergrund-Abgleich)
+listen<{ enabled: boolean; url: string }>("workshop-config", (e) => {
+  const s = settingsStore.get();
+  if (s) settingsStore.set({ ...s, workshopEnabled: e.payload.enabled, workshopUrl: e.payload.url });
+  import("./workshop").then((m) => m.refreshWorkshop()).catch(() => {});
+}).catch(() => {});
+
 export async function loadSettings() {
   const s = await settingsApi.get();
   settingsStore.set(s);

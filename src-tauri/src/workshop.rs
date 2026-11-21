@@ -79,6 +79,112 @@ fn enc(s: &str) -> String {
         .collect()
 }
 
+// ---- Zentrale Einstellung (Datei im GitHub-Repo, Zweig „config“) --------------------
+
+pub const REMOTE_CONFIG_URL: &str = "https://raw.githubusercontent.com/Basti032002/anvil-studio/config/workshop.json";
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Debug)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RemoteConfig {
+    pub enabled: bool,
+    pub url: String,
+}
+
+impl Default for RemoteConfig {
+    fn default() -> Self {
+        Self { enabled: true, url: crate::settings::DEFAULT_WORKSHOP.into() }
+    }
+}
+
+/// Gültige Workshop-Adresse? (https, ohne Pfad-Tricks)
+pub fn valid_workshop_url(u: &str) -> bool {
+    let u = u.trim();
+    (u.starts_with("https://") || u.starts_with("http://localhost") || u.starts_with("http://127.0.0.1")) && u.len() < 200 && !u.contains(char::is_whitespace)
+}
+
+async fn fetch_remote() -> Result<RemoteConfig, String> {
+    let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let r = http_client()?
+        .get(format!("{REMOTE_CONFIG_URL}?t={t}"))
+        .header("Cache-Control", "no-cache")
+        .timeout(std::time::Duration::from_secs(15))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !r.status().is_success() {
+        return Err(format!("HTTP {}", r.status()));
+    }
+    let c: RemoteConfig = r.json().await.map_err(|e| e.to_string())?;
+    if !valid_workshop_url(&c.url) {
+        return Err("ungültige Adresse".into());
+    }
+    Ok(c)
+}
+
+/// Neue zentrale Einstellung anwenden und alle Fenster informieren
+pub fn apply_remote(app: &AppHandle, c: &RemoteConfig) {
+    if let Ok(true) = crate::settings::set_workshop(app, &c.url, c.enabled) {
+        reset_session();
+        let _ = app.emit("workshop-config", c.clone());
+    }
+}
+
+/// Beim Start und danach jede Minute die zentrale Einstellung abholen
+pub fn start_remote_poll(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            if let Ok(c) = fetch_remote().await {
+                apply_remote(&app, &c);
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+        }
+    });
+}
+
+#[tauri::command]
+pub fn ws_remote_config(app: AppHandle) -> RemoteConfig {
+    let s = crate::settings::load(&app);
+    RemoteConfig { enabled: s.workshop_enabled, url: s.workshop_url }
+}
+
+/// Prüft, ob unter der Adresse ein Workshop-Server antwortet
+#[tauri::command]
+pub async fn ws_check_url(url: String) -> Result<(), String> {
+    let url = url.trim().trim_end_matches('/').to_string();
+    if !valid_workshop_url(&url) {
+        return Err("Die Adresse muss mit https:// beginnen.".into());
+    }
+    let r = http_client()?.get(format!("{url}/api/health")).timeout(std::time::Duration::from_secs(10)).send().await.map_err(|e| format!("Nicht erreichbar: {e}"))?;
+    if !r.status().is_success() {
+        return Err(format!("Der Server antwortet mit HTTP {}.", r.status().as_u16()));
+    }
+    let v: Value = r.json().await.map_err(|_| "Das ist kein Workshop-Server.".to_string())?;
+    if v["ok"].as_bool() != Some(true) {
+        return Err("Das ist kein Workshop-Server.".into());
+    }
+    Ok(())
+}
+
+/// Vorschaubild für eine Bilddatei auf der Festplatte (für die Upload-Seite)
+#[tauri::command]
+pub fn ws_image_preview(path: String) -> Result<String, String> {
+    let p = PathBuf::from(&path);
+    let meta = std::fs::metadata(&p).map_err(err)?;
+    if meta.len() > 8 * 1024 * 1024 {
+        return Err("Das Bild ist zu groß.".into());
+    }
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        _ => return Err("Kein Bild.".into()),
+    };
+    let bytes = std::fs::read(&p).map_err(err)?;
+    use base64::Engine;
+    Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+}
+
 #[tauri::command]
 pub fn ws_reset() {
     reset_session();
@@ -226,8 +332,14 @@ pub struct UploadRequest {
     description: String,
     categories: Vec<String>,
     trailer_url: String,
-    /// Bilddateien auf der Festplatte (leer = Bilder unverändert lassen)
+    /// YouTube-Links
+    #[serde(default)]
+    videos: Option<Vec<String>>,
+    /// Neue Bilddateien auf der Festplatte
     images: Vec<String>,
+    /// Reihenfolge: "old:N" (vorhandenes Bild) oder "new:N" (aus `images`)
+    #[serde(default)]
+    image_order: Option<Vec<String>>,
     /// Workshop-IDs anderer Mods, die zum Spielen gebraucht werden
     #[serde(default)]
     dependencies: Option<Vec<String>>,
@@ -249,6 +361,12 @@ pub async fn ws_upload(app: AppHandle, req: UploadRequest) -> Result<Value, Stri
     let mut meta = meta;
     if let Some(d) = &req.dependencies {
         meta["dependencies"] = json!(d);
+    }
+    if let Some(v) = &req.videos {
+        meta["videos"] = json!(v);
+    }
+    if let Some(o) = &req.image_order {
+        meta["imageOrder"] = json!(o);
     }
     // Erst alle Dateien einsammeln, dann mit Fortschritt hochladen
     let emit = |step: &str, sent: u64, total: u64| {

@@ -3,10 +3,11 @@ import { useEffect, useState } from "react";
 import { Toggle } from "../components/Chrome";
 import { confirmDialog } from "../components/Overlay";
 import McLoginDialog from "../components/McLogin";
-import { CheckIcon, CloseIcon, RefreshIcon, SearchIcon, StarIcon, TrashIcon, UserIcon } from "../icons";
+import { CheckIcon, CloseIcon, DownloadIcon, PlayIcon, RefreshIcon, SearchIcon, StarIcon, TrashIcon, UserIcon } from "../icons";
 import { toast } from "../state";
-import { categoryLabel, useWorkshop, WsItem, wsApi, WsSettings, WsStats, wsUrl } from "../workshop";
-import { StatusBadge } from "./Workshop";
+import { categoryLabel, fmtSize, useWorkshop, WsItem, wsApi, WsSettings, WsStats, wsUrl, youtubeEmbed } from "../workshop";
+import { PlayDialog, StatusBadge } from "./Workshop";
+import { pickSaveFile } from "../api";
 
 type Filter = "pending" | "reported" | "blocked" | "rejected" | "public" | "all";
 const REASONS = [
@@ -236,6 +237,103 @@ function Panel() {
   );
 }
 
+/** Prüfung: alles sehen, was Nutzer sehen werden – und die Mod selbst spielen */
+function Review({ item }: { item: WsItem }) {
+  const [playing, setPlaying] = useState(false);
+  const [zoom, setZoom] = useState<string | null>(null);
+  const videos = (item.videos?.length ? item.videos : item.trailerUrl ? [item.trailerUrl] : []).map(youtubeEmbed).filter((x): x is string => !!x);
+  const when = (s: number) => new Date(s * 1000).toLocaleString(locale);
+  return (
+    <div className="wsa-review">
+      <div className="row gap-6 wrap">
+        <button className="btn small primary" disabled={!item.hasMod} onClick={() => setPlaying(true)} data-tip={item.hasMod ? undefined : t("Nur Quellcode – nichts zum Spielen")}>
+          <PlayIcon size={13} /> {t("Im Spiel testen")}
+        </button>
+        {item.hasSource && (
+          <button
+            className="btn small"
+            onClick={async () => {
+              const dest = await pickSaveFile(t("Quellcode speichern"), `${item.modId || "mod"}-quellcode.zip`, "zip", t("ZIP-Archiv"));
+              if (!dest) return;
+              wsApi
+                .download(item.id, "source", dest)
+                .then(() => toast(t("Quellcode gespeichert."), "success"))
+                .catch((e) => toast(String(e), "error"));
+            }}
+          >
+            <DownloadIcon size={13} /> {t("Quellcode herunterladen")}
+          </button>
+        )}
+      </div>
+      <div className="muted small">{t("„Im Spiel testen“ startet Minecraft mit genau dieser Fassung und allen Abhängigkeiten in einer eigenen Test-Instanz.")}</div>
+      <div className="wsa-facts">
+        <div className="wsa-fact">
+          {t("Mod-Version")}
+          <b>{item.modVersion || "–"}</b>
+        </div>
+        <div className="wsa-fact">
+          Minecraft
+          <b>{item.mcVersion || "–"}</b>
+        </div>
+        <div className="wsa-fact">
+          {t("Mod-Datei")}
+          <b>{item.hasMod ? fmtSize(item.modSize) : "–"}</b>
+        </div>
+        <div className="wsa-fact">
+          {t("Quellcode")}
+          <b>{item.hasSource ? fmtSize(item.sourceSize) : "–"}</b>
+        </div>
+        <div className="wsa-fact">
+          {t("Lizenz")}
+          <b>{item.license || "–"}</b>
+        </div>
+        <div className="wsa-fact">
+          {t("Zuletzt geändert")}
+          <b>{when(item.updatedAt)}</b>
+        </div>
+      </div>
+      {(item.dependencies ?? []).length > 0 && (
+        <div className="small">
+          <span className="muted">{t("Braucht:")}</span> {item.dependencies!.map((d) => `${d.title}${d.available ? "" : ` (${t("nicht verfügbar")})`}`).join(", ")}
+        </div>
+      )}
+      <div className="field-label">
+        {t("Bilder")} <span className="muted">· {item.images.length ? t("das erste ist das Vorschaubild") : t("keine")}</span>
+      </div>
+      {item.images.length > 0 && (
+        <div className="wsa-gallery">
+          {item.images.map((p, i) => (
+            <button key={p} onClick={() => setZoom(wsUrl(p))} aria-label={t("Bild {n} vergrößern", { n: i + 1 })}>
+              <img src={wsUrl(p)} alt="" />
+              {i === 0 && <span className="ws-pic-badge">{t("Vorschau")}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+      {videos.length > 0 && (
+        <>
+          <div className="field-label">{t("Videos")}</div>
+          {videos.map((v) => (
+            <div key={v} className="wsa-video">
+              <iframe src={v} title={t("Video")} allow="encrypted-media; picture-in-picture; fullscreen" allowFullScreen />
+            </div>
+          ))}
+        </>
+      )}
+      <div className="field-label">{t("Kurzbeschreibung")}</div>
+      <div className="small">{item.summary || <span className="muted">–</span>}</div>
+      <div className="field-label">{t("Beschreibung")}</div>
+      <div className="wsa-desc">{item.description || t("Keine Beschreibung.")}</div>
+      {zoom && (
+        <div className="wsa-lightbox" onClick={() => setZoom(null)}>
+          <img src={zoom} alt="" />
+        </div>
+      )}
+      {playing && <PlayDialog item={item} onClose={() => setPlaying(false)} />}
+    </div>
+  );
+}
+
 function Editor({ item, onChanged, onDeleted }: { item: WsItem; onChanged: (it: WsItem) => void; onDeleted: () => void }) {
   const [title, setTitle] = useState(item.title);
   const [summary, setSummary] = useState(item.summary);
@@ -275,6 +373,8 @@ function Editor({ item, onChanged, onDeleted }: { item: WsItem; onChanged: (it: 
         <StatusBadge status={item.status} />
       </div>
       {item.categories.length > 0 && <div className="muted small">{item.categories.map(categoryLabel).join(" · ")}</div>}
+      <Review item={item} />
+      <div className="field-label">{t("Texte bearbeiten")}</div>
       <label className="field">
         <span className="field-label">{t("Titel")}</span>
         <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />

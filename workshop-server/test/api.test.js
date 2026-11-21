@@ -130,6 +130,22 @@ test("Xbox-Übergangsanmeldung und Übernahme aufs Minecraft-Konto", async () =>
   assert.equal(withImg.body.status, "pending");
   assert.equal((await fetch(`${base}/api/items/${withImg.body.id}/images/0`)).status, 404);
   assert.equal((await fetch(`${base}/api/items/${withImg.body.id}/images/0?t=${r.body.token}`)).status, 200);
+  // Reihenfolge ändern: neues Bild nach vorn, altes dahinter; dazu zwei Videos
+  const fd4 = new FormData();
+  fd4.append("meta", JSON.stringify({ imageOrder: ["new:0", "old:0"], videos: ["https://youtu.be/a1", "https://www.youtube.com/watch?v=b2"] }));
+  fd4.append("images", new Blob([png]), "b.png");
+  const reordered = await json(`/api/items/${withImg.body.id}`, { method: "PUT", headers: auth(r.body.token), body: fd4 });
+  assert.equal(reordered.status, 200, JSON.stringify(reordered.body));
+  assert.equal(reordered.body.images.length, 2);
+  assert.deepEqual(reordered.body.videos, ["https://youtu.be/a1", "https://www.youtube.com/watch?v=b2"]);
+  assert.equal(reordered.body.trailerUrl, "https://youtu.be/a1");
+  const fd5 = new FormData();
+  fd5.append("meta", JSON.stringify({ imageOrder: ["old:1"] }));
+  const dropped = await json(`/api/items/${withImg.body.id}`, { method: "PUT", headers: auth(r.body.token), body: fd5 });
+  assert.equal(dropped.body.images.length, 1);
+  const bad = new FormData();
+  bad.append("meta", JSON.stringify({ videos: ["https://evil.example/x"] }));
+  assert.equal((await json(`/api/items/${withImg.body.id}`, { method: "PUT", headers: auth(r.body.token), body: bad })).status, 400);
 
   // Später mit Minecraft (+ Xbox-Nachweis) → Upload gehört jetzt dem Minecraft-Konto
   r = await post({ minecraftToken: "dev:Spieler", xboxUhs: "1", xboxToken: "devxbox:Gamer Tag" });

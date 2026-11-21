@@ -19,10 +19,10 @@ import {
   Tester,
   useAccount,
 } from "../admin";
-import { Segmented } from "../components/Chrome";
+import { Segmented, Toggle } from "../components/Chrome";
 import { AlertIcon, ArrowRightIcon, CheckIcon, CloseIcon, CopyIcon, DownloadIcon, ExternalIcon, GithubIcon, LogoutIcon, PencilIcon, PlusIcon, RefreshIcon, RocketIcon, SaveIcon, ShieldIcon, TagIcon, TrashIcon } from "../icons";
 import { toast } from "../state";
-import { useWorkshop } from "../workshop";
+import { useWorkshop, wsApi } from "../workshop";
 import WorkshopAdmin from "./WorkshopAdmin";
 
 const openUrl = (url: string) => invoke("open_url", { url }).catch((e) => toast(String(e), "error"));
@@ -254,7 +254,10 @@ function Dashboard({ account }: { account: AccountInfo }) {
       />
 
       {tab === "workshop" ? (
-        <WorkshopAdmin />
+        <>
+          <WorkshopServerCard />
+          <WorkshopAdmin />
+        </>
       ) : !data ? (
         <div className="skeleton-grid">
           {[0, 1, 2, 3].map((i) => (
@@ -280,6 +283,77 @@ function Dashboard({ account }: { account: AccountInfo }) {
           {tab === "builds" && <BuildsTab runs={data.runs} onChanged={refresh} />}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Workshop zentral an/aus und Server-Adresse – gilt für alle Anvil-Studio-Installationen */
+function WorkshopServerCard() {
+  const [cfg, setCfg] = useState<{ enabled: boolean; url: string } | null>(null);
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [check, setCheck] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => {
+    adminApi
+      .workshopConfig()
+      .then((c) => {
+        setCfg(c);
+        setUrl(c.url);
+      })
+      .catch((e) => toast(String(e), "error"));
+  }, []);
+  async function save(enabled: boolean, newUrl: string) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (newUrl !== cfg?.url) await wsApi.checkUrl(newUrl);
+      const c = await adminApi.setWorkshopConfig(enabled, newUrl);
+      setCfg(c);
+      setUrl(c.url);
+      toast(t("Gespeichert – alle Anvil-Studio-Installationen übernehmen das innerhalb weniger Minuten."), "success");
+    } catch (e) {
+      toast(String(e), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (!cfg) return <div className="skeleton" style={{ height: 110, marginBottom: 16 }} />;
+  return (
+    <div className="panel wsa-server">
+      <div className="row">
+        <div className="grow">
+          <div className="callout-title">{t("Workshop für alle")}</div>
+          <div className="muted small">
+            {cfg.enabled ? t("Eingeschaltet – alle sehen den Workshop links in der Leiste.") : t("Ausgeschaltet – nur Admins sehen den Workshop noch.")}
+          </div>
+        </div>
+        <Toggle checked={cfg.enabled} onChange={(v) => save(v, cfg.url)} label={t("Workshop für alle")} />
+      </div>
+      <div className="field">
+        <span className="field-label">{t("Adresse des Workshop-Servers")}</span>
+        <div className="row gap-6">
+          <input className="input mono grow" value={url} onChange={(e) => (setUrl(e.target.value), setCheck(null))} aria-label={t("Adresse des Workshop-Servers")} />
+          <button
+            className="btn small"
+            disabled={busy || !url.trim()}
+            onClick={() =>
+              wsApi
+                .checkUrl(url.trim())
+                .then(() => setCheck({ ok: true, text: t("Server antwortet.") }))
+                .catch((e) => setCheck({ ok: false, text: String(e) }))
+            }
+          >
+            {t("Testen")}
+          </button>
+          {url.trim().replace(/\/$/, "") !== cfg.url && (
+            <button className="btn small primary" disabled={busy} onClick={() => save(cfg.enabled, url.trim().replace(/\/$/, ""))}>
+              {t("Für alle übernehmen")}
+            </button>
+          )}
+        </div>
+        {check && <div className={check.ok ? "small ok-text" : "small error-text"}>{check.text}</div>}
+        <div className="muted small">{t("Die Einstellung liegt im Repo (Zweig „config“). Jede Installation prüft sie beim Start und danach jede Minute – Nutzer können die Adresse nicht selbst ändern.")}</div>
+      </div>
     </div>
   );
 }

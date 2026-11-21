@@ -19,7 +19,7 @@ const DEV_AUTH = process.env.WORKSHOP_DEV_AUTH === "1";
 // Übergangs-Anmeldung mit dem Xbox-Konto (solange die Minecraft-Anmeldung noch nicht freigeschaltet ist)
 const XBOX_LOGIN = process.env.XBOX_LOGIN !== "0";
 // Quellcode bis 95 MB: Cloudflare (Free) lässt höchstens 100 MB pro Anfrage durch
-const LIMITS = { mod: 64 * 1024 * 1024, source: 95 * 1024 * 1024, image: 5 * 1024 * 1024, images: 8 };
+const LIMITS = { mod: 64 * 1024 * 1024, source: 95 * 1024 * 1024, image: 5 * 1024 * 1024, images: 8, videos: 6 };
 const CATEGORIES = ["adventure", "dimension", "ores", "tech", "deco", "creatures", "minigame", "magic", "tools", "food", "other"];
 
 const FILES = path.join(DATA_DIR, "files");
@@ -161,6 +161,15 @@ export function buildServer() {
       .map((d) => ({ id: d.id, title: d.title, available: d.status === "public" && !!d.mod_file }));
   }
 
+  function videosOf(row) {
+    let v = [];
+    try {
+      v = JSON.parse(row.videos || "[]");
+    } catch {}
+    if (!v.length && row.trailer_url) v = [row.trailer_url];
+    return v;
+  }
+
   function view(row, viewer) {
     const own = viewer && viewer.uuid === row.owner_uuid;
     const admin = isAdmin(viewer);
@@ -177,6 +186,7 @@ export function buildServer() {
       modId: row.mod_id,
       license: row.license,
       trailerUrl: row.trailer_url,
+      videos: videosOf(row),
       images: JSON.parse(row.images).map((_, i) => `/api/items/${row.id}/images/${i}`),
       icon: row.icon ? `/api/items/${row.id}/icon` : null,
       hasMod: !!row.mod_file,
@@ -369,13 +379,21 @@ export function buildServer() {
         ? [...new Set(m.dependencies.map(String))].filter((id) => /^[a-f0-9]{16}$/.test(id) && db.prepare("SELECT 1 FROM items WHERE id = ? AND status = 'public'").get(id)).slice(0, 10)
         : undefined,
     };
-    if (out.trailerUrl && !/^https:\/\/(www\.)?(youtube\.com|youtu\.be)\//.test(out.trailerUrl)) throw fail(400, "Der Trailer muss ein YouTube-Link sein.");
+    const yt = /^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//;
+    if (out.trailerUrl && !yt.test(out.trailerUrl)) throw fail(400, "Der Trailer muss ein YouTube-Link sein.");
+    if (Array.isArray(m.videos)) {
+      out.videos = [...new Set(m.videos.map((v) => String(v).trim()).filter(Boolean))].slice(0, LIMITS.videos);
+      for (const v of out.videos) if (v.length > 300 || !yt.test(v)) throw fail(400, "Videos müssen YouTube-Links sein.");
+      out.trailerUrl = out.videos[0] || "";
+    }
+    // Reihenfolge der Bilder: "old:3" = vorhandenes Bild 3, "new:0" = erstes neu hochgeladenes
+    if (Array.isArray(m.imageOrder)) out.imageOrder = m.imageOrder.map(String).filter((x) => /^(old|new):\d{1,2}$/.test(x)).slice(0, LIMITS.images);
     if (!partial && !out.title) throw fail(400, "Bitte gib einen Titel an.");
     return out;
   }
 
   /** Dateien aus dem Formular in den Ordner des Eintrags übernehmen */
-  function storeFiles(form, dir, row) {
+  function storeFiles(form, dir, row, order) {
     const set = {};
     if (form.mod) {
       fs.renameSync(form.mod.path, path.join(dir, "mod.jar"));
@@ -389,7 +407,22 @@ export function buildServer() {
       fs.renameSync(form.icon.path, path.join(dir, "icon.png"));
       set.icon = "icon.png";
     }
-    if (form.images.length) {
+    if (order) {
+      const before = JSON.parse(row?.images || "[]");
+      const fresh = form.images.map((img, i) => {
+        const n = `image-${Date.now().toString(36)}-${i}.${img.ext}`;
+        fs.renameSync(img.path, path.join(dir, n));
+        return n;
+      });
+      const names = [];
+      for (const o of order) {
+        const [kind, n] = o.split(":");
+        const f = kind === "old" ? before[Number(n)] : fresh[Number(n)];
+        if (f && !names.includes(f)) names.push(f);
+      }
+      for (const f of [...before, ...fresh]) if (!names.includes(f)) fs.rmSync(path.join(dir, f), { force: true });
+      set.images = JSON.stringify(names.slice(0, LIMITS.images));
+    } else if (form.images.length) {
       for (const old of JSON.parse(row?.images || "[]")) fs.rmSync(path.join(dir, old), { force: true });
       const names = form.images.map((img, i) => {
         const n = `image-${Date.now().toString(36)}-${i}.${img.ext}`;
@@ -416,14 +449,14 @@ export function buildServer() {
       const form = await readForm(req, dir);
       if (!form.mod && !form.source) throw fail(400, "Lade eine Mod-Datei, Quellcode oder beides hoch.");
       const m = cleanMeta(form.meta, false);
-      const files = storeFiles(form, dir, null);
+      const files = storeFiles(form, dir, null, m.imageOrder);
       const status = needsReview(!!form.mod, !!form.source) ? "pending" : "public";
       const t = now();
       db.prepare(
         `INSERT INTO items(id, owner_uuid, owner_name, title, summary, description, categories, mc_version, mod_version, mod_id, license, trailer_url,
-          images, icon, mod_file, mod_size, source_file, source_size, status, dependencies, created_at, updated_at)
+          images, icon, mod_file, mod_size, source_file, source_size, status, dependencies, videos, created_at, updated_at)
          VALUES(@id, @owner_uuid, @owner_name, @title, @summary, @description, @categories, @mc_version, @mod_version, @mod_id, @license, @trailer_url,
-          @images, @icon, @mod_file, @mod_size, @source_file, @source_size, @status, @dependencies, @t, @t)`,
+          @images, @icon, @mod_file, @mod_size, @source_file, @source_size, @status, @dependencies, @videos, @t, @t)`,
       ).run({
         id,
         owner_uuid: u.uuid,
@@ -445,6 +478,7 @@ export function buildServer() {
         source_size: files.source_size || 0,
         status,
         dependencies: JSON.stringify(m.dependencies || []),
+        videos: JSON.stringify(m.videos || (m.trailerUrl ? [m.trailerUrl] : [])),
         t,
       });
       return view(getItem(id), u);
@@ -462,7 +496,7 @@ export function buildServer() {
     const dir = path.join(FILES, row.id);
     const form = await readForm(req, dir);
     const m = cleanMeta(form.meta, true);
-    const files = storeFiles(form, dir, row);
+    const files = storeFiles(form, dir, row, m.imageOrder);
     const hasMod = !!(files.mod_file || row.mod_file);
     const hasSource = !!(files.source_file || row.source_file);
     let status = row.status;
@@ -478,6 +512,7 @@ export function buildServer() {
       ...(m.modId !== undefined ? { mod_id: m.modId } : {}),
       ...(m.license !== undefined ? { license: m.license } : {}),
       ...(m.trailerUrl !== undefined ? { trailer_url: m.trailerUrl } : {}),
+      ...(m.videos ? { videos: JSON.stringify(m.videos) } : m.trailerUrl !== undefined ? { videos: JSON.stringify(m.trailerUrl ? [m.trailerUrl] : []) } : {}),
       ...(m.dependencies ? { dependencies: JSON.stringify(m.dependencies.filter((d) => d !== row.id)) } : {}),
       ...files,
       status,

@@ -20,6 +20,7 @@ export type WsItem = {
   modId: string;
   license: string;
   trailerUrl: string;
+  videos?: string[];
   images: string[];
   icon: string | null;
   hasMod: boolean;
@@ -90,9 +91,14 @@ export const wsApi = {
     description: string;
     categories: string[];
     trailerUrl: string;
+    videos?: string[];
     images: string[];
+    imageOrder?: string[];
     dependencies?: string[];
   }) => invoke<WsItem>("ws_upload", { req }),
+  remoteConfig: () => invoke<{ enabled: boolean; url: string }>("ws_remote_config"),
+  checkUrl: (url: string) => invoke<void>("ws_check_url", { url }),
+  imagePreview: (path: string) => invoke<string>("ws_image_preview", { path }),
   rate: (id: string, stars: number) => invoke<WsItem>("ws_rate", { id, stars }),
   comments: (id: string) => invoke<{ comments: WsComment[] }>("ws_comments", { id }),
   addComment: (id: string, text: string) => invoke<WsComment>("ws_comment_add", { id, text }),

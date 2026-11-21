@@ -29,8 +29,10 @@ pub struct Settings {
     /// Unix-Zeit der letzten Update-Prüfung (nimmt auch Kommazahlen an)
     #[serde(deserialize_with = "lenient_u64")]
     pub last_update_check: u64,
-    /// Adresse des Workshop-Servers
+    /// Adresse des Workshop-Servers (zentral festgelegt, Nutzer können sie nicht ändern)
     pub workshop_url: String,
+    /// Workshop eingeschaltet (zentral festgelegt)
+    pub workshop_enabled: bool,
     /// Seite beim Start: "workshop" | "projects"
     pub start_page: String,
     /// Arbeitsspeicher beim Spielen aus dem Workshop (MB)
@@ -52,6 +54,7 @@ impl Default for Settings {
             console_font_size: 12,
             last_update_check: 0,
             workshop_url: DEFAULT_WORKSHOP.into(),
+            workshop_enabled: true,
             start_page: "workshop".into(),
             play_memory_mb: 4096,
         }
@@ -98,6 +101,10 @@ pub fn get_settings(app: AppHandle) -> Settings {
 pub fn save_settings(app: AppHandle, settings: Settings) -> Result<Settings, String> {
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut s = normalize(settings);
+    // Workshop-Adresse und -Schalter kommen nur aus der zentralen Einstellung
+    let stored = load(&app);
+    s.workshop_url = stored.workshop_url;
+    s.workshop_enabled = stored.workshop_enabled;
     s.include_prerelease = s.update_channel != "stable";
     if !matches!(s.update_check.as_str(), "startup" | "daily" | "weekly" | "manual") {
         s.update_check = "startup".into();
@@ -117,6 +124,24 @@ pub fn save_settings(app: AppHandle, settings: Settings) -> Result<Settings, Str
     std::fs::write(&tmp, serde_json::to_string_pretty(&s).map_err(err)?).map_err(err)?;
     std::fs::rename(&tmp, &file).map_err(err)?;
     Ok(s)
+}
+
+/// Zentrale Workshop-Einstellung übernehmen. true = etwas hat sich geändert.
+pub fn set_workshop(app: &AppHandle, url: &str, enabled: bool) -> Result<bool, String> {
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut s = load(app);
+    let url = url.trim().trim_end_matches('/').to_string();
+    let url = if url.is_empty() { DEFAULT_WORKSHOP.to_string() } else { url };
+    if s.workshop_url == url && s.workshop_enabled == enabled {
+        return Ok(false);
+    }
+    s.workshop_url = url;
+    s.workshop_enabled = enabled;
+    let file = data_dir(app)?.join("settings.json");
+    let tmp = file.with_extension("json.tmp");
+    std::fs::write(&tmp, serde_json::to_string_pretty(&s).map_err(err)?).map_err(err)?;
+    std::fs::rename(&tmp, &file).map_err(err)?;
+    Ok(true)
 }
 
 /// Akzeptiert ganze Zahlen und Kommazahlen (z. B. 1795118342.13).

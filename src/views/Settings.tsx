@@ -5,9 +5,8 @@ import { Segmented, Toggle } from "../components/Chrome";
 import { AnvilLogo, CheckIcon, DownloadIcon, ExternalIcon, FolderIcon, GithubIcon, LogoutIcon, RefreshIcon, ShieldIcon } from "../icons";
 import { logout, useAccount } from "../admin";
 import { GitHubLogin, openGithub } from "./Admin";
-import { invoke } from "@tauri-apps/api/core";
 import McLoginDialog from "../components/McLogin";
-import { mcLogout, refreshWorkshop, useWorkshop } from "../workshop";
+import { mcLogout, useWorkshop } from "../workshop";
 import { checkForUpdate, installUpdate, updateSettings, useAppVersion, useSettings, useUpdate } from "../state";
 
 type Section = "updates" | "account" | "workshop" | "general" | "appearance" | "about";
@@ -288,7 +287,6 @@ function WorkshopSection() {
   const s = useSettings()!;
   const ws = useWorkshop();
   const [login, setLogin] = useState(false);
-  const [url, setUrl] = useState(s.workshopUrl);
   return (
     <>
       <h2>{t("Workshop & Spielen")}</h2>
@@ -327,22 +325,8 @@ function WorkshopSection() {
             ))}
           </select>
         </Row>
-        <Row title={t("Workshop-Server")} desc={t("Adresse des Servers, auf dem der Workshop läuft.")}>
-          <span className="row gap-6">
-            <input className="input mono" style={{ width: 280 }} value={url} onChange={(e) => setUrl(e.target.value)} aria-label={t("Workshop-Server")} />
-            {url.trim() !== s.workshopUrl && (
-              <button
-                className="btn small"
-                onClick={async () => {
-                  await updateSettings({ workshopUrl: url.trim() });
-                  await invoke("ws_reset").catch(() => {});
-                  refreshWorkshop();
-                }}
-              >
-                {t("Speichern")}
-              </button>
-            )}
-          </span>
+        <Row title={t("Workshop-Server")} desc={s.workshopEnabled === false ? t("Der Workshop ist gerade ausgeschaltet.") : t("Wird zentral von Anvil Studio festgelegt und automatisch aktualisiert.")}>
+          <span className="mono muted small">{s.workshopUrl}</span>
         </Row>
       </div>
       {login && <McLoginDialog onClose={() => setLogin(false)} onDone={() => setLogin(false)} />}

@@ -85,6 +85,8 @@ export type Settings = {
   consoleFontSize: number;
   lastUpdateCheck: number;
   workshopUrl: string;
+  /** zentral festgelegt */
+  workshopEnabled: boolean;
   startPage: "workshop" | "projects";
   playMemoryMb: number;
 };
