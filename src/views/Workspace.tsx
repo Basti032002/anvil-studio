@@ -1,4 +1,5 @@
 import LocalizationTab from "./workspace/LocalizationTab";
+import { UndoButtons } from "../components/UndoButtons";
 import VariablesTab from "./workspace/VariablesTab";
 import TagsTab from "./workspace/TagsTab";
 import TexturesTab from "./workspace/TexturesTab";
@@ -205,6 +206,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
           </button>
           <ChevronIcon size={12} />
           <span className="crumb current">{project.name}</span>
+          <UndoButtons />
         </div>
 
         <div className="run-group">

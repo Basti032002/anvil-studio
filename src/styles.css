@@ -179,14 +179,11 @@ kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border-radi
 .activity-badge { position: absolute; top: 9px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); animation: ring 1.8s infinite; }
 
 [data-tip] { position: relative; }
-[data-tip]::after {
-  content: attr(data-tip); position: absolute; left: 50%; top: calc(100% + 6px); transform: translate(-50%, -3px); background: var(--text); color: var(--bg);
-  font-size: 11.5px; font-weight: 550; padding: 4px 8px; border-radius: 6px; white-space: nowrap; pointer-events: none; opacity: 0;
-  transition: opacity var(--fast), transform var(--fast); z-index: 60;
-}
-[data-tip]:hover::after { opacity: 1; transform: translate(-50%, 0); transition-delay: 380ms; }
-.activitybar [data-tip]::after, .pixel-tools [data-tip]::after { left: calc(100% + 8px); top: 50%; transform: translate(-3px, -50%); }
-.activitybar [data-tip]:hover::after, .pixel-tools [data-tip]:hover::after { transform: translate(0, -50%); }
+/* Tooltips zeichnet components/Tooltips.tsx in einer eigenen Ebene über allem */
+.app-tip { position: fixed; z-index: 10000; pointer-events: none; max-width: 340px; background: var(--text); color: var(--bg); font-size: 11.5px; font-weight: 550; line-height: 1.35; padding: 4px 8px; border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); opacity: 0; transform: translateY(-3px); transition: opacity var(--fast), transform var(--fast); }
+.app-tip.above { transform: translateY(3px); }
+.app-tip.right { transform: translateX(-3px); }
+.app-tip.show { opacity: 1; transform: none; }
 
 /* Statusleiste */
 .statusbar { display: flex; justify-content: space-between; align-items: center; background: var(--surface); border-top: 1px solid var(--border); padding: 0 6px; font-size: 11.5px; color: var(--muted); }
@@ -1834,7 +1831,7 @@ button.cx-stat { cursor: pointer; }
 @media (max-width: 1100px) { .cx-side { display: none; } }
 
 /* Texturen-Tab */
-.tx { display: grid; grid-template-columns: 250px minmax(0, 1fr); height: 100%; min-height: 0; }
+.tx { flex: 1; min-width: 0; display: grid; grid-template-columns: 250px minmax(0, 1fr); height: 100%; min-height: 0; }
 .tx-lib { border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; gap: 10px; padding: 14px; min-height: 0; }
 .tx-lib .search { width: 100%; }
 .tx-lib-grid { flex: 1; overflow: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-content: start; }
@@ -2018,3 +2015,14 @@ button.cx-stat { cursor: pointer; }
 .editor-head-kind { font-size: 11px; font-weight: 650; padding: 2px 8px; border-radius: 6px; background: color-mix(in srgb, var(--cat, var(--accent)) 15%, transparent); color: var(--cat, var(--accent)); }
 .editor-grid .form-panel { min-height: calc(100% - 4px); }
 .content-editor { padding: 20px 22px; background: radial-gradient(1200px 400px at 30% -10%, rgba(255, 255, 255, 0.025), transparent 60%), var(--bg); }
+
+/* Texturen-Tab füllt die ganze Breite */
+.ws-view > .tx { flex: 1 1 0%; width: 100%; min-width: 0; }
+.tx-ed-body { grid-template-columns: 52px minmax(0, 1fr) 300px; }
+
+/* Tooltip in der obersten Ebene (popover) – Browser-Vorgaben zurücksetzen */
+.app-tip[popover] { margin: 0; inset: auto; border: 0; overflow: visible; color: var(--bg); background: var(--text); padding: 4px 8px; }
+
+/* Rückgängig / Wiederholen neben dem Projektnamen */
+.undo-group { display: inline-flex; align-items: center; gap: 2px; margin-left: 10px; padding-left: 10px; border-left: 1px solid var(--border); }
+.undo-group .icon-btn:disabled { opacity: 0.35; cursor: default; }

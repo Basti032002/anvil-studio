@@ -1,3 +1,5 @@
+import { Tooltips } from "./components/Tooltips";
+import { installUndoKeys } from "./undo";
 import { t, takeReturnNav } from "./i18n";
 import { ContextMenuHost, DialogHost } from "./components/Overlay";
 import PatchNotesDialog from "./components/PatchNotes";
@@ -46,6 +48,7 @@ export default function App() {
   const settings = useSettings();
   // Workshop ausgeschaltet: nur Admins sehen ihn noch
   const workshopVisible = settings?.workshopEnabled !== false || admin || !!ws.me?.admin;
+  useEffect(() => installUndoKeys(), []);
   useEffect(() => {
     if (!workshopVisible && nav === "workshop") setNavRaw("projects");
   }, [workshopVisible, nav]);
@@ -182,6 +185,7 @@ export default function App() {
 
   return (
     <div className="shell">
+      <Tooltips />
       <TitleBar subtitle={subtitle} onSearch={() => setPalette(true)} />
       <div className="shell-body">
         <ActivityBar

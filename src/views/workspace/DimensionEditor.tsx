@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Blueprint, Content, DimBiome, DimDef, DimSpawn, Project } from "../../api";
 import { OwnEntry } from "../../components/ItemPicker";
 import { Segmented, Toggle } from "../../components/Chrome";
+import { confirmDialog } from "../../components/Overlay";
 import { ArrowLeftIcon, BlueprintIcon, BoxIcon, BucketIcon, CopyIcon, GemIcon, GlobeIcon, LayersIcon, MountainsIcon, PawIcon, PickaxeIcon, RocketIcon, SparkIcon, SunIcon, TrashIcon, WeatherIcon } from "../../icons";
 import { Field, ItemField, NameFields } from "./ContentForms";
 import { ENTITIES, makeNode } from "./blueprints";
@@ -106,11 +107,27 @@ export default function DimensionEditor({
   const [step, setStep] = useState<Step>("terrain");
   const [seed, setSeed] = useState(4711);
   const nodesMode = dim.terrainMode === "nodes";
-  const toNodes = () => {
+  const toNodes = async () => {
     const [lo, hi] = yRange(dim);
-    let graph = dim.graph && dim.graph.nodes.length ? dim.graph : undefined;
-    if (!graph) graph = dim.builderGraph && dim.builderGraph.nodes.length ? structuredClone(dim.builderGraph) : builderToGraph(dim.terrain ?? defaultBuilder("hills"), lo, hi);
-    set({ terrainMode: "nodes", graph, minY: lo, maxY: hi });
+    const fresh = builderToGraph(dim.terrain ?? defaultBuilder("hills"), lo, hi);
+    const existing = dim.graph && dim.graph.nodes.length ? dim.graph : undefined;
+    let graph = fresh;
+    if (existing) {
+      const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+      // Knoten nie selbst bearbeitet (oder gleich wie der Baukasten) → einfach neu aufbauen
+      const untouched = same(existing, fresh) || (dim.builderGraph && same(existing, dim.builderGraph));
+      if (!untouched) {
+        const overwrite = await confirmDialog(
+          t("Knoten überschreiben?"),
+          t("Im Knoten-Editor gibt es schon ein eigenes Gelände. Sollen die Knoten durch deine aktuellen Baukasten-Einstellungen ersetzt werden?"),
+          t("Mit Baukasten überschreiben"),
+          t("Bisherige Knoten behalten"),
+          true,
+        );
+        if (!overwrite) graph = existing;
+      }
+    }
+    set({ terrainMode: "nodes", graph, builderGraph: fresh, minY: lo, maxY: hi });
     setStep("terrain");
   };
   const toBuilder = () => {

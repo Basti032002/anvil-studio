@@ -5,6 +5,7 @@ mod energy;
 mod textures;
 mod content;
 mod dimension;
+mod portal;
 mod export;
 mod fsx;
 mod i18n;

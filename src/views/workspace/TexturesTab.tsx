@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { notifyUndo, useUndoTarget } from "../../undo";
 import { t } from "../../i18n";
 import { Content, contentApi, Project, texLibApi, pickSaveFile } from "../../api";
 import { confirmDialog } from "../../components/Overlay";
@@ -479,6 +480,7 @@ function TexEditor({
   }
   function changed() {
     bump();
+    notifyUndo();
     setStatus("saving");
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(async () => {
@@ -510,6 +512,7 @@ function TexEditor({
     doc.current = r;
     changed();
   }
+  useUndoTarget({ undo: doUndo, redo: doRedo, canUndo: () => undo.current.length > 0, canRedo: () => redo.current.length > 0 });
 
   // ---- Zeichnen ----
   const inSel = (x: number, y: number) => !sel || (x >= sel.x && y >= sel.y && x < sel.x + sel.w && y < sel.y + sel.h);

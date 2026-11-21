@@ -193,6 +193,25 @@ pub struct DimDef {
     // Kreaturen (nur eigene Biome)
     pub no_base_spawns: bool,
     pub spawns: Vec<DimSpawn>,
+
+    // Anreise
+    /// Portal mit Rahmen (wie das Nether-Portal)
+    pub portal: bool,
+    /// Rahmen-Block ("" = Weinender Obsidian)
+    pub portal_frame: String,
+    /// Item zum Anzünden ("" = Feuerzeug)
+    pub portal_igniter: String,
+    /// Farbe der Portalfläche "#rrggbb"
+    pub portal_color: String,
+    /// Ankunft: "" (sicher landen, automatisch) | "fixed" (feste Koordinaten)
+    pub arrival: String,
+    pub arrival_x: i32,
+    pub arrival_y: i32,
+    pub arrival_z: i32,
+    /// Block für die Plattform, falls kein Boden gefunden wird ("" = Stein)
+    pub arrival_block: String,
+    /// keine Plattform bauen (Standard: bauen, damit man nie ins Leere fällt)
+    pub arrival_no_platform: bool,
 }
 
 /// Ausgabe des Generators

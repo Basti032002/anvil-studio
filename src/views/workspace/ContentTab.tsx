@@ -1,4 +1,5 @@
 import { getDraft, setDraft } from "./draft";
+import { useUndoable } from "../../undo";
 import { t } from "../../i18n";
 import { confirmDialog, contextMenu, MenuItem } from "../../components/Overlay";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -74,7 +75,7 @@ type ItemTab = "general" | "function" | "recipe";
 type Sel = { kind: "block" | "item" | "mob" | "event" | "brew" | "blueprint" | "dimension" | "structure" | "gui"; index: number } | null;
 
 export default function ContentTab({ project }: { project: Project }) {
-  const [content, setContent] = useState<Content | null>(null);
+  const [content, setContent, contentHist] = useUndoable<Content | null>(`content:${project.id}`, null);
   const [saved, setSaved] = useState<string>("");
   const [sel, setSel] = useState<Sel>(null);
   const [busy, setBusy] = useState(false);
@@ -102,7 +103,7 @@ export default function ContentTab({ project }: { project: Project }) {
   useEffect(() => {
     const d = getDraft(project.id);
     if (d) {
-      setContent(normalize(d.content));
+      contentHist.load(normalize(d.content));
       setSaved(d.saved);
       loadTextures(d.content);
       return;
@@ -111,7 +112,7 @@ export default function ContentTab({ project }: { project: Project }) {
       .load(project.id)
       .then((raw) => {
         const c = normalize(raw);
-        setContent(c);
+        contentHist.load(c);
         setSaved(JSON.stringify(c));
         loadTextures(c);
       })
@@ -119,6 +120,12 @@ export default function ContentTab({ project }: { project: Project }) {
   }, [project.id, loadTextures]);
 
   const dirty = content ? JSON.stringify(content) !== saved : false;
+  // Nach Rückgängig kann die Auswahl auf etwas zeigen, das es nicht mehr gibt
+  useEffect(() => {
+    if (!content || !sel) return;
+    const lists: Record<string, unknown[] | undefined> = { block: content.blocks, item: content.items, mob: content.mobs, event: content.events, brew: content.brewing, blueprint: content.blueprints, dimension: content.dimensions, structure: content.structures, gui: content.guis };
+    if (!lists[sel.kind]?.[sel.index]) setSel(null);
+  }, [content, sel]);
   useEffect(() => {
     if (content && saved) setDraft(project.id, content, saved);
   }, [content, saved, project.id]);
@@ -143,7 +150,7 @@ export default function ContentTab({ project }: { project: Project }) {
     try {
       const r = await contentApi.save(project.id, content);
       const c = normalize(r.content);
-      setContent(c);
+      contentHist.replace(c);
       setSaved(JSON.stringify(c));
       loadTextures(c);
       if (r.registration === "ok" || r.registration === "added") {

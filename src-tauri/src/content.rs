@@ -2044,6 +2044,39 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
 "#);
     }
 
+    // ---- Anreise: sichere Ankunft + Portale ----
+    if !c.dimensions.is_empty() || !c.blueprints.is_empty() || !c.guis.is_empty() {
+        let own: Vec<String> = all_variants(c).iter().map(|v| v.id.clone()).collect();
+        let resolve = |s: &str| -> String {
+            if s.contains(':') {
+                s.to_string()
+            } else if own.iter().any(|b| b == s) || c.items.iter().any(|i| i.id == s) {
+                format!("{modid}:{s}")
+            } else {
+                format!("minecraft:{s}")
+            }
+        };
+        imports.extend([
+            "net.minecraft.core.BlockPos",
+            "net.minecraft.core.registries.BuiltInRegistries",
+            "net.minecraft.core.registries.Registries",
+            "net.minecraft.resources.ResourceKey",
+            "net.minecraft.resources.ResourceLocation",
+            "net.minecraft.server.level.ServerLevel",
+            "net.minecraft.world.entity.player.Player",
+            "net.minecraft.world.level.Level",
+            "net.minecraft.world.level.block.state.BlockState",
+            "net.neoforged.neoforge.common.NeoForge",
+        ]);
+        let dims: Vec<crate::dimension::DimDef> = c.dimensions.iter().filter(|d| valid_id(&d.id)).cloned().collect();
+        methods.push_str(&crate::portal::arrival_java(&dims, modid, &resolve).replace("@GET@", if api.materials_v2 { "getValue" } else { "get" }));
+        let papi = crate::portal::PortalApi { get_value: api.materials_v2, lazy_props: api.lazy_props };
+        let (pf, pc, pm) = crate::portal::portal_java(&dims, modid, &resolve, &papi);
+        fields.push_str(&pf);
+        calls.push_str(&pc);
+        methods.push_str(&pm);
+    }
+
     (fields, imports, calls, methods)
 }
 
@@ -2648,6 +2681,11 @@ pub fn lang_entries(p: &Project, c: &Content) -> Vec<LangEntry> {
         out.push(LangEntry { key: format!("entity.{modid}.{}", m.id), kind: "entity".into(), owner: format!("mob:{}", m.id), shape: String::new(), de: de.clone(), en: en.clone(), names: m.names.clone(), legacy: Default::default() });
         out.push(LangEntry { key: format!("item.{modid}.{}_spawn_egg", m.id), kind: "egg".into(), owner: format!("mob:{}", m.id), shape: "egg".into(), de: format!("{de}-Spawn-Ei"), en: format!("{en} Spawn Egg"), names: m.names.clone(), legacy: Default::default() });
     }
+    for d in c.dimensions.iter().filter(|d| d.portal) {
+        let (de, en) = (name_of(&d.name_de, &d.name_en, true), name_of(&d.name_de, &d.name_en, false));
+        let (de, en) = (if de.is_empty() { d.id.clone() } else { de }, if en.is_empty() { d.id.clone() } else { en });
+        out.push(LangEntry { key: format!("block.{modid}.{}", crate::portal::block_id(d)), kind: "block".into(), owner: format!("dimension:{}", d.id), shape: "portal".into(), de: format!("{de}-Portal"), en: format!("{en} Portal"), names: Default::default(), legacy: Default::default() });
+    }
     for e in out.iter_mut() {
         for (short, name) in &e.names {
             if let (Some(full), n) = (full_code(short), name.trim()) {
@@ -2907,6 +2945,10 @@ fn sides_multipart(post: Value, side: &str, values: &[(&str, &str)]) -> Value {
 }
 
 /// Minimale PNG-Datei (RGBA) – für Platzhalter-Texturen.
+pub fn png_rgba_pub(w: u32, h: u32, pixel: impl Fn(u32, u32) -> [u8; 4]) -> Vec<u8> {
+    png_rgba(w, h, pixel)
+}
+
 fn png_rgba(w: u32, h: u32, pixel: impl Fn(u32, u32) -> [u8; 4]) -> Vec<u8> {
     use std::io::Write;
     fn crc32(data: &[u8]) -> u32 {
@@ -3578,6 +3620,17 @@ fn generate_inner(p: &Project, c: &mut Content) -> Result<String, String> {
         let at_least = |v: (u32, u32, u32)| mc_at_least(&p.mc_version, v);
         let mut structure_tags: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
         let mut own_structure_biomes: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+        for d in c.dimensions.iter().filter(|d| valid_id(&d.id) && d.portal) {
+            let id = crate::portal::block_id(d);
+            let (bs, model, png, meta) = crate::portal::portal_assets(d, modid);
+            for dir in ["blockstates", "models/block", "textures/block"] {
+                std::fs::create_dir_all(assets.join(dir)).map_err(err)?;
+            }
+            write_json(&assets.join(format!("blockstates/{id}.json")), &bs)?;
+            write_json(&assets.join(format!("models/block/{id}.json")), &model)?;
+            std::fs::write(assets.join(format!("textures/block/{id}.png")), png).map_err(err)?;
+            write_json(&assets.join(format!("textures/block/{id}.png.mcmeta")), &meta)?;
+        }
         for d in c.dimensions.iter().filter(|d| valid_id(&d.id)) {
             let out = crate::dimension::files(d, &at_least, &resolve);
             for (rel, v) in out.files {
@@ -4130,6 +4183,9 @@ mod tests {
             id: "traumland".into(),
             name_de: "Traumland".into(),
             name_en: "Dreamland".into(),
+            portal: true,
+            portal_frame: "ruby_block".into(),
+            portal_color: "#e0435f".into(),
             top_block: "ruby_block".into(),
             fill_block: "minecraft:clay".into(),
             stone_block: "ruby_ore".into(),
@@ -4144,6 +4200,12 @@ mod tests {
         c.dimensions.push(crate::dimension::DimDef {
             id: "inselwelt".into(),
             name_de: "Inselwelt".into(),
+            portal: true,
+            arrival: "fixed".into(),
+            arrival_x: 0,
+            arrival_y: 120,
+            arrival_z: 0,
+            arrival_block: "minecraft:glass".into(),
             template: "overworld".into(),
             biome_mode: "own".into(),
             biomes: vec![

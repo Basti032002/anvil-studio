@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useUndoable } from "../../undo";
 import { t } from "../../i18n";
 import { Content, contentApi, Project, VarDef, VarKind, VarScope } from "../../api";
 import { confirmDialog } from "../../components/Overlay";
@@ -11,7 +12,7 @@ import { cleanVarName, newVar, renameVar, undeclaredVars, VAR_KINDS, VAR_SCOPES,
 const nodeLabel = (kind: string) => nodeSpec(kind)?.label ?? kind;
 
 export default function VariablesTab({ project }: { project: Project }) {
-  const [content, setContent] = useState<Content | null>(null);
+  const [content, setContent, contentHist] = useUndoable<Content | null>(`content:${project.id}`, null);
   const [saved, setSaved] = useState("");
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState("");
@@ -23,14 +24,14 @@ export default function VariablesTab({ project }: { project: Project }) {
   useEffect(() => {
     const d = getDraft(project.id);
     if (d) {
-      setContent(d.content);
+      contentHist.load(d.content);
       setSaved(d.saved);
       return;
     }
     contentApi
       .load(project.id)
       .then((c) => {
-        setContent(c);
+        contentHist.load(c);
         setSaved(JSON.stringify(c));
       })
       .catch((e) => toast(String(e), "error"));
@@ -91,7 +92,7 @@ export default function VariablesTab({ project }: { project: Project }) {
     setBusy(true);
     try {
       const r = await contentApi.save(project.id, content);
-      setContent(r.content);
+      contentHist.replace(r.content);
       setSaved(JSON.stringify(r.content));
       toast(t("Gespeichert."), "success");
     } catch (e) {

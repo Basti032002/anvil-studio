@@ -1132,11 +1132,10 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
         ServerLevel to = level.getServer().getLevel(key);
         if (to == null) return;
         int bx = (int) Math.floor(player.getX()), bz = (int) Math.floor(player.getZ());
-        int by = to.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, bx, bz);
-        if (by < -60 || key == Level.NETHER) by = 70;
-        if (key == Level.END) {{ bx = 100; by = 50; bz = 0; }}
-        if (to.getBlockState(new BlockPos(bx, by - 1, bz)).isAir()) to.setBlockAndUpdate(new BlockPos(bx, by - 1, bz), net.minecraft.world.level.block.Blocks.STONE.defaultBlockState());
-        anvilRun(level, player, player.getX(), player.getY(), player.getZ(), "execute in " + key.location() + " run tp @s " + (bx + 0.5) + " " + by + " " + (bz + 0.5));
+        if (key == Level.END) {{ bx = 100; bz = 0; }}
+        // Sicher ankommen: nie im Boden, nie ins Leere (Einstellungen im Tab „Anreise“)
+        BlockPos at = anvilArrive(to, bx, bz);
+        anvilRun(level, player, player.getX(), player.getY(), player.getZ(), "execute in " + key.location() + " run tp @s " + (at.getX() + 0.5) + " " + at.getY() + " " + (at.getZ() + 0.5));
     }}
 
     private static Objective anvilObj(ServerLevel level, String name) {{

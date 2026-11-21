@@ -1,4 +1,5 @@
 import { getDraft, setDraft } from "./draft";
+import { useUndoable } from "../../undo";
 import { locale, t } from "../../i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Content, contentApi, LangEntry, pickSaveFile, Project } from "../../api";
@@ -42,7 +43,7 @@ const KIND_LABEL = (k: LangEntry["kind"], shape: string) =>
   k === "block" ? (shape ? t("Block-Form") : t("Block")) : k === "item" ? t("Item") : k === "entity" ? t("Kreatur") : k === "egg" ? t("Spawn-Ei") : t("Kreativ-Tab");
 
 export default function LocalizationTab({ project }: { project: Project }) {
-  const [content, setContent] = useState<Content | null>(null);
+  const [content, setContent, contentHist] = useUndoable<Content | null>(`content:${project.id}`, null);
   const [saved, setSaved] = useState("");
   const [entries, setEntries] = useState<LangEntry[]>([]);
   const [active, setActive] = useState<string>("");
@@ -55,14 +56,14 @@ export default function LocalizationTab({ project }: { project: Project }) {
   useEffect(() => {
     const d = getDraft(project.id);
     if (d) {
-      setContent(d.content);
+      contentHist.load(d.content);
       setSaved(d.saved);
       return;
     }
     contentApi
       .load(project.id)
       .then((c) => {
-        setContent(c);
+        contentHist.load(c);
         setSaved(JSON.stringify(c));
       })
       .catch((e) => toast(String(e), "error"));
@@ -140,7 +141,7 @@ export default function LocalizationTab({ project }: { project: Project }) {
     setBusy(true);
     try {
       const r = await contentApi.save(project.id, content);
-      setContent(r.content);
+      contentHist.replace(r.content);
       setSaved(JSON.stringify(r.content));
       toast(t("Gespeichert – die Sprachdateien wurden erzeugt."), "success");
     } catch (e) {

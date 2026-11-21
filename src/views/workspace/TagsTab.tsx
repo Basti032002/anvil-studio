@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useUndoable } from "../../undo";
 import { t } from "../../i18n";
 import { Content, contentApi, Project, TagDef, TagRegistry } from "../../api";
 import { confirmDialog } from "../../components/Overlay";
@@ -98,7 +99,7 @@ function ownEntries(c: Content, modid: string, reg: TagRegistry): { id: string; 
 
 export default function TagsTab({ project }: { project: Project }) {
   const modid = project.modId;
-  const [content, setContent] = useState<Content | null>(null);
+  const [content, setContent, contentHist] = useUndoable<Content | null>(`content:${project.id}`, null);
   const [saved, setSaved] = useState("");
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState("");
@@ -108,14 +109,14 @@ export default function TagsTab({ project }: { project: Project }) {
   useEffect(() => {
     const d = getDraft(project.id);
     if (d) {
-      setContent(d.content);
+      contentHist.load(d.content);
       setSaved(d.saved);
       return;
     }
     contentApi
       .load(project.id)
       .then((c) => {
-        setContent(c);
+        contentHist.load(c);
         setSaved(JSON.stringify(c));
       })
       .catch((e) => toast(String(e), "error"));
@@ -164,7 +165,7 @@ export default function TagsTab({ project }: { project: Project }) {
     setBusy(true);
     try {
       const r = await contentApi.save(project.id, content);
-      setContent(r.content);
+      contentHist.replace(r.content);
       setSaved(JSON.stringify(r.content));
       toast(t("Gespeichert – die Tag-Dateien wurden erzeugt."), "success");
     } catch (e) {

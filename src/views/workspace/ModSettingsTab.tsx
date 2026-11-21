@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+import { useUndoable } from "../../undo";
 import { useEffect, useMemo, useState } from "react";
 import { api, changeMcVersion, Content, contentApi, ModSettings, modSettingsApi, Project } from "../../api";
 import { listen } from "@tauri-apps/api/event";
@@ -12,7 +13,7 @@ import { Field } from "./ContentForms";
 import { shapeIcon, variantIds } from "./contentDefaults";
 
 export default function ModSettingsTab({ project, onSaved }: { project: Project; onSaved?: () => void }) {
-  const [s, setS] = useState<ModSettings | null>(null);
+  const [s, setS, sHist] = useUndoable<ModSettings | null>(`settings:${project.id}`, null);
   const [saved, setSaved] = useState("");
   const [busy, setBusy] = useState(false);
   const [content, setContent] = useState<Content | null>(null);
@@ -22,7 +23,7 @@ export default function ModSettingsTab({ project, onSaved }: { project: Project;
     modSettingsApi
       .get(project.id)
       .then((v) => {
-        setS(v);
+        sHist.load(v);
         setSaved(JSON.stringify(v));
       })
       .catch((e) => toast(String(e), "error"));
@@ -60,7 +61,7 @@ export default function ModSettingsTab({ project, onSaved }: { project: Project;
     try {
       await modSettingsApi.save(project.id, s);
       const fresh = await modSettingsApi.get(project.id);
-      setS(fresh);
+      sHist.replace(fresh);
       setSaved(JSON.stringify(fresh));
       toast(t("Mod-Einstellungen gespeichert."), "success");
       onSaved?.();

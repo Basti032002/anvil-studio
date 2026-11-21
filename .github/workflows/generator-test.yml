@@ -16,6 +16,7 @@ on:
       - "src-tauri/src/textures.rs"
       - "src-tauri/src/energy.rs"
       - "src-tauri/src/structures.rs"
+      - "src-tauri/src/portal.rs"
       - "src-tauri/src/worldgen/**"
       - ".github/workflows/generator-test.yml"
   workflow_dispatch:
