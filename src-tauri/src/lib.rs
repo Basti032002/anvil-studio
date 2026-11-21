@@ -15,6 +15,7 @@ mod play;
 mod projects;
 mod runner;
 mod settings;
+mod structures;
 mod template;
 mod updater;
 mod util;
@@ -37,6 +38,9 @@ pub fn run() {
             projects::import_project,
             content::content_load,
             content::content_lang_entries,
+            content::structures_scan,
+            content::structures_imported,
+            content::structure_import,
             content::lang_export,
             content::lang_import,
             mcassets::mc_entity_texture,

@@ -16,7 +16,7 @@ use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
-pub const CONTENT_SCHEMA: u32 = 3;
+pub const CONTENT_SCHEMA: u32 = 4;
 /// Bei Änderungen an den Vorlagen hochzählen → Projekte werden neu erzeugt.
 pub const GENERATOR_VERSION: u32 = 3;
 
@@ -350,8 +350,12 @@ pub struct Content {
     pub tab_icon: String,
     /// Name des Kreativ-Tabs (leer = Projektname)
     pub tab_name: String,
-    /// Zusätzliche Sprachen (Minecraft-Codes wie fr_fr, ja_jp) – de_de und en_us sind immer dabei
+    /// Zusätzliche Sprachen (Minecraft-Codes wie de_de, fr_fr, ja_jp) – en_us ist immer dabei
     pub languages: Vec<String>,
+    /// Eigene Strukturen (im Spiel gebaut)
+    pub structures: Vec<crate::structures::StructDef>,
+    /// Zuletzt erzeugte Strukturen – zum Aufräumen
+    pub generated_structures: Vec<String>,
     /// Übersetzungen aus dem Localization-Tab: Sprachcode → Sprachschlüssel → Text (überschreibt Erzeugtes)
     pub translations: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>,
     /// Brau-Rezepte: Trank + Zutat → Trank
@@ -415,6 +419,8 @@ impl Default for Content {
             tab_icon: String::new(),
             tab_name: String::new(),
             languages: vec![],
+            structures: vec![],
+            generated_structures: vec![],
             translations: Default::default(),
             brewing: vec![],
             events: vec![],
@@ -511,8 +517,20 @@ pub fn load(p: &Project) -> Result<(Content, bool), String> {
     if migrated {
         backup(p, &file, &format!("content-v{old}"));
     }
-    let c: Content = serde_json::from_value(migrate_value(raw)).map_err(err)?;
+    let mut c: Content = serde_json::from_value(migrate_value(raw)).map_err(err)?;
+    // Ab Version 4 ist Deutsch eine normale Zusatzsprache: alte Projekte mit deutschen Namen behalten sie
+    if old < 4 && !c.languages.iter().any(|l| l == "de_de") && german_names(&c) {
+        c.languages.insert(0, "de_de".into());
+    }
     Ok((c, migrated))
+}
+
+/// Gibt es irgendwo deutsche Namen?
+fn german_names(c: &Content) -> bool {
+    c.blocks.iter().any(|b| !b.name_de.trim().is_empty())
+        || c.items.iter().any(|i| !i.name_de.trim().is_empty())
+        || c.mobs.iter().any(|m| !m.name_de.trim().is_empty())
+        || c.dimensions.iter().any(|d| !d.name_de.trim().is_empty())
 }
 
 pub fn save_file(p: &Project, c: &Content) -> Result<(), String> {
@@ -2424,6 +2442,34 @@ pub fn content_lang_entries(app: AppHandle, project_id: String, content: Content
     Ok(lang_entries(&p, &content))
 }
 
+/// Im Testspiel mit dem Strukturblock gespeicherte Strukturen
+#[tauri::command]
+pub fn structures_scan(app: AppHandle, project_id: String) -> Result<Vec<crate::structures::FoundStructure>, String> {
+    let p = crate::projects::get(&app, &project_id)?;
+    Ok(crate::structures::scan(&root(&p)))
+}
+
+/// Schon ins Projekt übernommene Strukturvorlagen
+#[tauri::command]
+pub fn structures_imported(app: AppHandle, project_id: String) -> Result<Vec<crate::structures::FoundStructure>, String> {
+    let p = crate::projects::get(&app, &project_id)?;
+    Ok(crate::structures::imported(&root(&p), &p.mod_id))
+}
+
+/// Eine gefundene Struktur ins Projekt kopieren (nur aus dem Testspiel des Projekts)
+#[tauri::command]
+pub fn structure_import(app: AppHandle, project_id: String, file: String, name: String) -> Result<crate::structures::StructInfo, String> {
+    let p = crate::projects::get(&app, &project_id)?;
+    let r = root(&p);
+    let src = std::path::PathBuf::from(&file);
+    let saves = r.join("run").join("saves");
+    let ok = src.canonicalize().ok().zip(saves.canonicalize().ok()).is_some_and(|(a, b)| a.starts_with(b)) && src.extension().and_then(|x| x.to_str()) == Some("nbt");
+    if !ok {
+        return Err("Nur Strukturen aus dem Testspiel dieses Projekts können übernommen werden.".into());
+    }
+    crate::structures::import(&r, &p.mod_id, &src, &name)
+}
+
 /// Übersetzungen als JSON-Datei speichern (nur .json, vom Nutzer gewählter Pfad)
 #[tauri::command]
 pub fn lang_export(path: String, data: Value) -> Result<(), String> {
@@ -3132,7 +3178,9 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
     let entries = lang_entries(p, c);
     let ours: std::collections::HashSet<&str> = entries.iter().map(|e| e.key.as_str()).collect();
     let mut files: std::collections::BTreeMap<String, Vec<(String, String)>> = Default::default();
-    files.insert("de_de".into(), entries.iter().map(|e| (e.key.clone(), e.de.clone())).collect());
+    if c.languages.iter().any(|l| l == "de_de") {
+        files.insert("de_de".into(), entries.iter().map(|e| (e.key.clone(), e.de.clone())).collect());
+    }
     files.insert("en_us".into(), entries.iter().map(|e| (e.key.clone(), e.en.clone())).collect());
     for e in &entries {
         for (code, text) in &e.legacy {
@@ -3211,6 +3259,7 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
         remove_if_exists(data.join(format!("worldgen/noise_settings/{id}.json")));
         remove_if_exists(data.join(format!("dimension/{id}.json")));
     }
+    let mut generated_structures: Vec<String> = vec![];
     {
         let own_blocks: Vec<String> = variants.iter().map(|v| v.id.clone()).collect();
         let resolve = |s: &str| -> String {
@@ -3226,6 +3275,7 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
         };
         let at_least = |v: (u32, u32, u32)| mc_at_least(&p.mc_version, v);
         let mut structure_tags: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+        let mut own_structure_biomes: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
         for d in c.dimensions.iter().filter(|d| valid_id(&d.id)) {
             let out = crate::dimension::files(d, &at_least, &resolve);
             for (rel, v) in out.files {
@@ -3237,6 +3287,9 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
             }
             for (tag, biome) in out.structure_tags {
                 structure_tags.entry(tag).or_default().push(biome);
+            }
+            for (id, biome) in out.own_structure_tags {
+                own_structure_biomes.entry(id).or_default().push(biome);
             }
         }
         // Strukturen in eigenen Biomen: Biome an die Vanilla-Tags anhängen
@@ -3262,12 +3315,37 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
                 }
             }
         }
+        // Eigene Strukturen (im Spiel mit dem Strukturblock gebaut)
+        let mut struct_ids = vec![];
+        for st in c.structures.iter().filter(|x| valid_id(&x.id)) {
+            let extra = own_structure_biomes.get(&st.id).cloned().unwrap_or_default();
+            for (rel, v) in crate::structures::files(st, modid, &extra) {
+                let path = data.join(rel);
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent).map_err(err)?;
+                }
+                write_json(&path, &v)?;
+            }
+            struct_ids.push(st.id.clone());
+        }
+        for old in c.generated_structures.iter().filter(|o| !struct_ids.contains(o)) {
+            for rel in [
+                format!("worldgen/structure/{old}.json"),
+                format!("worldgen/structure_set/{old}.json"),
+                format!("worldgen/template_pool/{old}/start.json"),
+                format!("tags/worldgen/biome/has_structure/{old}.json"),
+            ] {
+                let _ = std::fs::remove_file(data.join(rel));
+            }
+        }
+        generated_structures = struct_ids;
     }
 
     c.generated_blocks = block_ids;
     c.generated_items = item_ids;
     c.generated_mobs = mob_ids;
     c.generated_dims = dim_ids;
+    c.generated_structures = generated_structures;
     c.generator_version = GENERATOR_VERSION;
     save_file(p, c)?;
     LAST_JAVA_CHANGED.store(java_changed, std::sync::atomic::Ordering::SeqCst);
@@ -3819,6 +3897,33 @@ mod tests {
                 sea_level: 63,
                 ..Default::default()
             });
+        }
+        c.structures.push(crate::structures::StructDef {
+            id: "ruine".into(),
+            name_en: "Ruin".into(),
+            pieces: vec![
+                crate::structures::StructPiece { template: "ruine".into(), pool: "".into(), weight: 1 },
+                crate::structures::StructPiece { template: "ruine/turm".into(), pool: "ruine/teile".into(), weight: 2 },
+            ],
+            overworld: true,
+            biomes: vec!["plains".into(), "minecraft:desert".into()],
+            placement: "surface".into(),
+            spacing: 24,
+            separation: 8,
+            depth: 3,
+            ..Default::default()
+        });
+        c.structures.push(crate::structures::StructDef { id: "hoehle".into(), pieces: vec![crate::structures::StructPiece { template: "hoehle".into(), ..Default::default() }], placement: "underground".into(), y: -20, spacing: 40, separation: 10, depth: 1, adapt: "none".into(), ..Default::default() });
+        {
+            let tdir = crate::structures::template_dir(&dir, &p.mod_id);
+            std::fs::create_dir_all(tdir.join("ruine")).unwrap();
+            for n in ["ruine.nbt", "ruine/turm.nbt", "hoehle.nbt"] {
+                std::fs::write(tdir.join(n), crate::structures::sample_nbt()).unwrap();
+            }
+        }
+        if let Some(d) = c.dimensions.iter_mut().find(|d| d.id == "inselwelt") {
+            d.structures.push("#ruine".into());
+            d.structures.push("#hoehle".into());
         }
         for t in ["nether", "end", "floating", "caves", "flat", "void", "amplified"] {
             c.dimensions.push(crate::dimension::DimDef { id: format!("welt_{t}"), template: t.into(), biome_mode: if t == "end" || t == "caves" { "own".into() } else { "vanilla".into() }, fluid: if t == "nether" { "lava".into() } else { "water".into() }, sea_level: 32, ..Default::default() });

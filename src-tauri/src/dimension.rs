@@ -201,6 +201,8 @@ pub struct DimFiles {
     pub files: Vec<(String, Value)>,
     /// (Struktur-Tag ohne Namensraum, Biom-ID) → data/minecraft/tags/worldgen/biome/has_structure/<tag>.json
     pub structure_tags: Vec<(String, String)>,
+    /// (eigene Struktur-ID, Biom-ID)
+    pub own_structure_tags: Vec<(String, String)>,
 }
 
 const NOISE_OLD: &str = include_str!("worldgen/noise_old.json");
@@ -335,6 +337,7 @@ pub fn files(d: &DimDef, mc_at_least: &dyn Fn((u32, u32, u32)) -> bool, resolve:
     let template = template_of(d).to_string();
     let mut out = vec![];
     let mut structure_tags = vec![];
+    let mut own_structure_tags = vec![];
 
     // Nur echte Blöcke: Tags (#…) gehen im Gelände nicht → Standardblock
     let pick = |s: &str| -> Option<String> {
@@ -761,6 +764,10 @@ pub fn files(d: &DimDef, mc_at_least: &dyn Fn((u32, u32, u32)) -> bool, resolve:
             out.push((format!("worldgen/biome/{id}.json"), bj));
             let full = format!("{modid}:{id}");
             for s in &d.structures {
+                if let Some(own) = s.trim().strip_prefix('#') {
+                    own_structure_tags.push((own.to_string(), full.clone()));
+                    continue;
+                }
                 let s = s.trim().trim_start_matches("minecraft:");
                 if STRUCTURES.contains(&s) {
                     structure_tags.push((s.to_string(), full.clone()));
@@ -825,7 +832,7 @@ pub fn files(d: &DimDef, mc_at_least: &dyn Fn((u32, u32, u32)) -> bool, resolve:
         json!({ "type": "minecraft:noise", "settings": modid_dim, "biome_source": biome_source })
     };
     out.push((format!("dimension/{}.json", d.id), json!({ "type": modid_dim, "generator": generator })));
-    DimFiles { files: out, structure_tags }
+    DimFiles { files: out, structure_tags, own_structure_tags }
 }
 
 #[cfg(test)]
