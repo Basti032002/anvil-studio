@@ -1,13 +1,16 @@
 import { t } from "../../i18n";
 import { useState } from "react";
-import { Blueprint, Content, DimBiome, DimDef, DimOre, DimSpawn, Project } from "../../api";
+import { Blueprint, Content, DimBiome, DimDef, DimSpawn, Project } from "../../api";
 import { OwnEntry } from "../../components/ItemPicker";
 import { Segmented, Toggle } from "../../components/Chrome";
-import { BlueprintIcon, CopyIcon, GlobeIcon, TrashIcon } from "../../icons";
-import { Field, ItemField, SubTabs } from "./ContentForms";
+import { ArrowLeftIcon, BlueprintIcon, BoxIcon, BucketIcon, CopyIcon, GemIcon, GlobeIcon, LayersIcon, MountainsIcon, PawIcon, PickaxeIcon, RocketIcon, SparkIcon, SunIcon, TrashIcon, WeatherIcon } from "../../icons";
+import { Field, ItemField } from "./ContentForms";
 import { ENTITIES, makeNode } from "./blueprints";
-import DimPreview from "./DimPreview";
-import { BASES, ORE_PRESETS, SPAWN_CATEGORIES, STRUCTURES, TEMPLATES as DIM_TEMPLATES, templateDefaults, templateOf, withDefaults } from "./dimensionDefaults";
+import DimPreview, { yRange } from "./DimPreview";
+import { IslandsPage, OresPage, PageHead, TerrainPage } from "./DimPages";
+import TerrainNodes from "./TerrainNodes";
+import { builderToGraph, defaultBuilder } from "./terrain";
+import { BASES, SPAWN_CATEGORIES, STRUCTURES, TEMPLATES as DIM_TEMPLATES, templateDefaults, templateOf, withDefaults } from "./dimensionDefaults";
 
 export { newDimension } from "./dimensionDefaults";
 
@@ -78,6 +81,9 @@ export default function DimensionEditor({
   onDuplicate,
   onRemove,
   onAddBlueprint,
+  onBack,
+  footer,
+  onViewInGame,
 }: {
   project: Project;
   content: Content;
@@ -87,6 +93,9 @@ export default function DimensionEditor({
   onDuplicate: () => void;
   onRemove: () => void;
   onAddBlueprint: (b: Blueprint) => void;
+  onBack: () => void;
+  footer?: React.ReactNode;
+  onViewInGame?: () => void;
 }) {
   const dim = withDefaults(rawDim);
   const tp = templateOf(dim);
@@ -94,7 +103,21 @@ export default function DimensionEditor({
   const set = (patch: Partial<DimDef>) => onChange({ ...dim, ...patch });
   const hasTravel = content.blueprints.some((b) => b.nodes.some((n) => n.kind === "travel" && n.props.dim === dim.id));
   const ownBiomes = dim.biomeMode === "own";
-  const [step, setStep] = useState<Step>("start");
+  const [step, setStep] = useState<Step>("terrain");
+  const [seed, setSeed] = useState(4711);
+  const nodesMode = dim.terrainMode === "nodes";
+  const toNodes = () => {
+    const [lo, hi] = yRange(dim);
+    let graph = dim.graph && dim.graph.nodes.length ? dim.graph : undefined;
+    if (!graph) graph = dim.builderGraph && dim.builderGraph.nodes.length ? structuredClone(dim.builderGraph) : builderToGraph(dim.terrain ?? defaultBuilder("hills"), lo, hi);
+    set({ terrainMode: "nodes", graph, minY: lo, maxY: hi });
+    setStep("terrain");
+  };
+  const toBuilder = () => {
+    const [lo, hi] = yRange(dim);
+    const b = dim.terrain ?? defaultBuilder("hills");
+    set({ terrainMode: "builder", terrain: b, builderGraph: builderToGraph(b, lo, hi), minY: lo, maxY: hi });
+  };
   const blockInput = (value: string, onCh: (v: string) => void, placeholder: string) => (
     <ItemField project={project} own={ownBlocks} blocksOnly value={value} onChange={onCh} placeholder={placeholder} />
   );
@@ -121,42 +144,83 @@ export default function DimensionEditor({
     return "creature";
   };
 
-  const steps: [Step, string][] = [
-    ["start", t("Vorlage")],
-    ["terrain", t("Gelände")],
-    ["blocks", t("Schichten & Blöcke")],
-    ["biomes", t("Biome")],
-    ["caves", t("Höhlen & Schluchten")],
-    ["ores", t("Erze")],
-    ["islands", t("Schwebende Inseln")],
-    ["structures", t("Strukturen & Pflanzen")],
-    ["fluids", t("Flüssigkeiten")],
-    ["sky", t("Himmel & Licht")],
-    ["mobs", t("Kreaturen")],
-    ["travel", t("Anreise")],
+  const steps: [Step, string, React.ReactNode, boolean][] = [
+    ["terrain", t("Gelände"), <MountainsIcon size={15} />, !!dim.terrainMode],
+    ["blocks", t("Schichten & Blöcke"), <LayersIcon size={15} />, !!(dim.topBlock || dim.fillBlock || dim.stoneBlock || dim.deepBlock)],
+    ["biomes", t("Biome"), <GlobeIcon size={15} />, ownBiomes],
+    ["caves", t("Höhlen & Schluchten"), <PickaxeIcon size={15} />, !(dim.noNoiseCaves && dim.noCaves && dim.noCanyons)],
+    ["ores", t("Erze"), <GemIcon size={15} />, dim.ores.some((o) => !o.disabled)],
+    ["islands", t("Schwebende Inseln"), <WeatherIcon size={15} />, dim.islands],
+    ["structures", t("Strukturen & Pflanzen"), <BoxIcon size={15} />, dim.structures.length > 0],
+    ["fluids", t("Flüssigkeiten"), <BucketIcon size={15} />, dim.fluid !== "none"],
+    ["sky", t("Himmel & Licht"), <SunIcon size={15} />, !!(dim.skyColor || dim.fogColor || dim.time !== "normal")],
+    ["mobs", t("Kreaturen"), <PawIcon size={15} />, dim.spawns.length > 0],
   ];
+  const extraSteps: [Step, string, React.ReactNode][] = [
+    ["start", t("Name & Vorlage"), <SparkIcon size={15} />],
+    ["travel", t("Anreise"), <RocketIcon size={15} />],
+  ];
+  const tplLabel = DIM_TEMPLATES.find((x) => x.id === tp)?.label();
 
   return (
-    <div className="editor-grid dim-editor">
-      <div className="panel form-panel logic-panel">
-        <div className="editor-head">
-          <span className="logic-icon">
+    <div className="dimx">
+      <aside className="dimx-nav">
+        <button className="dimx-back" onClick={onBack}>
+          <ArrowLeftIcon size={13} /> {t("Inhalte")}
+        </button>
+        <div className="dimx-id">
+          <span className="dimx-icon">
             <GlobeIcon size={18} />
           </span>
-          <div className="grow editor-head-text">
-            <div className="editor-head-title">{dim.nameDe || dim.id}</div>
-            <div className="editor-head-sub mono">
-              {project.modId}:{dim.id} · {t("Dimension")} · {DIM_TEMPLATES.find((x) => x.id === tp)?.label()}
+          <div className="grow dimx-id-text">
+            <div className="dimx-name">{dim.nameDe || dim.id}</div>
+            <div className="muted small">
+              {t("Dimension")} · {t("Vorlage {name}", { name: tplLabel ?? "" })}
             </div>
           </div>
           <button className="icon-btn" onClick={onDuplicate} aria-label={t("Duplizieren")} data-tip={t("Duplizieren")}>
-            <CopyIcon size={15} />
+            <CopyIcon size={14} />
           </button>
           <button className="icon-btn danger" onClick={onRemove} aria-label={t("Entfernen")} data-tip={t("Entfernen")}>
-            <TrashIcon size={15} />
+            <TrashIcon size={14} />
           </button>
         </div>
-        <SubTabs value={step} onChange={(v) => setStep(v as Step)} tabs={steps} />
+        <div className="dimx-mode">
+          <button className={!nodesMode ? "on" : ""} onClick={() => nodesMode && toBuilder()}>
+            {t("Baukasten")}
+          </button>
+          <button className={nodesMode ? "on" : ""} onClick={() => !nodesMode && toNodes()} disabled={tp === "flat" || tp === "void"}>
+            {t("Knoten")}
+          </button>
+        </div>
+        <nav className="dimx-steps">
+          {steps.map(([k, label, icon, dot]) => (
+            <button key={k} className={step === k ? "dimx-step active" : "dimx-step"} onClick={() => setStep(k)}>
+              {icon}
+              <span className="grow">{label}</span>
+              {dot && <span className="dimx-dot" />}
+            </button>
+          ))}
+          <div className="dimx-sep" />
+          {extraSteps.map(([k, label, icon]) => (
+            <button key={k} className={step === k ? "dimx-step active" : "dimx-step"} onClick={() => setStep(k)}>
+              {icon}
+              <span className="grow">{label}</span>
+            </button>
+          ))}
+        </nav>
+        {footer}
+      </aside>
+      <main className="dimx-main" key={step}>
+        {step === "start" && <PageHead title={t("Name & Vorlage")} desc={t("Name, ID und die Vorlage, auf der die Welt aufbaut.")} />}
+        {step === "blocks" && <PageHead title={t("Schichten & Blöcke")} desc={t("Aus welchen Blöcken die Welt besteht – von der Oberfläche bis ganz unten.")} />}
+        {step === "biomes" && <PageHead title={t("Biome")} desc={t("Welche Landschaften es gibt. Eigene Biome übernehmen Pflanzen, Tiere und Farben von einem Vorbild.")} />}
+        {step === "caves" && <PageHead title={t("Höhlen & Schluchten")} desc={t("Was unter der Oberfläche ausgehöhlt wird.")} />}
+        {step === "structures" && <PageHead title={t("Strukturen & Pflanzen")} desc={t("Dörfer, Tempel und andere Bauwerke, dazu Gras, Blumen und Bäume.")} />}
+        {step === "fluids" && <PageHead title={t("Flüssigkeiten")} desc={t("Meere, Seen und Quellen.")} />}
+        {step === "sky" && <PageHead title={t("Himmel & Licht")} desc={t("Himmel, Tageszeit, Helligkeit, Wetter und Farben.")} />}
+        {step === "mobs" && <PageHead title={t("Kreaturen")} desc={t("Welche Tiere und Monster hier erscheinen.")} />}
+        {step === "travel" && <PageHead title={t("Anreise")} desc={t("Wie Spieler in diese Dimension kommen.")} />}
 
         {step === "start" && (
           <>
@@ -190,21 +254,15 @@ export default function DimensionEditor({
           </>
         )}
 
-        {step === "terrain" && (
-          <div className="form-grid">
-            <Field label={t("Landmenge")} hint={dim.land === 0 ? t("wie die Vorlage") : dim.land > 0 ? t("mehr Land, höhere Berge") : t("weniger Land, mehr Wasser oder Luft")} span>
-              <input type="range" min={-0.4} max={0.4} step={0.02} value={dim.land} onChange={(e) => set({ land: Number(e.target.value) })} disabled={tp === "flat" || tp === "void"} />
-            </Field>
-            {tp === "flat" && (
-              <Field label={t("Höhe der Oberfläche")} hint={t("Y-Höhe der obersten Schicht")}>
-                <input className="input" type="number" min={-60} max={250} value={dim.seaLevel} onChange={(e) => set({ seaLevel: Number(e.target.value) })} />
-              </Field>
-            )}
-            <div className="muted small" style={{ gridColumn: "1 / -1" }}>
-              {t("Die Form des Geländes kommt aus der Vorlage. Eine eigene Formel aus Rauschen und Kurven kommt mit dem Knoten-Modus.")}
-            </div>
-          </div>
-        )}
+        {step === "terrain" &&
+          (nodesMode ? (
+            <>
+              <PageHead title={t("Gelände · Knoten-Modus")} desc={t("Für Experten: Die Formel für die Geländeform frei zusammenstecken. Alles andere (Erze, Höhlen, Biome …) bleibt im Baukasten.")} />
+              <TerrainNodes graph={dim.graph ?? { nodes: [], links: [] }} onChange={(g) => set({ graph: g })} />
+            </>
+          ) : (
+            <TerrainPage dim={dim} set={set} onNodes={toNodes} />
+          ))}
 
         {step === "blocks" && (
           <div className="form-grid">
@@ -316,77 +374,9 @@ export default function DimensionEditor({
           </div>
         )}
 
-        {step === "ores" && (
-          <>
-            {onlyOwn}
-            <div className="muted small">{t("Erze ersetzen das Gestein der Dimension. Eigene Erz-Blöcke funktionieren genauso.")}</div>
-            <div className="dim-list">
-              {dim.ores.map((o, i) => {
-                const upd = (patch: Partial<DimOre>) => set({ ores: dim.ores.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
-                return (
-                  <div className="dim-ore" key={i}>
-                    <div className="dim-ore-block">{blockInput(o.block, (v) => upd({ block: v }), t("Erz"))}</div>
-                    <div className="dim-ore-block">{blockInput(o.deepBlock, (v) => upd({ deepBlock: v }), t("Im tiefen Gestein: gleich"))}</div>
-                    <label className="dim-num">
-                      <span>{t("Ader")}</span>
-                      <input className="input" type="number" min={1} max={64} value={o.size} onChange={(e) => upd({ size: Number(e.target.value) })} />
-                    </label>
-                    <label className="dim-num">
-                      <span>{t("pro Chunk")}</span>
-                      <input className="input" type="number" min={0.05} max={64} step={0.5} value={o.count} onChange={(e) => upd({ count: Number(e.target.value) })} />
-                    </label>
-                    <label className="dim-num">
-                      <span>{t("Y von")}</span>
-                      <input className="input" type="number" value={o.minY} onChange={(e) => upd({ minY: Number(e.target.value) })} />
-                    </label>
-                    <label className="dim-num">
-                      <span>{t("bis")}</span>
-                      <input className="input" type="number" value={o.maxY} onChange={(e) => upd({ maxY: Number(e.target.value) })} />
-                    </label>
-                    <button className="icon-btn danger" onClick={() => set({ ores: dim.ores.filter((_, j) => j !== i) })} aria-label={t("Entfernen")}>
-                      <TrashIcon size={14} />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="row gap-s wrap">
-              <button className="btn small" onClick={() => set({ ores: [...dim.ores, { block: ownBlocks[0] ? ownBlocks[0].id : "minecraft:iron_ore", deepBlock: "", size: 8, count: 6, minY: -32, maxY: 64 }] })}>
-                {t("Erz hinzufügen")}
-              </button>
-              {ORE_PRESETS.map((p) => (
-                <button key={p.id} className="btn small ghost" onClick={() => set({ ores: p.ores() })}>
-                  {t("Vorlage: {name}", { name: p.label() })}
-                </button>
-              ))}
-              {dim.ores.length > 0 && (
-                <button className="btn small ghost" onClick={() => set({ ores: [] })}>
-                  {t("Keine Erze")}
-                </button>
-              )}
-            </div>
-            <div className="muted small">{t("Werte unter 1 bei „pro Chunk“ heißen: nur in manchen Chunks (0,5 = jeder zweite).")}</div>
-          </>
-        )}
+        {step === "ores" && <OresPage project={project} dim={dim} own={own} set={set} />}
 
-        {step === "islands" && (
-          <div className="form-grid">
-            <div style={{ gridColumn: "1 / -1" }}>
-              <Check label={t("Schwebende Inseln")} hint={t("Zusätzliche Inseln am Himmel – in jeder Vorlage")} checked={dim.islands} onChange={(v) => set({ islands: v })} />
-            </div>
-            {dim.islands && (
-              <>
-                <Field label={t("Höhe")} hint={dim.islandsY ? `Y ${dim.islandsY}` : t("automatisch")}>
-                  <input className="input" type="number" value={dim.islandsY || ""} placeholder={t("automatisch")} onChange={(e) => set({ islandsY: Number(e.target.value) })} />
-                </Field>
-                <Field label={t("Menge")} hint={`${Math.round(dim.islandsAmount * 100)} %`}>
-                  <input type="range" min={0.05} max={1} step={0.05} value={dim.islandsAmount} onChange={(e) => set({ islandsAmount: Number(e.target.value) })} />
-                </Field>
-              </>
-            )}
-            {tp === "floating" && <div className="muted small" style={{ gridColumn: "1 / -1" }}>{t("Die Vorlage „Schwebende Inseln“ besteht schon nur aus Inseln.")}</div>}
-          </div>
-        )}
+        {step === "islands" && <IslandsPage project={project} dim={dim} own={own} set={set} />}
 
         {step === "structures" && (
           <>
@@ -555,8 +545,8 @@ export default function DimensionEditor({
             )}
           </div>
         )}
-      </div>
-      <DimPreview dim={dim} />
+      </main>
+      <DimPreview dim={dim} seed={seed} onSeed={setSeed} onViewInGame={onViewInGame} />
     </div>
   );
 }

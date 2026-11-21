@@ -367,6 +367,10 @@ export interface DimBiome {
   topBlock: string;
   fillBlock: string;
 }
+export interface DimOreTarget {
+  target: string;
+  ore: string;
+}
 export interface DimOre {
   block: string;
   deepBlock: string;
@@ -374,6 +378,43 @@ export interface DimOre {
   count: number;
   minY: number;
   maxY: number;
+  disabled?: boolean;
+  /** "" | "uniform" | "triangle" | "bottom" | "top" */
+  distribution?: string;
+  /** nur in diesen eigenen Biomen (leer = alle) */
+  biomes?: string[];
+  hidden?: boolean;
+  extra?: DimOreTarget[];
+}
+export interface TNode {
+  id: string;
+  kind: string;
+  x: number;
+  y: number;
+  props: Record<string, string | number>;
+}
+export interface TLink {
+  from: string;
+  to: string;
+  port: string;
+}
+export interface TGraph {
+  nodes: TNode[];
+  links: TLink[];
+}
+export type TerrainShape = "hills" | "flat" | "mountains" | "islands" | "canyons" | "terraces";
+export interface TerrainLayer {
+  kind: "continents" | "erosion" | "peaks" | "roughness" | "overhangs";
+  on: boolean;
+  strength: number;
+}
+export interface TerrainBuilder {
+  shape: TerrainShape;
+  base: number;
+  diff: number;
+  size: number;
+  ocean: number;
+  layers: TerrainLayer[];
 }
 export interface DimSpawn {
   entity: string;
@@ -389,10 +430,25 @@ export interface DimDef {
   nameEn: string;
   /** "" = alte Dimension (wie Oberwelt) */
   template: DimTemplate | "";
+  /** "" = Form der Vorlage, "builder" = Baukasten, "nodes" = Knoten-Modus */
+  terrainMode?: "" | "builder" | "nodes";
+  terrain?: TerrainBuilder | null;
+  builderGraph?: TGraph;
+  graph?: TGraph;
+  minY?: number;
+  maxY?: number;
   land: number;
   islands: boolean;
   islandsY: number;
   islandsAmount: number;
+  islandsMinY?: number;
+  islandsMaxY?: number;
+  islandsSizeMin?: number;
+  islandsSizeMax?: number;
+  islandsThickness?: number;
+  islandsRough?: number;
+  islandsTop?: string;
+  islandsWaterfalls?: boolean;
   topBlock: string;
   fillBlock: string;
   stoneBlock: string;

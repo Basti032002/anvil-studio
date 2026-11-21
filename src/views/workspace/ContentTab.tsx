@@ -427,6 +427,54 @@ export default function ContentTab({ project }: { project: Project }) {
     );
   };
 
+  const saveBlock = (
+    <div className="content-save">
+      <button className={busy ? "btn primary full loading" : "btn primary full"} disabled={busy || (!dirty && content.generatorVersion > 0)} onClick={save}>
+        <SaveIcon size={14} /> {dirty ? t("Speichern & Code erzeugen") : t("Alles gespeichert")}
+      </button>
+      <div className="muted small center">{t("Strg S")}</div>
+    </div>
+  );
+
+  if (sel?.kind === "dimension" && content.dimensions[sel.index])
+    return (
+      <div className="content dimx-host">
+          <DimensionEditor
+            key={`dim-${sel.index}`}
+            project={project}
+            content={content}
+            dim={content.dimensions[sel.index]}
+            own={own}
+            onChange={(d) => setContent({ ...content, dimensions: content.dimensions.map((x, i) => (i === sel.index ? d : x)) })}
+            onDuplicate={() => {
+              const d = content.dimensions[sel.index];
+              setContent({ ...content, dimensions: [...content.dimensions, { ...structuredClone(d), id: `${d.id}_kopie`, nameDe: `${d.nameDe} (${t("Kopie")})` }] });
+              setSel({ kind: "dimension", index: content.dimensions.length });
+            }}
+            onRemove={() => remove()}
+            onBack={() => setSel(null)}
+            footer={saveBlock}
+            onViewInGame={async () => {
+              const d = content.dimensions[sel.index];
+              const cmd = `/execute in ${project.modId}:${d.id} run tp @s 0 ${Math.max(d.seaLevel + 40, 120)} 0`;
+              try {
+                await navigator.clipboard.writeText(cmd);
+              } catch {
+                /* Zwischenablage nicht verfügbar */
+              }
+              if (dirty) await save();
+              window.dispatchEvent(new CustomEvent("anvil:workspace", { detail: "run" }));
+              toast(t("Spiel startet. Der Befehl zum Hinreisen ist kopiert: {cmd}", { cmd }), "success");
+            }}
+            onAddBlueprint={(b) => {
+              setContent({ ...content, blueprints: [...content.blueprints, b] });
+              setSel({ kind: "blueprint", index: content.blueprints.length });
+              toast(t("Blueprint angelegt – wähle darin den Block, der dich hinbringt."), "success");
+            }}
+          />
+      </div>
+    );
+
   return (
     <div className="content">
       <aside className="content-list">
@@ -608,12 +656,7 @@ export default function ContentTab({ project }: { project: Project }) {
             ))}
           </ListGroup>
         </div>
-        <div className="content-save">
-          <button className={busy ? "btn primary full loading" : "btn primary full"} disabled={busy || (!dirty && content.generatorVersion > 0)} onClick={save}>
-            <SaveIcon size={14} /> {dirty ? t("Speichern & Code erzeugen") : t("Alles gespeichert")}
-          </button>
-          <div className="muted small center">{t("Strg S")}</div>
-        </div>
+        {saveBlock}
       </aside>
 
       <section className="content-editor">
@@ -627,27 +670,7 @@ export default function ContentTab({ project }: { project: Project }) {
             </div>
           </div>
         )}
-        {sel?.kind === "dimension" && content.dimensions[sel.index] ? (
-          <DimensionEditor
-            key={`dim-${sel.index}`}
-            project={project}
-            content={content}
-            dim={content.dimensions[sel.index]}
-            own={own}
-            onChange={(d) => setContent({ ...content, dimensions: content.dimensions.map((x, i) => (i === sel.index ? d : x)) })}
-            onDuplicate={() => {
-              const d = content.dimensions[sel.index];
-              setContent({ ...content, dimensions: [...content.dimensions, { ...structuredClone(d), id: `${d.id}_kopie`, nameDe: `${d.nameDe} (${t("Kopie")})` }] });
-              setSel({ kind: "dimension", index: content.dimensions.length });
-            }}
-            onRemove={() => remove()}
-            onAddBlueprint={(b) => {
-              setContent({ ...content, blueprints: [...content.blueprints, b] });
-              setSel({ kind: "blueprint", index: content.blueprints.length });
-              toast(t("Blueprint angelegt – wähle darin den Block, der dich hinbringt."), "success");
-            }}
-          />
-        ) : sel?.kind === "blueprint" && content.blueprints[sel.index] ? (
+        {sel?.kind === "blueprint" && content.blueprints[sel.index] ? (
           <BlueprintEditor
             key={`bp-${sel.index}`}
             project={project}

@@ -1,5 +1,6 @@
 import { t } from "../../i18n";
 import { DimBiome, DimDef, DimOre, DimTemplate } from "../../api";
+import { builderToGraph, defaultBuilder } from "./terrain";
 
 export const templateOf = (d: DimDef): DimTemplate => (d.template || "overworld") as DimTemplate;
 
@@ -79,7 +80,7 @@ export const SPAWN_CATEGORIES: { id: string; label: () => string }[] = [
   { id: "water_ambient", label: () => t("Fische") },
 ];
 
-const ore = (block: string, deepBlock: string, size: number, count: number, minY: number, maxY: number): DimOre => ({ block, deepBlock, size, count, minY, maxY });
+const ore = (block: string, deepBlock: string, size: number, count: number, minY: number, maxY: number): DimOre => ({ block, deepBlock, size, count, minY, maxY, distribution: "triangle" });
 
 export const ORE_PRESETS: { id: string; label: () => string; ores: () => DimOre[] }[] = [
   {
@@ -124,7 +125,16 @@ const biome = (id: string, nameDe: string, nameEn: string, base: string): DimBio
 
 /** Werte, die eine Vorlage vorgibt (Name und ID bleiben) */
 export function templateDefaults(tp: DimTemplate): Partial<DimDef> {
+  const shape = tp === "overworld" ? "hills" : tp === "amplified" ? "mountains" : null;
+  const terrain = shape ? defaultBuilder(shape) : null;
   const common: Partial<DimDef> = {
+    terrainMode: terrain ? "builder" : "",
+    terrain,
+    builderGraph: terrain ? builderToGraph(terrain, -64, 320) : { nodes: [], links: [] },
+    graph: { nodes: [], links: [] },
+    minY: terrain ? -64 : 0,
+    maxY: terrain ? 320 : 0,
+    islandsMinY: 0, islandsMaxY: 0, islandsSizeMin: 20, islandsSizeMax: 60, islandsThickness: 12, islandsRough: 0.5, islandsTop: "", islandsWaterfalls: false,
     template: tp, land: 0, islands: false, islandsY: 0, islandsAmount: 0.5, topBlock: "", fillBlock: "", stoneBlock: "", deepBlock: "",
     noBedrock: false, fluid: "water", seaLevel: 63, biomeMode: "own", biome: "overworld", biomeSize: 1, noNoiseCaves: false, noCaves: false,
     noCanyons: false, noOreVeins: false, noPlants: false, noLakes: false, noSprings: false, time: "normal", sky: "overworld", ambientLight: 0,

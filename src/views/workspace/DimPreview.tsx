@@ -1,39 +1,14 @@
 import { t } from "../../i18n";
 import { useEffect, useRef } from "react";
+import { PlayIcon, RefreshIcon } from "../../icons";
 import { DimDef } from "../../api";
 import { templateOf } from "./dimensionDefaults";
+import { fbm, makeEvaluator } from "./terrain";
 
-// ---- kleines Rauschen (nur für die Vorschau, nicht das echte Minecraft-Gelände) ----
 function hash(x: number, y: number, z: number, seed: number) {
   let h = (x * 374761393 + y * 668265263 + z * 2147483647 + seed * 144269504) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
-}
-const smooth = (t: number) => t * t * (3 - 2 * t);
-function noise3(x: number, y: number, z: number, seed: number) {
-  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
-  const xf = smooth(x - xi), yf = smooth(y - yi), zf = smooth(z - zi);
-  const l = (a: number, b: number, t: number) => a + (b - a) * t;
-  const c = (dx: number, dy: number, dz: number) => hash(xi + dx, yi + dy, zi + dz, seed);
-  return (
-    l(
-      l(l(c(0, 0, 0), c(1, 0, 0), xf), l(c(0, 1, 0), c(1, 1, 0), xf), yf),
-      l(l(c(0, 0, 1), c(1, 0, 1), xf), l(c(0, 1, 1), c(1, 1, 1), xf), yf),
-      zf,
-    ) *
-      2 -
-    1
-  );
-}
-function fbm(x: number, y: number, z: number, seed: number, oct = 3) {
-  let s = 0, a = 1, f = 1, n = 0;
-  for (let i = 0; i < oct; i++) {
-    s += noise3(x * f, y * f, z * f, seed + i * 17) * a;
-    n += a;
-    a *= 0.5;
-    f *= 2;
-  }
-  return s / n;
 }
 
 // ---- Farben -------------------------------------------------------------------
@@ -80,6 +55,7 @@ function rgb(c: string): [number, number, number] {
 
 /** Höhenbereich der Vorlage */
 export function yRange(d: DimDef): [number, number] {
+  if ((d.maxY ?? 0) > (d.minY ?? 0)) return [d.minY ?? 0, d.maxY ?? 0];
   const tp = templateOf(d);
   if (tp === "nether") return [0, 128];
   if (tp === "end" || tp === "void" || tp === "floating") return [0, 256];
@@ -87,11 +63,30 @@ export function yRange(d: DimDef): [number, number] {
   return [-64, 320];
 }
 
+export function islandsRange(d: DimDef): [number, number] {
+  const [y0, y1] = yRange(d);
+  let lo: number, hi: number;
+  if ((d.islandsMaxY ?? 0) > (d.islandsMinY ?? 0)) [lo, hi] = [d.islandsMinY!, d.islandsMaxY!];
+  else {
+    const y = d.islandsY || y1 - 96;
+    [lo, hi] = [y - 24, y + 24];
+  }
+  lo = Math.max(y0 + 8, Math.min(y1 - 16, lo));
+  hi = Math.max(y0 + 16, Math.min(y1 - 8, hi));
+  return [Math.min(lo, hi - 8), hi];
+}
+
 /** Ist an (x, y, z) fester Boden? */
-function solid(d: DimDef, x: number, y: number, z: number, seed: number): boolean {
+type Ev = ReturnType<typeof makeEvaluator> | null;
+function solid(d: DimDef, x: number, y: number, z: number, seed: number, ev: Ev): boolean {
   const tp = templateOf(d);
   const land = (d.land || 0) * 80;
   let s = false;
+  if (ev && tp !== "flat" && tp !== "void") {
+    let dens = ev.density(x, y, z) + (d.land || 0);
+    if (!d.noNoiseCaves && dens > 1.6 && fbm(x / 28, y / 14, z / 28, seed + 9, 2) > 0.55) dens = -1;
+    s = dens > 0;
+  } else
   switch (tp) {
     case "overworld":
     case "amplified": {
@@ -128,44 +123,64 @@ function solid(d: DimDef, x: number, y: number, z: number, seed: number): boolea
       s = false;
   }
   if (!s && d.islands) {
-    const iy = d.islandsY || yRange(d)[1] - 96;
-    const band = Math.max(0, 1 - Math.abs(y - iy) / 20);
-    s = band > 0 && fbm(x / 40, y / 14, z / 40, seed + 11) * band > 0.45 - 0.3 * (d.islandsAmount || 0.5);
+    const [lo, hi] = islandsRange(d);
+    if (y >= lo && y <= hi) {
+      const fade = Math.max(4, Math.min(24, (hi - lo) / 4));
+      const band = Math.min(1, (y - lo) / fade, (hi - y) / fade);
+      const size = d.islandsSizeMax ? ((d.islandsSizeMin || 20) + d.islandsSizeMax) / 2 : 40;
+      const thick = d.islandsThickness || 12;
+      let n = fbm(x / (size * 1.2), y / (thick * 1.2), z / (size * 1.2), seed + 11, 3) * 0.8;
+      if (d.islandsRough) n += d.islandsRough * 0.35 * fbm(x / 6, y / 6, z / 6, seed + 12, 2);
+      s = band * (n + 0.25 + 0.6 * (d.islandsAmount || 0.5)) - 1 > 0;
+    }
   }
   return s;
 }
 
+function evaluatorFor(d: DimDef, seed: number): Ev {
+  if (d.terrainMode !== "builder" && d.terrainMode !== "nodes") return null;
+  const g = d.terrainMode === "nodes" ? d.graph : d.builderGraph;
+  if (!g || !g.nodes.some((n) => n.kind === "output")) return null;
+  const [y0, y1] = yRange(d);
+  return makeEvaluator(g, seed, y0, y1);
+}
+
+const MAP_BLOCKS = 640;
+
 /** Querschnitt (Seitenansicht) */
-function drawSection(ctx: CanvasRenderingContext2D, d: DimDef, w: number, h: number) {
+function drawSection(ctx: CanvasRenderingContext2D, d: DimDef, w: number, h: number, seed: number, ev: Ev) {
   const [y0, y1] = yRange(d);
   const tp = templateOf(d);
   const img = ctx.createImageData(w, h);
   const top = rgb(blockColor(d.topBlock, tp === "nether" ? "netherrack" : tp === "end" ? "end_stone" : "grass_block"));
   const fill = rgb(blockColor(d.fillBlock, tp === "nether" ? "netherrack" : tp === "end" ? "end_stone" : "dirt"));
+  const islandTop = d.islandsTop ? rgb(blockColor(d.islandsTop, "grass_block")) : top;
   const stoneC = rgb(blockColor(d.stoneBlock, tp === "nether" ? "netherrack" : tp === "end" || tp === "void" ? "end_stone" : "stone"));
   const deepC = rgb(blockColor(d.deepBlock || d.stoneBlock, tp === "nether" ? "netherrack" : tp === "end" ? "end_stone" : "deepslate"));
   const fluid = d.fluid === "none" || tp === "end" || tp === "void" ? null : rgb(COLORS[d.fluid === "lava" ? "lava" : "water"]);
-  const skyTop = d.skyColor ? rgb(d.skyColor) : tp === "nether" ? [60, 20, 20] : tp === "end" || tp === "void" ? [20, 14, 30] : [120, 167, 255];
-  const ores = (d.ores ?? []).map((o) => ({ ...o, c: rgb(blockColor(o.block, "stone")) }));
-  const seed = 7;
+  const skyTop = d.skyColor ? rgb(d.skyColor) : tp === "nether" ? [60, 20, 20] : tp === "end" || tp === "void" ? [20, 14, 30] : [150, 196, 255];
+  const ores = (d.ores ?? []).filter((o) => !o.disabled).map((o, i) => ({ ...o, i, c: rgb(blockColor(o.block, "stone")) }));
+  const [ilo] = islandsRange(d);
   const z = 0;
+  const step = MAP_BLOCKS / w;
   for (let px = 0; px < w; px++) {
-    const x = (px - w / 2) * 2;
+    const x = Math.round((px - w / 2) * step);
     let depth = -1;
     for (let py = 0; py < h; py++) {
       const y = Math.round(y1 - ((py + 0.5) / h) * (y1 - y0));
-      const s = solid(d, x, y, z, seed);
+      const s = solid(d, x, y, z, seed, ev);
       let c: number[];
       if (s) {
         depth = depth < 0 ? 0 : depth + 1;
-        const bed = !d.noBedrock && (y <= y0 + 1 || ((tp === "nether" || tp === "caves") && y >= y1 - 2));
+        const bed = !d.noBedrock && (y <= y0 + 2 || ((tp === "nether" || tp === "caves") && y >= y1 - 3));
+        const isl = d.islands && y >= ilo;
         if (bed) c = [40, 40, 40];
-        else if (depth === 0 && tp !== "nether" && tp !== "end" && tp !== "caves") c = top;
-        else if (depth <= 2 && tp !== "end" && tp !== "caves") c = depth === 0 ? top : fill;
+        else if (depth === 0 && tp !== "nether" && tp !== "end" && tp !== "caves") c = isl ? islandTop : top;
+        else if (depth <= 1 && tp !== "end" && tp !== "caves") c = fill;
         else c = y < 0 && tp !== "nether" ? deepC : stoneC;
-        if (depth > 2) {
+        if (depth > 1) {
           for (const o of ores) {
-            if (y >= Math.min(o.minY, o.maxY) && y <= Math.max(o.minY, o.maxY) && hash(Math.floor(px / 2), Math.floor(py / 2), o.size, 99 + ores.indexOf(o)) < Math.min(0.04, 0.0008 * o.count * Math.sqrt(o.size))) {
+            if (y >= Math.min(o.minY, o.maxY) && y <= Math.max(o.minY, o.maxY) && hash(px, py, o.size, 99 + o.i) < Math.min(0.06, 0.0015 * o.count * Math.sqrt(o.size))) {
               c = o.c;
               break;
             }
@@ -173,11 +188,11 @@ function drawSection(ctx: CanvasRenderingContext2D, d: DimDef, w: number, h: num
         }
       } else {
         depth = -1;
-        if (fluid && y <= d.seaLevel && tp !== "floating" && tp !== "caves") c = fluid;
+        if (fluid && y <= d.seaLevel && tp !== "floating" && tp !== "caves" && !(d.islands && y >= ilo)) c = fluid;
         else {
           const k = py / h;
-          c = [skyTop[0] * (1 - k * 0.4), skyTop[1] * (1 - k * 0.4), skyTop[2] * (1 - k * 0.3)];
-          if (tp === "nether" || tp === "caves") c = [skyTop[0] * 0.5, skyTop[1] * 0.5, skyTop[2] * 0.5];
+          c = [skyTop[0] * (1 - k * 0.25), skyTop[1] * (1 - k * 0.2), skyTop[2] * (1 - k * 0.1)];
+          if (tp === "nether" || tp === "caves") c = [skyTop[0] * 0.45, skyTop[1] * 0.45, skyTop[2] * 0.45];
         }
       }
       const i = (py * w + px) * 4;
@@ -190,74 +205,97 @@ function drawSection(ctx: CanvasRenderingContext2D, d: DimDef, w: number, h: num
   ctx.putImageData(img, 0, 0);
 }
 
-/** Karte (Draufsicht) mit Biomen */
-function drawMap(ctx: CanvasRenderingContext2D, d: DimDef, w: number, h: number) {
+/** Karte (Draufsicht) */
+function drawMap(ctx: CanvasRenderingContext2D, d: DimDef, w: number, seed: number, ev: Ev) {
   const tp = templateOf(d);
+  const h = w;
   const img = ctx.createImageData(w, h);
+  const [y0, y1] = yRange(d);
   const biomes = d.biomeMode === "own" ? (d.biomes ?? []) : [];
   const vanilla = tp === "nether" ? ["nether_wastes", "crimson_forest", "warped_forest", "soul_sand_valley", "basalt_deltas"] : tp === "end" ? ["the_end"] : ["plains", "forest", "desert", "taiga", "snowy_plains", "jungle", "savanna"];
   const list = biomes.length ? biomes.map((b) => b.base || "plains") : vanilla;
   const size = d.biomeSize || 1;
-  const fluid = rgb(COLORS[d.fluid === "lava" ? "lava" : "water"]);
+  const water = rgb(COLORS[d.fluid === "lava" ? "lava" : "water"]);
+  const step = MAP_BLOCKS / w;
+  const cave = tp === "nether" || tp === "caves";
   for (let py = 0; py < h; py++)
     for (let px = 0; px < w; px++) {
-      const x = (px - w / 2) * 4, z = (py - h / 2) * 4;
-      const temp = fbm(x / (420 * size), 0, z / (420 * size), 31, 2);
+      const x = Math.round((px - w / 2) * step), z = Math.round((py - h / 2) * step);
+      const temp = fbm(x / (420 * size), 0, z / (420 * size), 31, 2) / 1.6;
       const bi = Math.min(list.length - 1, Math.max(0, Math.floor(((temp * 1.6 + 1) / 2) * list.length)));
-      let c = rgb(BASE_COLORS[list[bi]] ?? hashColor(list[bi]));
+      let c = rgb(BASE_COLORS[list[bi]] ?? "#8db360");
       const own = biomes[bi];
       if (own?.topBlock) c = rgb(blockColor(own.topBlock, "grass_block"));
-      let shade = 1;
-      if (tp === "overworld" || tp === "amplified") {
-        const amp = tp === "amplified" ? 160 : 70;
-        const hh = d.seaLevel + 8 + amp * fbm(x / 160, 0, z / 160, 7, 4) + 8 * fbm(x / 30, 0, z / 30, 12) + (d.land || 0) * 80;
-        if (hh < d.seaLevel && d.fluid !== "none") c = fluid;
-        shade = 0.75 + Math.max(-0.2, Math.min(0.35, (hh - d.seaLevel) / 120));
-      } else if (tp === "end" || tp === "floating" || tp === "void") {
-        let any = false;
-        for (let y = 20; y < 220 && !any; y += 12) any = solid(d, x, y, z, 7);
-        if (!any) c = [18, 14, 26];
-      } else if (tp === "nether" || tp === "caves") shade = 0.7;
+      else if (d.topBlock && !cave) c = rgb(blockColor(d.topBlock, "grass_block"));
+      // Oberfläche suchen
+      let surf = -9999;
+      const from = cave ? Math.min(y1 - 8, d.seaLevel + 40) : y1;
+      for (let y = from; y >= y0; y -= 4)
+        if (solid(d, x, y, z, seed, ev)) {
+          surf = y;
+          break;
+        }
+      if (surf === -9999) c = tp === "end" || tp === "void" || tp === "floating" ? [18, 14, 26] : d.fluid !== "none" ? water : [18, 14, 26];
+      else if (surf < d.seaLevel && d.fluid !== "none" && !cave) c = surf < d.seaLevel - 12 ? [water[0] * 0.75, water[1] * 0.75, water[2] * 0.8] : water;
+      else if (d.islands && surf >= islandsRange(d)[0]) {
+        const ic = d.islandsTop ? rgb(blockColor(d.islandsTop, "grass_block")) : c;
+        c = [ic[0] * 0.85, ic[1] * 0.85, ic[2] * 0.85];
+      } else if (!cave && tp !== "end") {
+        const above = surf - d.seaLevel;
+        if (above <= 2 && d.fluid === "water") c = rgb(COLORS.sand);
+        else if (above > 135) c = [240, 244, 246];
+        else if (above > 95) c = [125, 125, 125];
+      }
       const i = (py * w + px) * 4;
-      img.data[i] = c[0] * shade;
-      img.data[i + 1] = c[1] * shade;
-      img.data[i + 2] = c[2] * shade;
+      img.data[i] = c[0];
+      img.data[i + 1] = c[1];
+      img.data[i + 2] = c[2];
       img.data[i + 3] = 255;
     }
   ctx.putImageData(img, 0, 0);
-  ctx.strokeStyle = "rgba(255,255,255,.7)";
-  ctx.setLineDash([4, 3]);
-  ctx.beginPath();
-  ctx.moveTo(0, h / 2);
-  ctx.lineTo(w, h / 2);
-  ctx.stroke();
 }
 
-export default function DimPreview({ dim }: { dim: DimDef }) {
+export default function DimPreview({ dim, seed, onSeed, onViewInGame }: { dim: DimDef; seed: number; onSeed: (s: number) => void; onViewInGame?: () => void }) {
   const map = useRef<HTMLCanvasElement>(null);
   const sec = useRef<HTMLCanvasElement>(null);
-  const key = JSON.stringify(dim);
+  const key = JSON.stringify(dim) + seed;
   useEffect(() => {
     const id = window.setTimeout(() => {
-      const m = map.current?.getContext("2d");
+      const ev = evaluatorFor(dim, seed);
       const s = sec.current?.getContext("2d");
-      if (m) drawMap(m, dim, 220, 140);
-      if (s) drawSection(s, dim, 220, 150);
-    }, 60);
+      if (s) drawSection(s, dim, 160, 96, seed, ev);
+      const m = map.current?.getContext("2d");
+      if (m) drawMap(m, dim, 80, seed, evaluatorFor(dim, seed));
+    }, 120);
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   const [y0, y1] = yRange(dim);
   return (
-    <div className="panel dim-preview">
-      <div className="panel-title-lg">{t("Vorschau")}</div>
-      <div className="dim-preview-label muted small">{t("Karte")}</div>
-      <canvas ref={map} width={220} height={140} className="dim-canvas" />
-      <div className="dim-preview-label muted small">
-        {t("Querschnitt entlang der gestrichelten Linie")} · Y {y0} – {y1}
+    <aside className="dim-preview">
+      <div className="dim-preview-head">
+        <div className="panel-title-lg grow">{t("Live-Vorschau")}</div>
+        <span className="dim-seed mono">
+          {t("Seed")} {seed}
+        </span>
+        <button className="icon-btn" onClick={() => onSeed(Math.floor(Math.random() * 99999))} aria-label={t("Neuer Seed")} data-tip={t("Neuer Seed")}>
+          <RefreshIcon size={14} />
+        </button>
       </div>
-      <canvas ref={sec} width={220} height={150} className="dim-canvas" />
+      <canvas ref={map} width={80} height={80} className="dim-canvas dim-map" />
+      <div className="muted small">
+        {t("Von oben")} · {MAP_BLOCKS} × {MAP_BLOCKS} {t("Blöcke")}
+      </div>
+      <canvas ref={sec} width={160} height={96} className="dim-canvas dim-section" />
+      <div className="muted small">
+        {t("Querschnitt")} · Y {y0} {t("bis")} {y1}
+      </div>
+      {onViewInGame && (
+        <button className="btn primary full" onClick={onViewInGame}>
+          <PlayIcon size={13} /> {t("In Minecraft ansehen")}
+        </button>
+      )}
       <div className="muted small">{t("Ungefähre Vorschau – die echte Welt sieht im Detail anders aus.")}</div>
-    </div>
+    </aside>
   );
 }
