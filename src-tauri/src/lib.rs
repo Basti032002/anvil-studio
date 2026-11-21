@@ -41,6 +41,7 @@ pub fn run() {
             content::content_lang_entries,
             content::structures_scan,
             workshop::ws_remote_config,
+            workshop::ws_public_stats,
             workshop::ws_check_url,
             workshop::ws_image_preview,
             admin::admin_workshop_config,

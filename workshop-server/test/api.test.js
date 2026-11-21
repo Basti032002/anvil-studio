@@ -130,6 +130,9 @@ test("Xbox-Übergangsanmeldung und Übernahme aufs Minecraft-Konto", async () =>
   assert.equal(withImg.body.status, "pending");
   assert.equal((await fetch(`${base}/api/items/${withImg.body.id}/images/0`)).status, 404);
   assert.equal((await fetch(`${base}/api/items/${withImg.body.id}/images/0?t=${r.body.token}`)).status, 200);
+  const pub = await json("/api/stats/public");
+  assert.equal(pub.status, 200);
+  assert.equal(typeof pub.body.downloads, "number");
   // Reihenfolge ändern: neues Bild nach vorn, altes dahinter; dazu zwei Videos
   const fd4 = new FormData();
   fd4.append("meta", JSON.stringify({ imageOrder: ["new:0", "old:0"], videos: ["https://youtu.be/a1", "https://www.youtube.com/watch?v=b2"] }));

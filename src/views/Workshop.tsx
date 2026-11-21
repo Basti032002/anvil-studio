@@ -4,10 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, exportApi, ModSettings, modSettingsApi, pickSaveFile, Project } from "../api";
 import { confirmDialog, openMenu } from "../components/Overlay";
 import McLoginDialog from "../components/McLogin";
+import Markdown from "../components/Markdown";
 import { Comments, DependencyList, DependencyPicker, NotificationBell, RateBox, RatingSummary, SubscribeButton, Subscriptions, Stars, useSubscriptionSync } from "./WorkshopSocial";
 import {
   AlertIcon,
   ArrowLeftIcon,
+  ArrowRightIcon,
+  BellIcon,
+  StarIcon,
   CheckIcon,
   CloseIcon,
   CodeIcon,
@@ -154,6 +158,122 @@ function Unreachable({ error, onRetry }: { error: string; onRetry: () => void })
 
 // ---- Startseite ------------------------------------------------------------------
 
+/** Karte für einen Workshop-Eintrag */
+export function WsCard({ item: it, onOpen, compact }: { item: WsItem; onOpen: (id: string) => void; compact?: boolean }) {
+  return (
+    <button className={compact ? "ws-card compact" : "ws-card"} onClick={() => onOpen(it.id)}>
+      <div className="ws-card-media">
+        <Cover item={it} height={compact ? 112 : 150} />
+        <div className="ws-card-badges">
+          <TypeBadges item={it} />
+        </div>
+        {it.icon && <img className="ws-card-icon" src={wsUrl(it.icon)} alt="" />}
+      </div>
+      <div className="ws-card-body">
+        <div className="ws-card-title">{it.title}</div>
+        <div className="ws-card-author">
+          <img src={`https://mc-heads.net/avatar/${it.owner.uuid}/16`} alt="" loading="lazy" />
+          <span className="muted small">{it.owner.name}</span>
+        </div>
+        {!compact && <div className="ws-card-summary">{it.summary || t("Keine Kurzbeschreibung.")}</div>}
+        <div className="ws-card-foot">
+          <span className="row gap-4">
+            <DownloadIcon size={12} /> {it.downloads.toLocaleString(locale)}
+          </span>
+          {!!it.rating?.count && (
+            <span className="row gap-4">
+              <Stars value={it.rating.avg} size={11} /> <span>{it.rating.avg.toFixed(1)}</span>
+            </span>
+          )}
+          <span className="grow" />
+          {it.mcVersion && <span className="ws-ver">{it.mcVersion}</span>}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function Shelf({ title, desc, items, onOpen, onMore }: { title: string; desc?: string; items: WsItem[]; onOpen: (id: string) => void; onMore?: () => void }) {
+  if (!items.length) return null;
+  return (
+    <section className="ws-shelf">
+      <div className="ws-shelf-head">
+        <div>
+          <h2>{title}</h2>
+          {desc && <div className="muted small">{desc}</div>}
+        </div>
+        <span className="grow" />
+        {onMore && (
+          <button className="link-btn" onClick={onMore}>
+            {t("Alle anzeigen")} <ArrowRightIcon size={12} />
+          </button>
+        )}
+      </div>
+      <div className="ws-shelf-row">
+        {items.map((it) => (
+          <WsCard key={it.id} item={it} onOpen={onOpen} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function Spotlight({ items, onOpen }: { items: WsItem[]; onOpen: (id: string) => void }) {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (items.length < 2) return;
+    const h = window.setInterval(() => setI((x) => (x + 1) % items.length), 7000);
+    return () => window.clearInterval(h);
+  }, [items.length]);
+  const it = items[i % items.length];
+  if (!it) return null;
+  return (
+    <div className="ws-spot">
+      <button className="ws-spot-main" onClick={() => onOpen(it.id)}>
+        <div className="ws-spot-media">
+          <Cover item={it} height={300} />
+          <div className="ws-spot-shade" />
+        </div>
+        <div className="ws-spot-body">
+          <span className="ws-featured-tag">{t("Empfohlen")}</span>
+          <div className="row">
+            {it.icon && <img className="ws-icon lg" src={wsUrl(it.icon)} alt="" />}
+            <div>
+              <div className="ws-spot-title">{it.title}</div>
+              <div className="ws-spot-sub">
+                {t("von {name}", { name: it.owner.name })} · Minecraft {it.mcVersion}
+              </div>
+            </div>
+          </div>
+          <p className="ws-spot-summary">{it.summary}</p>
+          <div className="row gap-6 wrap">
+            {it.categories.map((c) => (
+              <span key={c} className="ws-chip-dark">
+                {categoryLabel(c)}
+              </span>
+            ))}
+            <span className="ws-chip-dark">
+              <DownloadIcon size={11} /> {it.downloads.toLocaleString(locale)}
+            </span>
+            {!!it.rating?.count && (
+              <span className="ws-chip-dark">
+                <StarIcon size={11} /> {it.rating.avg.toFixed(1)}
+              </span>
+            )}
+          </div>
+        </div>
+      </button>
+      {items.length > 1 && (
+        <div className="ws-spot-dots">
+          {items.map((x, j) => (
+            <button key={x.id} className={j === i % items.length ? "on" : ""} onClick={() => setI(j)} aria-label={x.title} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Home({ onOpen, onUpload, onMine, onLogin, onSubs }: { onOpen: (id: string) => void; onUpload: () => void; onMine: () => void; onLogin: () => void; onSubs: () => void }) {
   const [kind, setKind] = useState<"mod" | "source">(() => (localStorage.getItem("anvil.ws.kind") === "source" ? "source" : "mod"));
   const [q, setQ] = useState("");
@@ -163,7 +283,10 @@ function Home({ onOpen, onUpload, onMine, onLogin, onSubs }: { onOpen: (id: stri
   const [items, setItems] = useState<WsItem[] | null>(null);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState("");
+  const [shelves, setShelves] = useState<{ fresh: WsItem[]; top: WsItem[] } | null>(null);
+  const [stats, setStats] = useState<{ mods: number; sources: number; downloads: number; creators: number } | null>(null);
   const req = useRef(0);
+  const browsing = !!(q.trim() || cat || mc || sort);
 
   async function load() {
     const n = ++req.current;
@@ -185,26 +308,65 @@ function Home({ onOpen, onUpload, onMine, onLogin, onSubs }: { onOpen: (id: stri
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, q, mc, cat, sort]);
+  useEffect(() => {
+    setShelves(null);
+    Promise.all([wsApi.list(kind, "", "", "", "new", 0, { limit: 4 }), wsApi.list(kind, "", "", "", "rating", 0, { limit: 8 })])
+      .then(([a, b]) => setShelves({ fresh: a.items, top: b.items.filter((x) => (x.rating?.count ?? 0) > 0).slice(0, 4) }))
+      .catch(() => setShelves({ fresh: [], top: [] }));
+    wsApi.publicStats().then(setStats).catch(() => {});
+  }, [kind]);
 
-  const featured = !q && !cat && items?.find((i) => i.featured);
-  const rest = items?.filter((i) => i !== featured) ?? [];
+  const featured = (items ?? []).filter((i) => i.featured);
+  const popular = (items ?? []).filter((i) => !i.featured).slice(0, 4);
+  const big = (n: number) => (n >= 10000 ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k` : n.toLocaleString(locale));
 
   return (
     <>
-      <header className="page-header">
-        <div>
+      <header className="ws-hero">
+        <div className="ws-hero-bg" />
+        <div className="ws-hero-top">
           <div className="eyebrow">{t("Community")}</div>
-          <h1>{t("Workshop")}</h1>
-          <p className="muted">{t("Mods aus der Community spielen – oder den Quellcode holen und selbst weiterbauen.")}</p>
-        </div>
-        <div className="row gap-6">
+          <span className="grow" />
           <NotificationBell onOpen={onOpen} />
           <AccountChip onLogin={onLogin} />
+        </div>
+        <h1>{t("Workshop")}</h1>
+        <p className="ws-hero-text">{t("Mods aus der Community spielen – oder den Quellcode holen und selbst weiterbauen.")}</p>
+        <div className="ws-hero-search">
+          <SearchIcon size={16} />
+          <label htmlFor="wsq" className="sr-only">
+            {t("Workshop durchsuchen")}
+          </label>
+          <input id="wsq" placeholder={t("Mods, Ersteller oder Stichworte suchen …")} value={q} onChange={(e) => setQ(e.target.value)} />
+          {q && (
+            <button className="icon-btn" onClick={() => setQ("")} aria-label={t("Suche leeren")}>
+              <CloseIcon size={12} />
+            </button>
+          )}
+        </div>
+        <div className="ws-hero-foot">
+          {stats && (
+            <div className="ws-stats">
+              <span>
+                <b>{big(stats.mods)}</b> {t("Mods")}
+              </span>
+              <span>
+                <b>{big(stats.sources)}</b> {t("Quellcode-Projekte")}
+              </span>
+              <span>
+                <b>{big(stats.downloads)}</b> {t("Downloads")}
+              </span>
+              <span>
+                <b>{big(stats.creators)}</b> {t("Ersteller")}
+              </span>
+            </div>
+          )}
+          <span className="grow" />
           <button className="btn" onClick={onSubs}>
-            {t("Abonniert")}
+            <BellIcon size={13} /> {t("Abonniert")}
           </button>
           <button className="btn" onClick={onMine}>
-            {t("Meine Uploads")}
+            <UserIcon size={13} /> {t("Meine Uploads")}
           </button>
           <button className="btn primary" onClick={onUpload}>
             <UploadIcon size={14} /> {t("Hochladen")}
@@ -221,26 +383,12 @@ function Home({ onOpen, onUpload, onMine, onLogin, onSubs }: { onOpen: (id: stri
             <CodeIcon size={14} /> {t("Quellcode zum Bearbeiten")}
           </button>
         </div>
-        <div className="search grow">
-          <SearchIcon size={13} />
-          <label htmlFor="wsq" className="sr-only">
-            {t("Workshop durchsuchen")}
-          </label>
-          <input id="wsq" placeholder={t("Workshop durchsuchen …")} value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
+        <span className="grow" />
         <select className="input" value={mc} onChange={(e) => setMc(e.target.value)} aria-label={t("Minecraft-Version")}>
           <option value="">{t("Alle Versionen")}</option>
           {MC_VERSIONS.map((v) => (
             <option key={v} value={v}>
               Minecraft {v}
-            </option>
-          ))}
-        </select>
-        <select className="input" value={cat} onChange={(e) => setCat(e.target.value)} aria-label={t("Kategorie")}>
-          <option value="">{t("Alle Kategorien")}</option>
-          {CATEGORIES.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.label}
             </option>
           ))}
         </select>
@@ -252,87 +400,84 @@ function Home({ onOpen, onUpload, onMine, onLogin, onSubs }: { onOpen: (id: stri
           <option value="name">{t("Name")}</option>
         </select>
       </div>
+      <div className="ws-cats" role="tablist" aria-label={t("Kategorie")}>
+        <button className={!cat ? "ws-cat on" : "ws-cat"} onClick={() => setCat("")}>
+          {t("Alle")}
+        </button>
+        {CATEGORIES.map((c) => (
+          <button key={c.id} className={cat === c.id ? "ws-cat on" : "ws-cat"} onClick={() => setCat(cat === c.id ? "" : c.id)}>
+            {c.label}
+          </button>
+        ))}
+      </div>
 
       {error && <Unreachable error={error} onRetry={load} />}
-
-      {featured && (
-        <button className="ws-featured" onClick={() => onOpen(featured.id)}>
-          <div className="ws-featured-media">
-            <Cover item={featured} height={260} />
-            <span className="ws-featured-tag">{t("Empfohlen")}</span>
-          </div>
-          <div className="ws-featured-body">
-            <div className="row">
-              {featured.icon && <img className="ws-icon" src={wsUrl(featured.icon)} alt="" />}
-              <div>
-                <div className="ws-featured-title">{featured.title}</div>
-                <div className="muted">
-                  {t("von {name}", { name: featured.owner.name })} · Minecraft {featured.mcVersion}
-                </div>
-              </div>
-            </div>
-            <p className="muted">{featured.summary}</p>
-            <div className="row gap-6 wrap">
-              {featured.categories.map((c) => (
-                <span key={c} className="badge-mini">
-                  {categoryLabel(c)}
-                </span>
-              ))}
-            </div>
-            <span className="grow" />
-            <div className="muted small">{t("{n} Downloads", { n: featured.downloads.toLocaleString(locale) })}</div>
-          </div>
-        </button>
-      )}
-
-      <div className="ws-list-head">
-        <h2>{kind === "mod" ? t("Mods") : t("Quellcode-Projekte")}</h2>
-        <span className="muted">{kind === "mod" ? t("Herunterladen und direkt spielen") : t("Herunterladen, in Anvil Studio öffnen und selbst weiterbauen")}</span>
-        <span className="grow" />
-        {items && <span className="muted small">{t("{n} Einträge", { n: total })}</span>}
-      </div>
 
       {items === null ? (
         <div className="ws-grid">
           {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-            <div key={i} className="skeleton" style={{ height: 240 }} />
+            <div key={i} className="skeleton" style={{ height: 260 }} />
           ))}
         </div>
-      ) : rest.length === 0 && !featured && !error ? (
+      ) : items.length === 0 && !error ? (
         <div className="empty">
           <div className="empty-icon">
             <WorkshopIcon size={24} />
           </div>
-          <h2>{q || cat || mc ? t("Nichts gefunden") : t("Noch leer")}</h2>
-          <p className="muted">{q || cat || mc ? t("Versuche einen anderen Suchbegriff oder Filter.") : t("Sei der Erste und lade deine Mod hoch.")}</p>
-        </div>
-      ) : (
-        <div className="ws-grid">
-          {rest.map((it) => (
-            <button key={it.id} className="ws-card" onClick={() => onOpen(it.id)}>
-              <Cover item={it} height={140} />
-              <div className="ws-card-badges">
-                <TypeBadges item={it} />
-              </div>
-              <div className="ws-card-body">
-                <div className="ws-card-title">{it.title}</div>
-                <div className="muted small">
-                  {t("von {name}", { name: it.owner.name })} · {it.mcVersion}
-                </div>
-                <div className="ws-card-summary">{it.summary}</div>
-                <div className="muted small row gap-6">
-                  <DownloadIcon size={12} /> {it.downloads.toLocaleString(locale)}
-                  {!!it.rating?.count && (
-                    <>
-                      <span className="grow" />
-                      <Stars value={it.rating.avg} size={11} />
-                    </>
-                  )}
-                </div>
-              </div>
+          <h2>{browsing ? t("Nichts gefunden") : t("Noch leer")}</h2>
+          <p className="muted">{browsing ? t("Versuche einen anderen Suchbegriff oder Filter.") : t("Sei der Erste und lade deine Mod hoch.")}</p>
+          {!browsing && (
+            <button className="btn primary" onClick={onUpload}>
+              <UploadIcon size={14} /> {t("Hochladen")}
             </button>
-          ))}
+          )}
         </div>
+      ) : browsing ? (
+        <>
+          <div className="ws-list-head">
+            <h2>{q.trim() ? t("Ergebnisse für „{q}“", { q: q.trim() }) : cat ? categoryLabel(cat) : kind === "mod" ? t("Mods") : t("Quellcode-Projekte")}</h2>
+            <span className="grow" />
+            <span className="muted small">{t("{n} Einträge", { n: total })}</span>
+            <button
+              className="btn small ghost"
+              onClick={() => {
+                setQ("");
+                setCat("");
+                setMc("");
+                setSort("");
+              }}
+            >
+              {t("Filter zurücksetzen")}
+            </button>
+          </div>
+          <div className="ws-grid">
+            {items.map((it) => (
+              <WsCard key={it.id} item={it} onOpen={onOpen} />
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          {featured.length > 0 && <Spotlight items={featured} onOpen={onOpen} />}
+          <Shelf title={t("Beliebt")} desc={t("Am meisten heruntergeladen")} items={popular} onOpen={onOpen} onMore={() => document.querySelector(".ws-all")?.scrollIntoView({ behavior: "smooth" })} />
+          <Shelf title={t("Neu im Workshop")} desc={t("Gerade erst hochgeladen")} items={shelves?.fresh ?? []} onOpen={onOpen} onMore={() => setSort("new")} />
+          <Shelf title={t("Bestbewertet")} desc={t("Von der Community am besten bewertet")} items={shelves?.top ?? []} onOpen={onOpen} onMore={() => setSort("rating")} />
+          <section className="ws-shelf ws-all">
+            <div className="ws-shelf-head">
+              <div>
+                <h2>{kind === "mod" ? t("Alle Mods") : t("Alle Quellcode-Projekte")}</h2>
+                <div className="muted small">{kind === "mod" ? t("Herunterladen und direkt spielen") : t("Herunterladen, in Anvil Studio öffnen und selbst weiterbauen")}</div>
+              </div>
+              <span className="grow" />
+              <span className="muted small">{t("{n} Einträge", { n: total })}</span>
+            </div>
+            <div className="ws-grid">
+              {items.map((it) => (
+                <WsCard key={it.id} item={it} onOpen={onOpen} />
+              ))}
+            </div>
+          </section>
+        </>
       )}
     </>
   );
@@ -360,7 +505,26 @@ function ItemPage({
   const [media, setMedia] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [opening, setOpening] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const [more, setMore] = useState<WsItem[]>([]);
+  const [similar, setSimilar] = useState<WsItem[]>([]);
   const ws = useWorkshop();
+  // Mehr vom gleichen Ersteller und Ähnliches aus der ersten Kategorie
+  useEffect(() => {
+    if (!item) return;
+    const kind = item.hasMod ? "mod" : "source";
+    wsApi
+      .list(kind, "", "", "", "", 0, { owner: item.owner.uuid, exclude: item.id, limit: 4 })
+      .then((r) => setMore(r.items.filter((x) => x.owner.uuid === item.owner.uuid && x.id !== item.id).slice(0, 4)))
+      .catch(() => setMore([]));
+    if (item.categories[0])
+      wsApi
+        .list(kind, "", "", item.categories[0], "", 0, { exclude: item.id, limit: 8 })
+        .then((r) => setSimilar(r.items.filter((x) => x.id !== item.id && x.owner.uuid !== item.owner.uuid).slice(0, 4)))
+        .catch(() => setSimilar([]));
+    else setSimilar([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item?.id]);
 
   const load = () => {
     setError("");
@@ -390,6 +554,7 @@ function ItemPage({
   ];
   const slide = slides[Math.min(media, slides.length - 1)];
   const own = ws.profile && ws.profile.uuid.replace(/-/g, "") === item.owner.uuid;
+  const longDesc = (item.description || "").length > 1400 || (item.description || "").split("\n").length > 22;
 
   async function download() {
     const dest = await pickSaveFile(t("Mod-Datei speichern"), `${item!.modId || "mod"}-${item!.modVersion || "1.0"}.jar`, "jar", t("Mod-Datei"));
@@ -443,7 +608,7 @@ function ItemPage({
           {slide ? (
             <div className="ws-stage">
               {slide.kind === "video" ? (
-                <iframe src={slide.src} title={t("Trailer")} allow="encrypted-media; picture-in-picture; fullscreen" allowFullScreen />
+                <iframe src={slide.src} title={t("Video")} allow="encrypted-media; picture-in-picture; fullscreen" allowFullScreen />
               ) : (
                 <img src={slide.src} alt="" />
               )}
@@ -454,10 +619,13 @@ function ItemPage({
           {slides.length > 1 && (
             <div className="ws-thumbs">
               {slides.map((s, i) => (
-                <button key={i} className={i === media ? "ws-thumb active" : "ws-thumb"} onClick={() => setMedia(i)} aria-label={s.kind === "video" ? t("Trailer") : t("Bild {n}", { n: i + 1 })}>
+                <button key={i} className={i === media ? "ws-thumb active" : "ws-thumb"} onClick={() => setMedia(i)} aria-label={s.kind === "video" ? t("Video") : t("Bild {n}", { n: i + 1 })}>
                   {s.kind === "video" ? (
                     <span className="ws-thumb-video">
-                      <PlayIcon size={16} /> {t("Trailer")}
+                      <img src={`https://i.ytimg.com/vi/${s.src.match(/embed\/([^?]+)/)?.[1] ?? ""}/mqdefault.jpg`} alt="" />
+                      <span className="ws-thumb-play">
+                        <PlayIcon size={14} />
+                      </span>
                     </span>
                   ) : (
                     <img src={s.src} alt="" />
@@ -468,8 +636,18 @@ function ItemPage({
           )}
           <section className="panel ws-about">
             <h2>{t("Über diese Mod")}</h2>
-            <div className="ws-description">{item.description || item.summary || t("Keine Beschreibung.")}</div>
+            {item.summary && item.description && <p className="ws-lead">{item.summary}</p>}
+            <div className={longDesc && !showAll ? "ws-description clamped" : "ws-description"}>
+              <Markdown text={item.description || item.summary || t("Keine Beschreibung.")} />
+            </div>
+            {longDesc && (
+              <button className="link-btn" onClick={() => setShowAll(!showAll)}>
+                {showAll ? t("Weniger anzeigen") : t("Mehr anzeigen")}
+              </button>
+            )}
           </section>
+          <Shelf title={t("Mehr von {name}", { name: item.owner.name })} items={more} onOpen={onOpen} />
+          <Shelf title={t("Ähnliche Mods")} desc={item.categories[0] ? categoryLabel(item.categories[0]) : undefined} items={similar} onOpen={onOpen} />
           <Comments item={item} withLogin={(r, then) => withLogin(r, () => then())} />
         </div>
 

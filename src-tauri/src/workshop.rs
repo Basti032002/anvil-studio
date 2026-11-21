@@ -196,16 +196,24 @@ pub fn ws_base_url(app: AppHandle) -> String {
 }
 
 #[tauri::command]
-pub async fn ws_list(app: AppHandle, kind: String, q: String, mc: String, category: String, sort: String, offset: u32) -> Result<Value, String> {
+pub async fn ws_list(app: AppHandle, kind: String, q: String, mc: String, category: String, sort: String, offset: u32, owner: Option<String>, exclude: Option<String>, limit: Option<u32>) -> Result<Value, String> {
     let path = format!(
-        "/api/items?type={}&q={}&mc={}&category={}&sort={}&offset={offset}&limit=60",
+        "/api/items?type={}&q={}&mc={}&category={}&sort={}&offset={offset}&limit={}&owner={}&exclude={}",
         enc(&kind),
         enc(&q),
         enc(&mc),
         enc(&category),
-        enc(&sort)
+        enc(&sort),
+        limit.unwrap_or(60).clamp(1, 100),
+        enc(owner.as_deref().unwrap_or("")),
+        enc(exclude.as_deref().unwrap_or(""))
     );
     call(&app, reqwest::Method::GET, &path, None, false).await
+}
+
+#[tauri::command]
+pub async fn ws_public_stats(app: AppHandle) -> Result<Value, String> {
+    call(&app, reqwest::Method::GET, "/api/stats/public", None, false).await
 }
 
 #[tauri::command]

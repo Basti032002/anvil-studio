@@ -75,7 +75,9 @@ export const mcApi = {
 
 export const wsApi = {
   baseUrl: () => invoke<string>("ws_base_url"),
-  list: (kind: "mod" | "source", q = "", mc = "", category = "", sort = "", offset = 0) => invoke<{ total: number; items: WsItem[] }>("ws_list", { kind, q, mc, category, sort, offset }),
+  list: (kind: "mod" | "source", q = "", mc = "", category = "", sort = "", offset = 0, extra: { owner?: string; exclude?: string; limit?: number } = {}) =>
+    invoke<{ total: number; items: WsItem[] }>("ws_list", { kind, q, mc, category, sort, offset, owner: extra.owner ?? null, exclude: extra.exclude ?? null, limit: extra.limit ?? null }),
+  publicStats: () => invoke<{ mods: number; sources: number; downloads: number; creators: number }>("ws_public_stats"),
   item: (id: string) => invoke<WsItem>("ws_item", { id }),
   me: () => invoke<WsMe | null>("ws_me"),
   myItems: () => invoke<{ items: WsItem[] }>("ws_my_items"),

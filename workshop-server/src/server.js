@@ -230,6 +230,8 @@ export function buildServer() {
     if (q.type === "mod") where.push("mod_file != ''");
     if (q.type === "source") where.push("source_file != ''");
     if (q.mc) (where.push("mc_version = ?"), args.push(String(q.mc)));
+    if (q.owner) (where.push("owner_uuid = ?"), args.push(String(q.owner).replace(/-/g, "")));
+    if (q.exclude) (where.push("id != ?"), args.push(String(q.exclude)));
     if (q.category) (where.push("categories LIKE ?"), args.push(`%"${String(q.category).replace(/[%_"]/g, "")}"%`));
     if (q.q) {
       where.push("(title LIKE ? OR summary LIKE ? OR owner_name LIKE ?)");
@@ -249,6 +251,17 @@ export function buildServer() {
     const total = db.prepare(`SELECT COUNT(*) AS n FROM items WHERE ${where.join(" AND ")}`).get(...args).n;
     const viewer = userOf(req);
     return { total, items: rows.map((r) => view(r, viewer)) };
+  });
+
+  // Zahlen für die Startseite des Workshops
+  app.get("/api/stats/public", async () => {
+    const one = (sql) => db.prepare(sql).get().n;
+    return {
+      mods: one("SELECT COUNT(*) AS n FROM items WHERE status = 'public' AND mod_file != ''"),
+      sources: one("SELECT COUNT(*) AS n FROM items WHERE status = 'public' AND source_file != ''"),
+      downloads: one("SELECT COALESCE(SUM(downloads), 0) AS n FROM items WHERE status = 'public'"),
+      creators: one("SELECT COUNT(DISTINCT owner_uuid) AS n FROM items WHERE status = 'public'"),
+    };
   });
 
   app.get("/api/items/:id", async (req) => {
