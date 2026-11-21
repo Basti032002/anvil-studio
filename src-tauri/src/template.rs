@@ -390,6 +390,43 @@ mod tests {
     }
 
     /// Prüft das Anpassen der Vorlage mit einem lokal geladenen MDK-Zip:
+    /// Beispiel-Mod bauen: ANVIL_EXAMPLE_DIR, ANVIL_EXAMPLE_MDK (nur beim ersten Lauf), ANVIL_EXAMPLE_CONTENT (content.json)
+    #[test]
+    fn build_example() {
+        let Ok(dir) = std::env::var("ANVIL_EXAMPLE_DIR") else { return };
+        let target = PathBuf::from(&dir);
+        let req = CreateRequest {
+            name: "Rubinwerk".into(),
+            mod_id: "rubinwerk".into(),
+            package: "de.sebigames.rubinwerk".into(),
+            mc_version: "1.21.1".into(),
+            author: "Anvil Studio".into(),
+            description: "Beispiel-Mod: Rubine, Werkzeuge, eine Rubin-Presse mit eigener Oberfläche, Variablen und Blueprints.".into(),
+            parent_dir: None,
+        };
+        if !target.join("build.gradle").exists() {
+            let bytes = std::fs::read(std::env::var("ANVIL_EXAMPLE_MDK").unwrap()).unwrap();
+            std::fs::create_dir_all(&target).unwrap();
+            extract_strip(&bytes, &target).unwrap();
+            customize(&target, &req, &class_name(&req.name)).unwrap();
+        }
+        let Ok(content) = std::env::var("ANVIL_EXAMPLE_CONTENT") else { return };
+        let mut c: crate::content::Content = serde_json::from_str(&std::fs::read_to_string(content).unwrap()).unwrap();
+        let p = crate::projects::Project {
+            id: "rubinwerk".into(),
+            name: req.name.clone(),
+            mod_id: req.mod_id.clone(),
+            package: req.package.clone(),
+            mc_version: req.mc_version.clone(),
+            loader: "neoforge".into(),
+            path: dir.clone(),
+            created_at: 0,
+            last_run: None,
+        };
+        let r = crate::content::generate(&p, &mut c).unwrap();
+        println!("Registrierung: {r}");
+    }
+
     /// ANVIL_TEST_MDK=/pfad/mdk.zip cargo test -- customize_mdk
     #[test]
     fn customize_mdk() {

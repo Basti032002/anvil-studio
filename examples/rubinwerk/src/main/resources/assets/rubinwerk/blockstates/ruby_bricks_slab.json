@@ -1,0 +1,13 @@
+{
+  "variants": {
+    "type=bottom": {
+      "model": "rubinwerk:block/ruby_bricks_slab"
+    },
+    "type=top": {
+      "model": "rubinwerk:block/ruby_bricks_slab_top"
+    },
+    "type=double": {
+      "model": "rubinwerk:block/ruby_bricks"
+    }
+  }
+}

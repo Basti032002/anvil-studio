@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:block/wall_inventory",
+  "textures": {
+    "wall": "rubinwerk:block/lib/rubin_ziegel"
+  }
+}

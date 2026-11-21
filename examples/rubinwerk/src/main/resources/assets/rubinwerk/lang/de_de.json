@@ -1,0 +1,20 @@
+{
+  "itemGroup.rubinwerk.anvil": "Rubinwerk",
+  "block.rubinwerk.ruby_ore": "Rubinerz",
+  "block.rubinwerk.deepslate_ruby_ore": "Tiefenschiefer-Rubinerz",
+  "block.rubinwerk.ruby_block": "Rubinblock",
+  "block.rubinwerk.ruby_bricks": "Rubinziegel",
+  "block.rubinwerk.ruby_bricks_stairs": "Rubinziegel-Treppe",
+  "block.rubinwerk.ruby_bricks_slab": "Rubinziegel-Stufe",
+  "block.rubinwerk.ruby_bricks_wall": "Rubinziegel-Mauer",
+  "block.rubinwerk.ruby_lamp": "Rubinlampe",
+  "block.rubinwerk.ruby_press": "Rubin-Presse",
+  "item.rubinwerk.ruby": "Rubin",
+  "item.rubinwerk.ruby_dust": "Rubinstaub",
+  "item.rubinwerk.ruby_wand": "Rubin-Stab",
+  "item.rubinwerk.ruby_sword": "Rubinschwert",
+  "item.rubinwerk.ruby_pickaxe": "Rubinspitzhacke",
+  "item.rubinwerk.ruby_axe": "Rubinaxt",
+  "item.rubinwerk.ruby_shovel": "Rubinschaufel",
+  "item.rubinwerk.ruby_hoe": "Rubinhacke"
+}

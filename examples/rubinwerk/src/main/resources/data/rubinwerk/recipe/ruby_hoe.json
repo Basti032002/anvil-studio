@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "AA",
+    " B",
+    " B"
+  ],
+  "key": {
+    "A": {
+      "item": "rubinwerk:ruby"
+    },
+    "B": {
+      "item": "minecraft:stick"
+    }
+  },
+  "result": {
+    "id": "rubinwerk:ruby_hoe",
+    "count": 1
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "replace": false,
+  "values": [
+    "rubinwerk:ruby_ore",
+    "rubinwerk:deepslate_ruby_ore",
+    "rubinwerk:ruby_block",
+    "rubinwerk:ruby_bricks",
+    "rubinwerk:ruby_bricks_stairs",
+    "rubinwerk:ruby_bricks_slab",
+    "rubinwerk:ruby_bricks_wall",
+    "rubinwerk:ruby_press"
+  ]
+}

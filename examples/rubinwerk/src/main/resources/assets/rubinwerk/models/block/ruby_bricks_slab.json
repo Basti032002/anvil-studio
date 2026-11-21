@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/slab",
+  "textures": {
+    "bottom": "rubinwerk:block/lib/rubin_ziegel",
+    "top": "rubinwerk:block/lib/rubin_ziegel",
+    "side": "rubinwerk:block/lib/rubin_ziegel"
+  }
+}

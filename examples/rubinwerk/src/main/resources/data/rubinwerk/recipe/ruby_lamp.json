@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " A ",
+    "ABA",
+    " A "
+  ],
+  "key": {
+    "A": {
+      "item": "minecraft:glowstone_dust"
+    },
+    "B": {
+      "item": "rubinwerk:ruby"
+    }
+  },
+  "result": {
+    "id": "rubinwerk:ruby_lamp",
+    "count": 1
+  }
+}

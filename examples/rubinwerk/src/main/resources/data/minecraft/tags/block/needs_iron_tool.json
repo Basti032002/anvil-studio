@@ -1,0 +1,8 @@
+{
+  "replace": false,
+  "values": [
+    "rubinwerk:ruby_ore",
+    "rubinwerk:deepslate_ruby_ore",
+    "rubinwerk:ruby_block"
+  ]
+}

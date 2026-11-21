@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "lit=false": {
+      "model": "rubinwerk:block/ruby_lamp"
+    },
+    "lit=true": {
+      "model": "rubinwerk:block/ruby_lamp_on"
+    }
+  }
+}

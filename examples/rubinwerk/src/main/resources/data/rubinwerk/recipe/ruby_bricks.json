@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "AAA",
+    "A  "
+  ],
+  "key": {
+    "A": {
+      "item": "rubinwerk:ruby_block"
+    }
+  },
+  "result": {
+    "id": "rubinwerk:ruby_bricks",
+    "count": 4
+  }
+}

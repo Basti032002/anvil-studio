@@ -1,0 +1,12 @@
+{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "up": "rubinwerk:block/lib/presse_oben",
+    "down": "rubinwerk:block/lib/presse_oben",
+    "north": "rubinwerk:block/lib/presse_vorne",
+    "south": "rubinwerk:block/lib/presse_seite",
+    "east": "rubinwerk:block/lib/presse_seite",
+    "west": "rubinwerk:block/lib/presse_seite",
+    "particle": "rubinwerk:block/lib/presse_vorne"
+  }
+}

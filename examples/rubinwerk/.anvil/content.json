@@ -1,0 +1,1721 @@
+{
+  "schemaVersion": 4,
+  "generatorVersion": 3,
+  "blocks": [
+    {
+      "id": "ruby_ore",
+      "nameDe": "Rubinerz",
+      "nameEn": "Ruby Ore",
+      "material": "stone",
+      "hardness": 3.0,
+      "resistance": 3.0,
+      "light": 0,
+      "tool": "pickaxe",
+      "tier": "iron",
+      "recipe": {
+        "enabled": false,
+        "kind": "crafting",
+        "shaped": true,
+        "grid": [],
+        "count": 1,
+        "experience": 0.10000000149011612,
+        "cookingTime": 200
+      },
+      "shapes": [],
+      "ore": {
+        "enabled": true,
+        "drop": "rubinwerk:ruby",
+        "dropMin": 1,
+        "dropMax": 2,
+        "xpMin": 3,
+        "xpMax": 7,
+        "deepslate": true,
+        "dimension": "overworld",
+        "veinSize": 6,
+        "veinsPerChunk": 7,
+        "minY": -48,
+        "maxY": 24
+      },
+      "kind": "normal",
+      "rows": 3,
+      "names": {},
+      "model": [],
+      "rotate": false,
+      "workbenchRecipes": [],
+      "machine": {
+        "fuel": true,
+        "recipes": [],
+        "gui": ""
+      },
+      "faces": {
+        "mode": "",
+        "all": "",
+        "top": "",
+        "bottom": "",
+        "side": "",
+        "north": "",
+        "south": "",
+        "east": "",
+        "west": ""
+      }
+    },
+    {
+      "id": "ruby_block",
+      "nameDe": "Rubinblock",
+      "nameEn": "Block of Ruby",
+      "material": "metal",
+      "hardness": 5.0,
+      "resistance": 6.0,
+      "light": 3,
+      "tool": "pickaxe",
+      "tier": "iron",
+      "recipe": {
+        "enabled": true,
+        "kind": "crafting",
+        "shaped": true,
+        "grid": [
+          "rubinwerk:ruby",
+          "rubinwerk:ruby",
+          "rubinwerk:ruby",
+          "rubinwerk:ruby",
+          "rubinwerk:ruby",
+          "rubinwerk:ruby",
+          "rubinwerk:ruby",
+          "rubinwerk:ruby",
+          "rubinwerk:ruby"
+        ],
+        "count": 1,
+        "experience": 0.10000000149011612,
+        "cookingTime": 200
+      },
+      "shapes": [],
+      "ore": {
+        "enabled": false,
+        "drop": "",
+        "dropMin": 1,
+        "dropMax": 1,
+        "xpMin": 0,
+        "xpMax": 0,
+        "deepslate": true,
+        "dimension": "overworld",
+        "veinSize": 8,
+        "veinsPerChunk": 6,
+        "minY": -64,
+        "maxY": 32
+      },
+      "kind": "normal",
+      "rows": 3,
+      "names": {},
+      "model": [],
+      "rotate": false,
+      "workbenchRecipes": [],
+      "machine": {
+        "fuel": true,
+        "recipes": [],
+        "gui": ""
+      },
+      "faces": {
+        "mode": "all",
+        "all": "rubin_glanz",
+        "top": "",
+        "bottom": "",
+        "side": "",
+        "north": "",
+        "south": "",
+        "east": "",
+        "west": ""
+      }
+    },
+    {
+      "id": "ruby_bricks",
+      "nameDe": "Rubinziegel",
+      "nameEn": "Ruby Bricks",
+      "material": "stone",
+      "hardness": 2.0,
+      "resistance": 6.0,
+      "light": 0,
+      "tool": "pickaxe",
+      "tier": "wood",
+      "recipe": {
+        "enabled": true,
+        "kind": "crafting",
+        "shaped": true,
+        "grid": [
+          "rubinwerk:ruby_block",
+          "rubinwerk:ruby_block",
+          "rubinwerk:ruby_block",
+          "rubinwerk:ruby_block"
+        ],
+        "count": 4,
+        "experience": 0.10000000149011612,
+        "cookingTime": 200
+      },
+      "shapes": [
+        "stairs",
+        "slab",
+        "wall"
+      ],
+      "ore": {
+        "enabled": false,
+        "drop": "",
+        "dropMin": 1,
+        "dropMax": 1,
+        "xpMin": 0,
+        "xpMax": 0,
+        "deepslate": true,
+        "dimension": "overworld",
+        "veinSize": 8,
+        "veinsPerChunk": 6,
+        "minY": -64,
+        "maxY": 32
+      },
+      "kind": "normal",
+      "rows": 3,
+      "names": {},
+      "model": [],
+      "rotate": false,
+      "workbenchRecipes": [],
+      "machine": {
+        "fuel": true,
+        "recipes": [],
+        "gui": ""
+      },
+      "faces": {
+        "mode": "all",
+        "all": "rubin_ziegel",
+        "top": "",
+        "bottom": "",
+        "side": "",
+        "north": "",
+        "south": "",
+        "east": "",
+        "west": ""
+      }
+    },
+    {
+      "id": "ruby_lamp",
+      "nameDe": "Rubinlampe",
+      "nameEn": "Ruby Lamp",
+      "material": "glass",
+      "hardness": 0.30000001192092896,
+      "resistance": 0.30000001192092896,
+      "light": 0,
+      "tool": "none",
+      "tier": "wood",
+      "recipe": {
+        "enabled": true,
+        "kind": "crafting",
+        "shaped": true,
+        "grid": [
+          "",
+          "minecraft:glowstone_dust",
+          "",
+          "minecraft:glowstone_dust",
+          "rubinwerk:ruby",
+          "minecraft:glowstone_dust",
+          "",
+          "minecraft:glowstone_dust",
+          ""
+        ],
+        "count": 1,
+        "experience": 0.10000000149011612,
+        "cookingTime": 200
+      },
+      "shapes": [],
+      "ore": {
+        "enabled": false,
+        "drop": "",
+        "dropMin": 1,
+        "dropMax": 1,
+        "xpMin": 0,
+        "xpMax": 0,
+        "deepslate": true,
+        "dimension": "overworld",
+        "veinSize": 8,
+        "veinsPerChunk": 6,
+        "minY": -64,
+        "maxY": 32
+      },
+      "kind": "lamp",
+      "rows": 3,
+      "names": {},
+      "model": [],
+      "rotate": false,
+      "workbenchRecipes": [],
+      "machine": {
+        "fuel": true,
+        "recipes": [],
+        "gui": ""
+      },
+      "faces": {
+        "mode": "",
+        "all": "",
+        "top": "",
+        "bottom": "",
+        "side": "",
+        "north": "",
+        "south": "",
+        "east": "",
+        "west": ""
+      }
+    },
+    {
+      "id": "ruby_press",
+      "nameDe": "Rubin-Presse",
+      "nameEn": "Ruby Press",
+      "material": "metal",
+      "hardness": 3.5,
+      "resistance": 6.0,
+      "light": 0,
+      "tool": "pickaxe",
+      "tier": "stone",
+      "recipe": {
+        "enabled": true,
+        "kind": "crafting",
+        "shaped": true,
+        "grid": [
+          "minecraft:iron_ingot",
+          "minecraft:iron_ingot",
+          "minecraft:iron_ingot",
+          "minecraft:iron_ingot",
+          "rubinwerk:ruby_block",
+          "minecraft:iron_ingot",
+          "minecraft:iron_ingot",
+          "minecraft:furnace",
+          "minecraft:iron_ingot"
+        ],
+        "count": 1,
+        "experience": 0.10000000149011612,
+        "cookingTime": 200
+      },
+      "shapes": [],
+      "ore": {
+        "enabled": false,
+        "drop": "",
+        "dropMin": 1,
+        "dropMax": 1,
+        "xpMin": 0,
+        "xpMax": 0,
+        "deepslate": true,
+        "dimension": "overworld",
+        "veinSize": 8,
+        "veinsPerChunk": 6,
+        "minY": -64,
+        "maxY": 32
+      },
+      "kind": "machine",
+      "rows": 3,
+      "names": {},
+      "model": [],
+      "rotate": false,
+      "workbenchRecipes": [],
+      "machine": {
+        "fuel": true,
+        "recipes": [
+          {
+            "input": "rubinwerk:ruby",
+            "inputCount": 1,
+            "output": "rubinwerk:ruby_dust",
+            "outputCount": 2,
+            "time": 100
+          },
+          {
+            "input": "minecraft:raw_iron",
+            "inputCount": 1,
+            "output": "minecraft:iron_ingot",
+            "outputCount": 2,
+            "time": 160
+          },
+          {
+            "input": "minecraft:raw_gold",
+            "inputCount": 1,
+            "output": "minecraft:gold_ingot",
+            "outputCount": 2,
+            "time": 160
+          }
+        ],
+        "gui": "rubin_presse"
+      },
+      "faces": {
+        "mode": "each",
+        "all": "",
+        "top": "presse_oben",
+        "bottom": "presse_oben",
+        "side": "",
+        "north": "presse_vorne",
+        "south": "presse_seite",
+        "east": "presse_seite",
+        "west": "presse_seite"
+      }
+    }
+  ],
+  "items": [
+    {
+      "id": "ruby",
+      "nameDe": "Rubin",
+      "nameEn": "Ruby",
+      "names": {},
+      "stackSize": 64,
+      "rarity": "uncommon",
+      "food": false,
+      "nutrition": 4,
+      "saturation": 0.30000001192092896,
+      "recipe": {
+        "enabled": false,
+        "kind": "crafting",
+        "shaped": true,
+        "grid": [],
+        "count": 1,
+        "experience": 0.10000000149011612,
+        "cookingTime": 200
+      },
+      "kind": "basic",
+      "toolType": "sword",
+      "toolTier": "iron",
+      "durability": 250,
+      "attackDamage": 6.0,
+      "attackSpeed": 1.600000023841858,
+      "miningSpeed": 6.0,
+      "enchantability": 14,
+      "repairItem": "",
+      "armorSlot": "helmet",
+      "armorMaterial": "",
+      "defense": 2,
+      "toughness": 0.0,
+      "knockbackResistance": 0.0,
+      "texture": ""
+    },
+    {
+      "id": "ruby_dust",
+      "nameDe": "Rubinstaub",
+      "nameEn": "Ruby Dust",
+      "names": {},
+      "stackSize": 64,
+      "rarity": "common",
+      "food": false,
+      "nutrition": 4,
+      "saturation": 0.30000001192092896,
+      "recipe": {
+        "enabled": true,
+        "kind": "crafting",
+        "shaped": false,
+        "grid": [
+          "rubinwerk:ruby",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "count": 1,
+        "experience": 0.10000000149011612,
+        "cookingTime": 200
+      },
+      "kind": "basic",
+      "toolType": "sword",
+      "toolTier": "iron",
+      "durability": 250,
+      "attackDamage": 6.0,
+      "attackSpeed": 1.600000023841858,
+      "miningSpeed": 6.0,
+      "enchantability": 14,
+      "repairItem": "",
+      "armorSlot": "helmet",
+      "armorMaterial": "",
+      "defense": 2,
+      "toughness": 0.0,
+      "knockbackResistance": 0.0,
+      "texture": ""
+    },
+    {
+      "id": "ruby_wand",
+      "nameDe": "Rubin-Stab",
+      "nameEn": "Ruby Wand",
+      "names": {},
+      "stackSize": 1,
+      "rarity": "epic",
+      "food": false,
+      "nutrition": 4,
+      "saturation": 0.30000001192092896,
+      "recipe": {
+        "enabled": true,
+        "kind": "crafting",
+        "shaped": true,
+        "grid": [
+          "",
+          "",
+          "rubinwerk:ruby_dust",
+          "",
+          "minecraft:stick",
+          "",
+          "minecraft:stick",
+          "",
+          ""
+        ],
+        "count": 1,
+        "experience": 0.10000000149011612,
+        "cookingTime": 200
+      },
+      "kind": "basic",
+      "toolType": "sword",
+      "toolTier": "iron",
+      "durability": 250,
+      "attackDamage": 6.0,
+      "attackSpeed": 1.600000023841858,
+      "miningSpeed": 6.0,
+      "enchantability": 14,
+      "repairItem": "",
+      "armorSlot": "helmet",
+      "armorMaterial": "",
+      "defense": 2,
+      "toughness": 0.0,
+      "knockbackResistance": 0.0,
+      "texture": ""
+    },
+    {
+      "id": "ruby_sword",
+      "nameDe": "Rubinschwert",
+      "nameEn": "Ruby Sword",
+      "names": {},
+      "stackSize": 1,
+      "rarity": "common",
+      "food": false,
+      "nutrition": 4,
+      "saturation": 0.30000001192092896,
+      "recipe": {
+        "enabled": true,
+        "kind": "crafting",
+        "shaped": true,
+        "grid": [
+          "",
+          "rubinwerk:ruby",
+          "",
+          "",
+          "rubinwerk:ruby",
+          "",
+          "",
+          "minecraft:stick",
+          ""
+        ],
+        "count": 1,
+        "experience": 0.10000000149011612,
+        "cookingTime": 200
+      },
+      "kind": "tool",
+      "toolType": "sword",
+      "toolTier": "iron",
+      "durability": 900,
+      "attackDamage": 7.0,
+      "attackSpeed": 1.600000023841858,
+      "miningSpeed": 7.5,
+      "enchantability": 18,
+      "repairItem": "rubinwerk:ruby",
+      "armorSlot": "helmet",
+      "armorMaterial": "",
+      "defense": 2,
+      "toughness": 0.0,
+      "knockbackResistance": 0.0,
+      "texture": ""
+    },
+    {
+      "id": "ruby_pickaxe",
+      "nameDe": "Rubinspitzhacke",
+      "nameEn": "Ruby Pickaxe",
+      "names": {},
+      "stackSize": 1,
+      "rarity": "common",
+      "food": false,
+      "nutrition": 4,
+      "saturation": 0.30000001192092896,
+      "recipe": {
+        "enabled": true,
+        "kind": "crafting",
+        "shaped": true,
+        "grid": [
+          "rubinwerk:ruby",
+          "rubinwerk:ruby",
+          "rubinwerk:ruby",
+          "",
+          "minecraft:stick",
+          "",
+          "",
+          "minecraft:stick",
+          ""
+        ],
+        "count": 1,
+        "experience": 0.10000000149011612,
+        "cookingTime": 200
+      },
+      "kind": "tool",
+      "toolType": "pickaxe",
+      "toolTier": "iron",
+      "durability": 900,
+      "attackDamage": 4.0,
+      "attackSpeed": 1.2000000476837158,
+      "miningSpeed": 7.5,
+      "enchantability": 18,
+      "repairItem": "rubinwerk:ruby",
+      "armorSlot": "helmet",
+      "armorMaterial": "",
+      "defense": 2,
+      "toughness": 0.0,
+      "knockbackResistance": 0.0,
+      "texture": ""
+    },
+    {
+      "id": "ruby_axe",
+      "nameDe": "Rubinaxt",
+      "nameEn": "Ruby Axe",
+      "names": {},
+      "stackSize": 1,
+      "rarity": "common",
+      "food": false,
+      "nutrition": 4,
+      "saturation": 0.30000001192092896,
+      "recipe": {
+        "enabled": true,
+        "kind": "crafting",
+        "shaped": true,
+        "grid": [
+          "rubinwerk:ruby",
+          "rubinwerk:ruby",
+          "",
+          "rubinwerk:ruby",
+          "minecraft:stick",
+          "",
+          "",
+          "minecraft:stick",
+          ""
+        ],
+        "count": 1,
+        "experience": 0.10000000149011612,
+        "cookingTime": 200
+      },
+      "kind": "tool",
+      "toolType": "axe",
+      "toolTier": "iron",
+      "durability": 900,
+      "attackDamage": 9.0,
+      "attackSpeed": 0.8999999761581421,
+      "miningSpeed": 7.5,
+      "enchantability": 18,
+      "repairItem": "rubinwerk:ruby",
+      "armorSlot": "helmet",
+      "armorMaterial": "",
+      "defense": 2,
+      "toughness": 0.0,
+      "knockbackResistance": 0.0,
+      "texture": ""
+    },
+    {
+      "id": "ruby_shovel",
+      "nameDe": "Rubinschaufel",
+      "nameEn": "Ruby Shovel",
+      "names": {},
+      "stackSize": 1,
+      "rarity": "common",
+      "food": false,
+      "nutrition": 4,
+      "saturation": 0.30000001192092896,
+      "recipe": {
+        "enabled": true,
+        "kind": "crafting",
+        "shaped": true,
+        "grid": [
+          "",
+          "rubinwerk:ruby",
+          "",
+          "",
+          "minecraft:stick",
+          "",
+          "",
+          "minecraft:stick",
+          ""
+        ],
+        "count": 1,
+        "experience": 0.10000000149011612,
+        "cookingTime": 200
+      },
+      "kind": "tool",
+      "toolType": "shovel",
+      "toolTier": "iron",
+      "durability": 900,
+      "attackDamage": 4.5,
+      "attackSpeed": 1.0,
+      "miningSpeed": 7.5,
+      "enchantability": 18,
+      "repairItem": "rubinwerk:ruby",
+      "armorSlot": "helmet",
+      "armorMaterial": "",
+      "defense": 2,
+      "toughness": 0.0,
+      "knockbackResistance": 0.0,
+      "texture": ""
+    },
+    {
+      "id": "ruby_hoe",
+      "nameDe": "Rubinhacke",
+      "nameEn": "Ruby Hoe",
+      "names": {},
+      "stackSize": 1,
+      "rarity": "common",
+      "food": false,
+      "nutrition": 4,
+      "saturation": 0.30000001192092896,
+      "recipe": {
+        "enabled": true,
+        "kind": "crafting",
+        "shaped": true,
+        "grid": [
+          "rubinwerk:ruby",
+          "rubinwerk:ruby",
+          "",
+          "",
+          "minecraft:stick",
+          "",
+          "",
+          "minecraft:stick",
+          ""
+        ],
+        "count": 1,
+        "experience": 0.10000000149011612,
+        "cookingTime": 200
+      },
+      "kind": "tool",
+      "toolType": "hoe",
+      "toolTier": "iron",
+      "durability": 900,
+      "attackDamage": 1.0,
+      "attackSpeed": 3.0,
+      "miningSpeed": 7.5,
+      "enchantability": 18,
+      "repairItem": "rubinwerk:ruby",
+      "armorSlot": "helmet",
+      "armorMaterial": "",
+      "defense": 2,
+      "toughness": 0.0,
+      "knockbackResistance": 0.0,
+      "texture": ""
+    }
+  ],
+  "mobs": [],
+  "generatedBlocks": [
+    "ruby_ore",
+    "deepslate_ruby_ore",
+    "ruby_block",
+    "ruby_bricks",
+    "ruby_bricks_stairs",
+    "ruby_bricks_slab",
+    "ruby_bricks_wall",
+    "ruby_lamp",
+    "ruby_press"
+  ],
+  "generatedItems": [
+    "ruby",
+    "ruby_dust",
+    "ruby_wand",
+    "ruby_sword",
+    "ruby_pickaxe",
+    "ruby_axe",
+    "ruby_shovel",
+    "ruby_hoe"
+  ],
+  "generatedMobs": [],
+  "tabIcon": "ruby",
+  "tabName": "Rubinwerk",
+  "languages": [
+    "de_de"
+  ],
+  "variables": [
+    {
+      "name": "rubine",
+      "kind": "number",
+      "scope": "player",
+      "default": "0",
+      "desc": "Wie viele Rubin-Erze der Spieler abgebaut hat"
+    },
+    {
+      "name": "energie",
+      "kind": "number",
+      "scope": "world",
+      "default": "0",
+      "desc": "Energie der Rubin-Presse (0–1000)"
+    },
+    {
+      "name": "turbo",
+      "kind": "logic",
+      "scope": "world",
+      "default": "false",
+      "desc": "Turbo-Modus: lädt die Energie schneller"
+    },
+    {
+      "name": "begruesst",
+      "kind": "logic",
+      "scope": "player",
+      "default": "false",
+      "desc": "Hat der Spieler die Begrüßung schon bekommen?"
+    }
+  ],
+  "guis": [
+    {
+      "id": "rubin_presse",
+      "nameEn": "Ruby Press",
+      "nameDe": "Rubin-Presse",
+      "width": 176,
+      "height": 166,
+      "style": "light",
+      "showTitle": true,
+      "elements": [
+        {
+          "id": "slot_in5516",
+          "kind": "slot_in",
+          "x": 55,
+          "y": 16,
+          "w": 18,
+          "h": 18,
+          "text": "",
+          "color": "#404040",
+          "var": "",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "slot_fuel5552",
+          "kind": "slot_fuel",
+          "x": 55,
+          "y": 52,
+          "w": 18,
+          "h": 18,
+          "text": "",
+          "color": "#404040",
+          "var": "",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "flame5736",
+          "kind": "flame",
+          "x": 57,
+          "y": 36,
+          "w": 14,
+          "h": 14,
+          "text": "",
+          "color": "#404040",
+          "var": "",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "arrow7934",
+          "kind": "arrow",
+          "x": 79,
+          "y": 34,
+          "w": 24,
+          "h": 17,
+          "text": "",
+          "color": "#404040",
+          "var": "",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "slot_out11131",
+          "kind": "slot_out",
+          "x": 111,
+          "y": 31,
+          "w": 26,
+          "h": 26,
+          "text": "",
+          "color": "#404040",
+          "var": "",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "energy1216",
+          "kind": "energy",
+          "x": 12,
+          "y": 16,
+          "w": 12,
+          "h": 54,
+          "text": "",
+          "color": "#d01c3a",
+          "var": "energie",
+          "max": 1000.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "switch13262",
+          "kind": "switch",
+          "x": 132,
+          "y": 62,
+          "w": 38,
+          "h": 14,
+          "text": "Turbo",
+          "color": "#404040",
+          "var": "turbo",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "player_inv783",
+          "kind": "player_inv",
+          "x": 7,
+          "y": 83,
+          "w": 162,
+          "h": 76,
+          "text": "",
+          "color": "#404040",
+          "var": "",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        }
+      ]
+    },
+    {
+      "id": "rubin_zentrale",
+      "nameEn": "Ruby Control",
+      "nameDe": "Rubin-Zentrale",
+      "width": 200,
+      "height": 124,
+      "style": "dark",
+      "showTitle": true,
+      "elements": [
+        {
+          "id": "panel820",
+          "kind": "panel",
+          "x": 8,
+          "y": 20,
+          "w": 184,
+          "h": 40,
+          "text": "",
+          "color": "#3a1820",
+          "var": "",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "item1632",
+          "kind": "item",
+          "x": 16,
+          "y": 32,
+          "w": 16,
+          "h": 16,
+          "text": "",
+          "color": "#404040",
+          "var": "",
+          "max": 100.0,
+          "action": "",
+          "item": "rubinwerk:ruby"
+        },
+        {
+          "id": "value4028",
+          "kind": "value",
+          "x": 40,
+          "y": 28,
+          "w": 140,
+          "h": 9,
+          "text": "Rubine: ",
+          "color": "#ffd0d8",
+          "var": "rubine",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "value4042",
+          "kind": "value",
+          "x": 40,
+          "y": 42,
+          "w": 140,
+          "h": 9,
+          "text": "Energie: ",
+          "color": "#ffd0d8",
+          "var": "energie",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "energy17624",
+          "kind": "energy",
+          "x": 176,
+          "y": 24,
+          "w": 10,
+          "h": 32,
+          "text": "",
+          "color": "#d01c3a",
+          "var": "energie",
+          "max": 1000.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "button870",
+          "kind": "button",
+          "x": 8,
+          "y": 70,
+          "w": 90,
+          "h": 20,
+          "text": "Belohnung (5)",
+          "color": "#404040",
+          "var": "",
+          "max": 100.0,
+          "action": "belohnung",
+          "item": ""
+        },
+        {
+          "id": "switch10270",
+          "kind": "switch",
+          "x": 102,
+          "y": 70,
+          "w": 90,
+          "h": 20,
+          "text": "Turbo",
+          "color": "#404040",
+          "var": "turbo",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        },
+        {
+          "id": "text8100",
+          "kind": "text",
+          "x": 8,
+          "y": 100,
+          "w": 184,
+          "h": 9,
+          "text": "Tipp: /rubin oeffnet dieses Fenster",
+          "color": "#9d9d9d",
+          "var": "",
+          "max": 100.0,
+          "action": "",
+          "item": ""
+        }
+      ]
+    }
+  ],
+  "structures": [],
+  "generatedStructures": [],
+  "tags": [
+    {
+      "registry": "item",
+      "id": "c:gems",
+      "values": [
+        "rubinwerk:ruby"
+      ],
+      "desc": "Damit andere Mods Rubine als Edelstein erkennen"
+    },
+    {
+      "registry": "item",
+      "id": "c:dusts",
+      "values": [
+        "rubinwerk:ruby_dust"
+      ],
+      "desc": ""
+    },
+    {
+      "registry": "block",
+      "id": "c:storage_blocks",
+      "values": [
+        "rubinwerk:ruby_block"
+      ],
+      "desc": ""
+    },
+    {
+      "registry": "block",
+      "id": "minecraft:beacon_base_blocks",
+      "values": [
+        "rubinwerk:ruby_block"
+      ],
+      "desc": "Rubinblöcke als Leuchtfeuer-Sockel"
+    },
+    {
+      "registry": "item",
+      "id": "minecraft:beacon_payment_items",
+      "values": [
+        "rubinwerk:ruby"
+      ],
+      "desc": "Rubine als Bezahlung fürs Leuchtfeuer"
+    },
+    {
+      "registry": "item",
+      "id": "minecraft:piglin_loved",
+      "values": [
+        "rubinwerk:ruby",
+        "rubinwerk:ruby_block"
+      ],
+      "desc": "Piglins lieben Rubine"
+    },
+    {
+      "registry": "item",
+      "id": "rubinwerk:rubin_sachen",
+      "values": [
+        "rubinwerk:ruby",
+        "rubinwerk:ruby_dust",
+        "rubinwerk:ruby_block"
+      ],
+      "desc": "Alles aus Rubin – für Bedingungen im Blueprint"
+    }
+  ],
+  "generatedTags": {
+    "data/c/tags/block/storage_blocks.json": [
+      "rubinwerk:ruby_block"
+    ],
+    "data/c/tags/item/dusts.json": [
+      "rubinwerk:ruby_dust"
+    ],
+    "data/c/tags/item/gems.json": [
+      "rubinwerk:ruby"
+    ],
+    "data/minecraft/tags/block/beacon_base_blocks.json": [
+      "rubinwerk:ruby_block"
+    ],
+    "data/minecraft/tags/item/beacon_payment_items.json": [
+      "rubinwerk:ruby"
+    ],
+    "data/minecraft/tags/item/piglin_loved.json": [
+      "rubinwerk:ruby",
+      "rubinwerk:ruby_block"
+    ],
+    "data/rubinwerk/tags/item/rubin_sachen.json": [
+      "rubinwerk:ruby",
+      "rubinwerk:ruby_dust",
+      "rubinwerk:ruby_block"
+    ]
+  },
+  "translations": {},
+  "brewing": [
+    {
+      "input": "awkward",
+      "ingredient": "rubinwerk:ruby_dust",
+      "output": "strength"
+    }
+  ],
+  "events": [],
+  "blueprints": [
+    {
+      "name": "Begrüßung",
+      "enabled": true,
+      "nodes": [
+        {
+          "id": "e",
+          "kind": "ev_join",
+          "x": 60.0,
+          "y": 120.0,
+          "props": {}
+        },
+        {
+          "id": "if",
+          "kind": "if",
+          "x": 340.0,
+          "y": 120.0,
+          "props": {
+            "cond": "var",
+            "value": "true",
+            "var": "begruesst"
+          }
+        },
+        {
+          "id": "t",
+          "kind": "title",
+          "x": 660.0,
+          "y": 40.0,
+          "props": {
+            "subtitle": "Suche Rubin-Erz unter Y 24",
+            "text": "Willkommen im Rubinwerk!",
+            "to": "player"
+          }
+        },
+        {
+          "id": "g",
+          "kind": "give",
+          "x": 960.0,
+          "y": 40.0,
+          "props": {
+            "count": "3",
+            "item": "rubinwerk:ruby"
+          }
+        },
+        {
+          "id": "m",
+          "kind": "message",
+          "x": 1260.0,
+          "y": 40.0,
+          "props": {
+            "text": "Tipp: Mit /rubin öffnest du die Rubin-Zentrale.",
+            "to": "player"
+          }
+        },
+        {
+          "id": "s",
+          "kind": "var_set",
+          "x": 1560.0,
+          "y": 40.0,
+          "props": {
+            "op": "set",
+            "src": "value",
+            "value": "true",
+            "var": "begruesst"
+          }
+        },
+        {
+          "id": "sh",
+          "kind": "var_show",
+          "x": 660.0,
+          "y": 220.0,
+          "props": {
+            "slot": "sidebar",
+            "var": "rubine"
+          }
+        }
+      ],
+      "links": [
+        {
+          "from": "e",
+          "out": "next",
+          "to": "if"
+        },
+        {
+          "from": "if",
+          "out": "false",
+          "to": "t"
+        },
+        {
+          "from": "t",
+          "out": "next",
+          "to": "g"
+        },
+        {
+          "from": "g",
+          "out": "next",
+          "to": "m"
+        },
+        {
+          "from": "m",
+          "out": "next",
+          "to": "s"
+        },
+        {
+          "from": "if",
+          "out": "true",
+          "to": "sh"
+        },
+        {
+          "from": "s",
+          "out": "next",
+          "to": "sh"
+        }
+      ]
+    },
+    {
+      "name": "Rubin-Erz zählen",
+      "enabled": true,
+      "nodes": [
+        {
+          "id": "e",
+          "kind": "ev_break",
+          "x": 60.0,
+          "y": 120.0,
+          "props": {
+            "target": "ruby_ore"
+          }
+        },
+        {
+          "id": "a",
+          "kind": "var_set",
+          "x": 340.0,
+          "y": 120.0,
+          "props": {
+            "op": "add",
+            "src": "value",
+            "value": "1",
+            "var": "rubine"
+          }
+        },
+        {
+          "id": "ab",
+          "kind": "actionbar",
+          "x": 640.0,
+          "y": 120.0,
+          "props": {
+            "text": "Rubine abgebaut: {var:rubine}"
+          }
+        },
+        {
+          "id": "if",
+          "kind": "if",
+          "x": 940.0,
+          "y": 120.0,
+          "props": {
+            "cmp": "eq",
+            "cond": "var",
+            "value": "10",
+            "var": "rubine"
+          }
+        },
+        {
+          "id": "t",
+          "kind": "title",
+          "x": 1240.0,
+          "y": 40.0,
+          "props": {
+            "subtitle": "10 Rubin-Erze abgebaut",
+            "text": "Rubin-Meister!",
+            "to": "player"
+          }
+        },
+        {
+          "id": "x",
+          "kind": "xp",
+          "x": 1540.0,
+          "y": 40.0,
+          "props": {
+            "amount": "50"
+          }
+        },
+        {
+          "id": "snd",
+          "kind": "sound",
+          "x": 1840.0,
+          "y": 40.0,
+          "props": {
+            "sound": "minecraft:ui.toast.challenge_complete"
+          }
+        },
+        {
+          "id": "e2",
+          "kind": "ev_break",
+          "x": 60.0,
+          "y": 340.0,
+          "props": {
+            "target": "deepslate_ruby_ore"
+          }
+        },
+        {
+          "id": "a2",
+          "kind": "var_set",
+          "x": 340.0,
+          "y": 340.0,
+          "props": {
+            "op": "add",
+            "src": "value",
+            "value": "1",
+            "var": "rubine"
+          }
+        }
+      ],
+      "links": [
+        {
+          "from": "e",
+          "out": "next",
+          "to": "a"
+        },
+        {
+          "from": "a",
+          "out": "next",
+          "to": "ab"
+        },
+        {
+          "from": "ab",
+          "out": "next",
+          "to": "if"
+        },
+        {
+          "from": "if",
+          "out": "true",
+          "to": "t"
+        },
+        {
+          "from": "t",
+          "out": "next",
+          "to": "x"
+        },
+        {
+          "from": "x",
+          "out": "next",
+          "to": "snd"
+        },
+        {
+          "from": "e2",
+          "out": "next",
+          "to": "a2"
+        },
+        {
+          "from": "a2",
+          "out": "next",
+          "to": "ab"
+        }
+      ]
+    },
+    {
+      "name": "Rubin-Stab",
+      "enabled": true,
+      "nodes": [
+        {
+          "id": "e",
+          "kind": "ev_click_item",
+          "x": 60.0,
+          "y": 120.0,
+          "props": {
+            "target": "ruby_wand"
+          }
+        },
+        {
+          "id": "if",
+          "kind": "if",
+          "x": 340.0,
+          "y": 120.0,
+          "props": {
+            "cmp": "ge",
+            "cond": "var",
+            "value": "100",
+            "var": "energie"
+          }
+        },
+        {
+          "id": "m",
+          "kind": "var_math",
+          "x": 660.0,
+          "y": 40.0,
+          "props": {
+            "op": "sub",
+            "src": "num",
+            "value": "100",
+            "var": "energie"
+          }
+        },
+        {
+          "id": "l",
+          "kind": "launch",
+          "x": 960.0,
+          "y": 40.0,
+          "props": {
+            "strength": "1.6",
+            "who": "player"
+          }
+        },
+        {
+          "id": "p",
+          "kind": "particle",
+          "x": 1260.0,
+          "y": 40.0,
+          "props": {
+            "count": "30",
+            "particle": "minecraft:crit"
+          }
+        },
+        {
+          "id": "s",
+          "kind": "sound",
+          "x": 1560.0,
+          "y": 40.0,
+          "props": {
+            "sound": "minecraft:entity.firework_rocket.launch"
+          }
+        },
+        {
+          "id": "eff",
+          "kind": "effect",
+          "x": 1860.0,
+          "y": 40.0,
+          "props": {
+            "effect": "slow_falling",
+            "level": "1",
+            "seconds": "6",
+            "who": "player"
+          }
+        },
+        {
+          "id": "no",
+          "kind": "actionbar",
+          "x": 660.0,
+          "y": 240.0,
+          "props": {
+            "text": "Zu wenig Energie! ({var:energie}/100) – lade die Rubin-Presse auf."
+          }
+        }
+      ],
+      "links": [
+        {
+          "from": "e",
+          "out": "next",
+          "to": "if"
+        },
+        {
+          "from": "if",
+          "out": "true",
+          "to": "m"
+        },
+        {
+          "from": "m",
+          "out": "next",
+          "to": "l"
+        },
+        {
+          "from": "l",
+          "out": "next",
+          "to": "p"
+        },
+        {
+          "from": "p",
+          "out": "next",
+          "to": "s"
+        },
+        {
+          "from": "s",
+          "out": "next",
+          "to": "eff"
+        },
+        {
+          "from": "if",
+          "out": "false",
+          "to": "no"
+        }
+      ]
+    },
+    {
+      "name": "Energie laden",
+      "enabled": true,
+      "nodes": [
+        {
+          "id": "e",
+          "kind": "ev_timer",
+          "x": 60.0,
+          "y": 120.0,
+          "props": {
+            "seconds": "5"
+          }
+        },
+        {
+          "id": "if",
+          "kind": "if",
+          "x": 340.0,
+          "y": 120.0,
+          "props": {
+            "cond": "var",
+            "value": "true",
+            "var": "turbo"
+          }
+        },
+        {
+          "id": "fast",
+          "kind": "var_math",
+          "x": 660.0,
+          "y": 40.0,
+          "props": {
+            "op": "add",
+            "src": "num",
+            "value": "40",
+            "var": "energie"
+          }
+        },
+        {
+          "id": "slow",
+          "kind": "var_math",
+          "x": 660.0,
+          "y": 240.0,
+          "props": {
+            "op": "add",
+            "src": "num",
+            "value": "10",
+            "var": "energie"
+          }
+        },
+        {
+          "id": "cap",
+          "kind": "var_math",
+          "x": 980.0,
+          "y": 120.0,
+          "props": {
+            "op": "min",
+            "src": "num",
+            "value": "1000",
+            "var": "energie"
+          }
+        }
+      ],
+      "links": [
+        {
+          "from": "e",
+          "out": "next",
+          "to": "if"
+        },
+        {
+          "from": "if",
+          "out": "true",
+          "to": "fast"
+        },
+        {
+          "from": "if",
+          "out": "false",
+          "to": "slow"
+        },
+        {
+          "from": "fast",
+          "out": "next",
+          "to": "cap"
+        },
+        {
+          "from": "slow",
+          "out": "next",
+          "to": "cap"
+        }
+      ]
+    },
+    {
+      "name": "Rubin-Zentrale",
+      "enabled": true,
+      "nodes": [
+        {
+          "id": "e",
+          "kind": "ev_command",
+          "x": 60.0,
+          "y": 120.0,
+          "props": {
+            "command": "/rubin"
+          }
+        },
+        {
+          "id": "o",
+          "kind": "open_gui",
+          "x": 360.0,
+          "y": 120.0,
+          "props": {
+            "gui": "rubin_zentrale"
+          }
+        }
+      ],
+      "links": [
+        {
+          "from": "e",
+          "out": "next",
+          "to": "o"
+        }
+      ]
+    },
+    {
+      "name": "Belohnung",
+      "enabled": true,
+      "nodes": [
+        {
+          "id": "f",
+          "kind": "ev_function",
+          "x": 60.0,
+          "y": 120.0,
+          "props": {
+            "fn": "belohnung"
+          }
+        },
+        {
+          "id": "if",
+          "kind": "if",
+          "x": 340.0,
+          "y": 120.0,
+          "props": {
+            "cmp": "ge",
+            "cond": "var",
+            "value": "5",
+            "var": "rubine"
+          }
+        },
+        {
+          "id": "sub",
+          "kind": "var_set",
+          "x": 660.0,
+          "y": 40.0,
+          "props": {
+            "op": "sub",
+            "src": "value",
+            "value": "5",
+            "var": "rubine"
+          }
+        },
+        {
+          "id": "g",
+          "kind": "give",
+          "x": 960.0,
+          "y": 40.0,
+          "props": {
+            "count": "1",
+            "item": "rubinwerk:ruby_block"
+          }
+        },
+        {
+          "id": "s",
+          "kind": "sound",
+          "x": 1260.0,
+          "y": 40.0,
+          "props": {
+            "sound": "minecraft:entity.player.levelup"
+          }
+        },
+        {
+          "id": "lg",
+          "kind": "log",
+          "x": 1560.0,
+          "y": 40.0,
+          "props": {
+            "text": "{player} hat eine Belohnung abgeholt, Rubine jetzt: {var:rubine}"
+          }
+        },
+        {
+          "id": "no",
+          "kind": "message",
+          "x": 660.0,
+          "y": 240.0,
+          "props": {
+            "text": "Du brauchst 5 abgebaute Rubin-Erze (du hast {var:rubine}).",
+            "to": "player"
+          }
+        }
+      ],
+      "links": [
+        {
+          "from": "f",
+          "out": "next",
+          "to": "if"
+        },
+        {
+          "from": "if",
+          "out": "true",
+          "to": "sub"
+        },
+        {
+          "from": "sub",
+          "out": "next",
+          "to": "g"
+        },
+        {
+          "from": "g",
+          "out": "next",
+          "to": "s"
+        },
+        {
+          "from": "s",
+          "out": "next",
+          "to": "lg"
+        },
+        {
+          "from": "if",
+          "out": "false",
+          "to": "no"
+        }
+      ]
+    }
+  ],
+  "dimensions": [],
+  "generatedDims": []
+}
