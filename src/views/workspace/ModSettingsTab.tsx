@@ -44,7 +44,7 @@ export default function ModSettingsTab({ project, onSaved }: { project: Project;
       content
         ? [
             ...content.blocks.flatMap((b) => variantIds(b).map((v) => ({ id: v.id, name: v.name, kind: "block" as const, texture: textures[b.id], shape: v.shape }))),
-            ...content.items.map((i) => ({ id: i.id, name: i.nameDe || i.nameEn || i.id, kind: "item" as const, texture: textures[i.id] })),
+            ...content.items.map((i) => ({ id: i.id, name: i.nameEn || i.nameDe || i.id, kind: "item" as const, texture: textures[i.id] })),
           ]
         : [],
     [content, textures],

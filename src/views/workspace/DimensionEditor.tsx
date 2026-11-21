@@ -4,7 +4,7 @@ import { Blueprint, Content, DimBiome, DimDef, DimSpawn, Project } from "../../a
 import { OwnEntry } from "../../components/ItemPicker";
 import { Segmented, Toggle } from "../../components/Chrome";
 import { ArrowLeftIcon, BlueprintIcon, BoxIcon, BucketIcon, CopyIcon, GemIcon, GlobeIcon, LayersIcon, MountainsIcon, PawIcon, PickaxeIcon, RocketIcon, SparkIcon, SunIcon, TrashIcon, WeatherIcon } from "../../icons";
-import { Field, ItemField } from "./ContentForms";
+import { Field, ItemField, NameFields } from "./ContentForms";
 import { ENTITIES, makeNode } from "./blueprints";
 import DimPreview, { yRange } from "./DimPreview";
 import { IslandsPage, OresPage, PageHead, TerrainPage } from "./DimPages";
@@ -25,7 +25,7 @@ export function travelBlueprint(dim: DimDef, block: string): Blueprint {
   const go = makeNode("travel", 960, 80);
   go.props = { dim: dim.id, mode: "toggle" };
   return {
-    name: t("Reise nach {name}", { name: dim.nameDe || dim.id }),
+    name: t("Reise nach {name}", { name: dim.nameEn || dim.nameDe || dim.id }),
     enabled: true,
     nodes: [ev, fx, snd, go],
     links: [
@@ -131,7 +131,7 @@ export default function DimensionEditor({
     </div>
   );
   const entityOpts = [
-    ...content.mobs.map((m) => ({ id: `${project.modId}:${m.id}`, label: `${m.nameDe || m.id} (${t("eigene")})` })),
+    ...content.mobs.map((m) => ({ id: `${project.modId}:${m.id}`, label: `${m.nameEn || m.nameDe || m.id} (${t("eigene")})` })),
     ...ENTITIES.filter((e) => !["tnt", "firework_rocket", "experience_orb", "lightning_bolt", "ender_dragon", "wither"].includes(e)).map((e) => ({ id: `minecraft:${e}`, label: e.replace(/_/g, " ") })),
   ];
 
@@ -173,7 +173,7 @@ export default function DimensionEditor({
             <GlobeIcon size={18} />
           </span>
           <div className="grow dimx-id-text">
-            <div className="dimx-name">{dim.nameDe || dim.id}</div>
+            <div className="dimx-name">{dim.nameEn || dim.nameDe || dim.id}</div>
             <div className="muted small">
               {t("Dimension")} · {t("Vorlage {name}", { name: tplLabel ?? "" })}
             </div>
@@ -231,12 +231,7 @@ export default function DimensionEditor({
               <Field label={t("Vollständige ID")}>
                 <input className="input mono" readOnly value={`${project.modId}:${dim.id}`} />
               </Field>
-              <Field label={t("Name (Deutsch)")}>
-                <input className="input" value={dim.nameDe} onChange={(e) => set({ nameDe: e.target.value })} />
-              </Field>
-              <Field label={t("Name (Englisch)")}>
-                <input className="input" value={dim.nameEn} onChange={(e) => set({ nameEn: e.target.value })} />
-              </Field>
+<NameFields en={dim.nameEn} de={dim.nameDe} german={(content.languages ?? []).includes("de_de")} onEn={(v) => set({ nameEn: v })} onDe={(v) => set({ nameDe: v })} />
             </div>
             <div className="muted small">{t("Eine Vorlage setzt Gelände, Blöcke, Biome, Erze und Himmel auf passende Werte. Danach kannst du alles in den Schritten anpassen.")}</div>
             <div className="dim-templates">
@@ -305,7 +300,7 @@ export default function DimensionEditor({
                     const upd = (patch: Partial<DimBiome>) => set({ biomes: dim.biomes.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
                     return (
                       <div className="dim-row" key={i}>
-                        <input className="input" value={b.nameDe} placeholder={t("Name")} onChange={(e) => upd({ nameDe: e.target.value, id: b.id || e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })} />
+                        <input className="input" value={b.nameEn} placeholder={t("Name")} onChange={(e) => upd({ nameEn: e.target.value, id: b.id || e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })} />
                         <input className="input mono" value={b.id} placeholder="id" onChange={(e) => upd({ id: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })} />
                         <select
                           className="input"
@@ -336,7 +331,7 @@ export default function DimensionEditor({
                       const used = new Set(dim.biomes.map((b) => b.id));
                       let id = "biom";
                       for (let n = 2; used.has(id); n++) id = `biom_${n}`;
-                      set({ biomes: [...dim.biomes, { id, nameDe: t("Neues Biom"), nameEn: "New Biome", base: tp === "nether" ? "nether_wastes" : tp === "end" ? "the_end" : "plains", topBlock: "", fillBlock: "" }] });
+                      set({ biomes: [...dim.biomes, { id, nameDe: "", nameEn: "New Biome", base: tp === "nether" ? "nether_wastes" : tp === "end" ? "the_end" : "plains", topBlock: "", fillBlock: "" }] });
                     }}
                   >
                     {t("Biom hinzufügen")}
@@ -384,7 +379,24 @@ export default function DimensionEditor({
             <div className="dim-checks">
               <Check label={t("Pflanzen und Bäume")} hint={t("Gras, Blumen, Bäume und Pilze aus den Vorbild-Biomen")} checked={!dim.noPlants} onChange={(v) => set({ noPlants: !v })} />
             </div>
-            <div className="panel-title-lg">{t("Strukturen")}</div>
+            <div className="panel-title-lg">{t("Eigene Strukturen")}</div>
+            {(content.structures ?? []).length === 0 ? (
+              <div className="muted small">{t("Noch keine eigenen Strukturen. Lege eine an: Plus → Welt → Eigene Struktur.")}</div>
+            ) : (
+              <div className="dim-structures">
+                {(content.structures ?? []).map((st) => {
+                  const key = `#${st.id}`;
+                  const on = dim.structures.includes(key);
+                  return (
+                    <label key={key} className={on ? "dim-chip on" : "dim-chip"}>
+                      <input type="checkbox" checked={on} onChange={() => set({ structures: on ? dim.structures.filter((x) => x !== key) : [...dim.structures, key] })} />
+                      {st.nameEn || st.nameDe || st.id}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <div className="panel-title-lg">{t("Vanilla-Strukturen")}</div>
             <div className="dim-structures">
               {STRUCTURES.map((s) => {
                 const on = dim.structures.includes(s.id);

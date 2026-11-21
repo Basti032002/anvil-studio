@@ -7,21 +7,22 @@ import { useCatalog } from "../../catalog";
 import { Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
 import McIcon from "../../components/McIcon";
-import { ChevronIcon, GridIcon, PawIcon, GlobeIcon, BlueprintIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, FlaskIcon, GemIcon, LampIcon, LightningIcon, PencilIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TagIcon, TrashIcon } from "../../icons";
+import { BoxIcon, ChevronIcon, GridIcon, PawIcon, GlobeIcon, BlueprintIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, FlaskIcon, GemIcon, LampIcon, LightningIcon, PencilIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TagIcon, TrashIcon } from "../../icons";
 import { toast } from "../../state";
 import { useRunning } from "../../store";
 import PixelEditor from "./PixelEditor";
-import { ArmorForm, BlockExtras, Field, ItemKindSwitch, SubTabs, ToolForm } from "./ContentForms";
+import { ArmorForm, BlockExtras, Field, ItemKindSwitch, NameFields, SubTabs, ToolForm } from "./ContentForms";
 import MobEditor from "./MobEditor";
 import BlueprintEditor from "./BlueprintEditor";
 import { ModelPreview } from "./ModelEditor";
 import DimensionEditor, { newDimension } from "./DimensionEditor";
+import StructureEditor, { newStructure } from "./StructureEditor";
 import CreateMenu, { CreateChoice, CreateGroup } from "./CreateMenu";
 import { TEMPLATES } from "./blueprints";
 import { BrewEditor, brewLabel, EventEditor, eventLabel, NamesField, newBrew, newEvent } from "./LogicEditors";
 import { armorPreset, toolPreset, eggDataUrl, newMob, normalizeMob, newBlock, newItem, normalizeBlock, normalizeItem, SLOT_DE, SLOT_EN, variantIds } from "./contentDefaults";
 
-const normalize = (c: Content): Content => ({ ...c, blocks: c.blocks.map(normalizeBlock), items: c.items.map(normalizeItem), mobs: (c.mobs ?? []).map(normalizeMob), brewing: c.brewing ?? [], events: (c.events ?? []).map((e) => ({ ...e, actions: e.actions ?? [] })), blueprints: c.blueprints ?? [], dimensions: c.dimensions ?? [], generatedMobs: c.generatedMobs ?? [], tabIcon: c.tabIcon ?? "", tabName: c.tabName ?? "" });
+const normalize = (c: Content): Content => ({ ...c, blocks: c.blocks.map(normalizeBlock), items: c.items.map(normalizeItem), mobs: (c.mobs ?? []).map(normalizeMob), brewing: c.brewing ?? [], events: (c.events ?? []).map((e) => ({ ...e, actions: e.actions ?? [] })), blueprints: c.blueprints ?? [], dimensions: c.dimensions ?? [], structures: c.structures ?? [], generatedMobs: c.generatedMobs ?? [], tabIcon: c.tabIcon ?? "", tabName: c.tabName ?? "" });
 
 /** Einklappbare Gruppe in der Inhalte-Liste (Zustand bleibt gespeichert) */
 function ListGroup({ id, label, icon, count, forceOpen, children }: { id: string; label: string; icon: React.ReactNode; count: number; forceOpen: boolean; children: React.ReactNode }) {
@@ -62,7 +63,7 @@ function ListGroup({ id, label, icon, count, forceOpen, children }: { id: string
 type BlockTab = "general" | "mining" | "function" | "model" | "shapes" | "recipe";
 type ItemTab = "general" | "function" | "recipe";
 
-type Sel = { kind: "block" | "item" | "mob" | "event" | "brew" | "blueprint" | "dimension"; index: number } | null;
+type Sel = { kind: "block" | "item" | "mob" | "event" | "brew" | "blueprint" | "dimension" | "structure"; index: number } | null;
 
 export default function ContentTab({ project }: { project: Project }) {
   const [content, setContent] = useState<Content | null>(null);
@@ -193,6 +194,7 @@ export default function ContentTab({ project }: { project: Project }) {
     () => (content ? [...content.blocks.flatMap((b) => variantIds(b).map((v) => v.id)), ...content.items.map((i) => i.id), ...content.mobs.flatMap((m) => [m.id, `${m.id}_spawn_egg`])] : []),
     [content],
   );
+  const german = (content?.languages ?? []).includes("de_de");
   const own: OwnEntry[] = useMemo(
     () =>
       content
@@ -200,8 +202,8 @@ export default function ContentTab({ project }: { project: Project }) {
             ...content.blocks.flatMap((b) =>
               variantIds(b).map((v) => ({ id: v.id, name: v.name, kind: "block" as const, texture: textures[v.id] ?? textures[b.id], shape: v.shape })),
             ),
-            ...content.items.map((i) => ({ id: i.id, name: i.nameDe || i.nameEn || i.id, kind: "item" as const, texture: textures[i.id] })),
-            ...content.mobs.map((m) => ({ id: `${m.id}_spawn_egg`, name: `${m.nameDe || m.id}-Spawn-Ei`, kind: "item" as const, texture: eggDataUrl(m.eggPrimary, m.eggSecondary) })),
+            ...content.items.map((i) => ({ id: i.id, name: i.nameEn || i.nameDe || i.id, kind: "item" as const, texture: textures[i.id] })),
+            ...content.mobs.map((m) => ({ id: `${m.id}_spawn_egg`, name: `${m.nameEn || m.nameDe || m.id} Spawn Egg`, kind: "item" as const, texture: eggDataUrl(m.eggPrimary, m.eggSecondary) })),
           ]
         : [],
     [content, textures],
@@ -217,7 +219,7 @@ export default function ContentTab({ project }: { project: Project }) {
   function addBlock(from?: BlockDef) {
     if (!content) return;
     const b: BlockDef = from
-      ? { ...structuredClone(from), id: uniqueId(`${from.id}_kopie`), nameDe: `${from.nameDe} (Kopie)`, nameEn: `${from.nameEn} (Copy)` }
+      ? { ...structuredClone(from), id: uniqueId(`${from.id}_kopie`), nameDe: from.nameDe ? `${from.nameDe} (Kopie)` : "", nameEn: `${from.nameEn} (Copy)` }
       : newBlock(uniqueId("neuer_block"));
     setContent({ ...content, blocks: [...content.blocks, b] });
     setSel({ kind: "block", index: content.blocks.length });
@@ -228,7 +230,7 @@ export default function ContentTab({ project }: { project: Project }) {
     if (!content) return;
     const base = kind === "tool" ? "neues_werkzeug" : kind === "armor" ? "neue_ruestung" : "neues_item";
     const i: ItemDef = from
-      ? { ...structuredClone(from), id: uniqueId(`${from.id}_kopie`), nameDe: `${from.nameDe} (Kopie)`, nameEn: `${from.nameEn} (Copy)` }
+      ? { ...structuredClone(from), id: uniqueId(`${from.id}_kopie`), nameDe: from.nameDe ? `${from.nameDe} (Kopie)` : "", nameEn: `${from.nameEn} (Copy)` }
       : newItem(uniqueId(base), kind);
     setContent({ ...content, items: [...content.items, i] });
     setSel({ kind: "item", index: content.items.length });
@@ -237,7 +239,7 @@ export default function ContentTab({ project }: { project: Project }) {
 
   function addMob(from?: MobDef) {
     if (!content) return;
-    const m: MobDef = from ? { ...structuredClone(from), id: uniqueId(`${from.id}_kopie`), nameDe: `${from.nameDe} (Kopie)`, nameEn: `${from.nameEn} (Copy)` } : newMob(uniqueId("neue_kreatur"));
+    const m: MobDef = from ? { ...structuredClone(from), id: uniqueId(`${from.id}_kopie`), nameDe: from.nameDe ? `${from.nameDe} (Kopie)` : "", nameEn: `${from.nameEn} (Copy)` } : newMob(uniqueId("neue_kreatur"));
     setContent({ ...content, mobs: [...content.mobs, m] });
     setSel({ kind: "mob", index: content.mobs.length });
     setFilter("");
@@ -268,32 +270,32 @@ export default function ContentTab({ project }: { project: Project }) {
     if (choice.kind === "block") {
       const v = choice.variant;
       const b = newBlock(uid(v === "ore" ? "neues_erz" : v === "lamp" ? "neue_lampe" : v === "storage" ? "neue_truhe" : v === "workbench" ? "neue_werkbank" : v === "machine" ? "neue_maschine" : "neuer_block"));
-      if (v === "ore") Object.assign(b, { nameDe: t("Neues Erz"), nameEn: "New Ore", hardness: 3, resistance: 3, tier: "stone", ore: { ...b.ore, enabled: true } });
-      if (v === "lamp") Object.assign(b, { nameDe: t("Neue Lampe"), nameEn: "New Lamp", kind: "lamp", material: "glass", hardness: 0.3, resistance: 0.3, tool: "none" });
-      if (v === "storage") Object.assign(b, { nameDe: t("Neue Truhe"), nameEn: "New Chest", kind: "storage", material: "wood", hardness: 2.5, resistance: 2.5, tool: "axe", rows: 3 });
+      if (v === "ore") Object.assign(b, { nameDe: "", nameEn: "New Ore", hardness: 3, resistance: 3, tier: "stone", ore: { ...b.ore, enabled: true } });
+      if (v === "lamp") Object.assign(b, { nameDe: "", nameEn: "New Lamp", kind: "lamp", material: "glass", hardness: 0.3, resistance: 0.3, tool: "none" });
+      if (v === "storage") Object.assign(b, { nameDe: "", nameEn: "New Chest", kind: "storage", material: "wood", hardness: 2.5, resistance: 2.5, tool: "axe", rows: 3 });
       if (v === "shapes") Object.assign(b, { shapes: ["stairs", "slab", "wall"] });
-      if (v === "workbench") Object.assign(b, { nameDe: t("Neue Werkbank"), nameEn: "New Workbench", kind: "workbench", material: "wood", hardness: 2.5, resistance: 2.5, tool: "axe" });
-      if (v === "machine") Object.assign(b, { nameDe: t("Neue Maschine"), nameEn: "New Machine", kind: "machine", material: "metal", hardness: 3.5, resistance: 3.5, tool: "pickaxe", machine: { fuel: true, recipes: [{ input: "minecraft:cobblestone", inputCount: 1, output: "minecraft:gravel", outputCount: 1, time: 100 }] } });
+      if (v === "workbench") Object.assign(b, { nameDe: "", nameEn: "New Workbench", kind: "workbench", material: "wood", hardness: 2.5, resistance: 2.5, tool: "axe" });
+      if (v === "machine") Object.assign(b, { nameDe: "", nameEn: "New Machine", kind: "machine", material: "metal", hardness: 3.5, resistance: 3.5, tool: "pickaxe", machine: { fuel: true, recipes: [{ input: "minecraft:cobblestone", inputCount: 1, output: "minecraft:gravel", outputCount: 1, time: 100 }] } });
       setContent({ ...content, blocks: [...content.blocks, b] });
       setSel({ kind: "block", index: content.blocks.length });
     } else if (choice.kind === "item") {
       const v = choice.variant;
       const added: ItemDef[] = [];
       if (v === "basic") added.push(newItem(uid("neues_item")));
-      else if (v === "food") added.push({ ...newItem(uid("neue_nahrung")), nameDe: t("Neue Nahrung"), nameEn: "New Food", food: true, nutrition: 6, saturation: 0.6 });
+      else if (v === "food") added.push({ ...newItem(uid("neue_nahrung")), nameDe: "", nameEn: "New Food", food: true, nutrition: 6, saturation: 0.6 });
       else if (v === "toolset") {
         for (const type of ["sword", "pickaxe", "axe", "shovel", "hoe"] as const) {
-          const [id, de, en] = TOOL_NAMES[type];
-          added.push({ ...newItem(uid(id), "tool"), ...toolPreset(type, "iron"), nameDe: de, nameEn: en });
+          const [id, , en] = TOOL_NAMES[type];
+          added.push({ ...newItem(uid(id), "tool"), ...toolPreset(type, "iron"), nameDe: "", nameEn: en });
         }
       } else if (v === "armor" || v === "armorset") {
         const mat = uid("neues_material");
         const slots: ArmorSlot[] = v === "armor" ? ["helmet"] : ["helmet", "chestplate", "leggings", "boots"];
         for (const slot of slots)
-          added.push({ ...newItem(uid(`${mat}_${slot}`), "armor"), ...armorPreset("iron", slot), armorMaterial: mat, nameDe: `${t("Neue Rüstung")} – ${SLOT_DE[slot]}`, nameEn: `New ${SLOT_EN[slot]}` });
+          added.push({ ...newItem(uid(`${mat}_${slot}`), "armor"), ...armorPreset("iron", slot), armorMaterial: mat, nameDe: "", nameEn: `New ${SLOT_EN[slot]}` });
       } else {
-        const [id, de, en] = TOOL_NAMES[v];
-        added.push({ ...newItem(uid(id), "tool"), ...toolPreset(v, "iron"), nameDe: de, nameEn: en });
+        const [id, , en] = TOOL_NAMES[v];
+        added.push({ ...newItem(uid(id), "tool"), ...toolPreset(v, "iron"), nameDe: "", nameEn: en });
       }
       setContent({ ...content, items: [...content.items, ...added] });
       setSel({ kind: "item", index: content.items.length });
@@ -312,6 +314,13 @@ export default function ContentTab({ project }: { project: Project }) {
       for (let n = 2; used.has(id); n++) id = `${id.replace(/_\d+$/, "")}_${n}`;
       setContent({ ...content, dimensions: [...content.dimensions, newDimension(id, choice.preset)] });
       setSel({ kind: "dimension", index: content.dimensions.length });
+    } else if (choice.kind === "structure") {
+      const list = content.structures ?? [];
+      const used = new Set(list.map((d) => d.id));
+      let id = "neue_struktur";
+      for (let n = 2; used.has(id); n++) id = `neue_struktur_${n}`;
+      setContent({ ...content, structures: [...list, newStructure(id)] });
+      setSel({ kind: "structure", index: list.length });
     } else if (choice.kind === "event") {
       setContent({ ...content, events: [...content.events, newEvent(content.blocks[0]?.id ?? "")] });
       setSel({ kind: "event", index: content.events.length });
@@ -325,7 +334,7 @@ export default function ContentTab({ project }: { project: Project }) {
     if (!content) return;
     const mat = from.armorMaterial || "material";
     const have = content.items.filter((i) => i.kind === "armor" && i.armorMaterial === mat).map((i) => i.armorSlot);
-    const matName = (from.nameDe || mat).replace(/[- ]?(Helm|Brustpanzer|Hose|Stiefel)$/i, "").trim() || mat;
+    const matName = (from.nameEn || from.nameDe || mat).replace(/[- ]?(Helm|Brustpanzer|Hose|Stiefel)$/i, "").trim() || mat;
     const matEn = (from.nameEn || mat).replace(/[- ]?(Helmet|Chestplate|Leggings|Boots)$/i, "").trim() || mat;
     const ids = new Set(allIds);
     const added: ItemDef[] = [];
@@ -338,7 +347,7 @@ export default function ContentTab({ project }: { project: Project }) {
       added.push({
         ...structuredClone(from),
         id,
-        nameDe: `${matName}-${SLOT_DE[slot]}`,
+        nameDe: from.nameDe ? `${matName}-${SLOT_DE[slot]}` : "",
         nameEn: `${matEn} ${SLOT_EN[slot]}`,
         armorSlot: slot,
         defense: armorPreset("iron", slot).defense! + Math.max(0, from.defense - armorPreset("iron", from.armorSlot).defense!),
@@ -369,8 +378,15 @@ export default function ContentTab({ project }: { project: Project }) {
     if (!content || !target) return;
     if (target.kind === "dimension") {
       const d = content.dimensions[target.index];
-      if (!(await confirmDialog(t("„{name}“ entfernen?", { name: d.nameDe || d.id }), t("Die Dimension wird beim Speichern aus der Mod entfernt. Bereits erkundete Gebiete bleiben in der Welt gespeichert."), t("Entfernen"), t("Abbrechen"), true))) return;
+      if (!(await confirmDialog(t("„{name}“ entfernen?", { name: d.nameEn || d.nameDe || d.id }), t("Die Dimension wird beim Speichern aus der Mod entfernt. Bereits erkundete Gebiete bleiben in der Welt gespeichert."), t("Entfernen"), t("Abbrechen"), true))) return;
       setContent((c) => (c ? { ...c, dimensions: c.dimensions.filter((_, i) => i !== target.index) } : c));
+      setSel(null);
+      return;
+    }
+    if (target.kind === "structure") {
+      const st = (content.structures ?? [])[target.index];
+      if (!(await confirmDialog(t("„{name}“ entfernen?", { name: st.nameEn || st.id }), t("Die Struktur wird beim Speichern aus der Weltgenerierung entfernt. Die gespeicherten Teile bleiben im Projekt."), t("Entfernen"), t("Abbrechen"), true))) return;
+      setContent((c) => (c ? { ...c, structures: (c.structures ?? []).filter((_, i) => i !== target.index) } : c));
       setSel(null);
       return;
     }
@@ -448,7 +464,7 @@ export default function ContentTab({ project }: { project: Project }) {
             onChange={(d) => setContent({ ...content, dimensions: content.dimensions.map((x, i) => (i === sel.index ? d : x)) })}
             onDuplicate={() => {
               const d = content.dimensions[sel.index];
-              setContent({ ...content, dimensions: [...content.dimensions, { ...structuredClone(d), id: `${d.id}_kopie`, nameDe: `${d.nameDe} (${t("Kopie")})` }] });
+              setContent({ ...content, dimensions: [...content.dimensions, { ...structuredClone(d), id: `${d.id}_kopie`, nameDe: d.nameDe ? `${d.nameDe} (Kopie)` : "", nameEn: `${d.nameEn || d.id} (Copy)` }] });
               setSel({ kind: "dimension", index: content.dimensions.length });
             }}
             onRemove={() => remove()}
@@ -508,9 +524,9 @@ export default function ContentTab({ project }: { project: Project }) {
                   onClick={() => setSel({ kind: "block", index: i })}
                   {...contextMenu(() => entryMenu("block", i))}
                 >
-                  {entryIcon("block", b.id, b.nameDe || b.id)}
+                  {entryIcon("block", b.id, b.nameEn || b.nameDe || b.id)}
                   <span className="entry-text">
-                    <span className="entry-name">{b.nameDe || b.id}</span>
+                    <span className="entry-name">{b.nameEn || b.nameDe || b.id}</span>
                     <span className="entry-id">{b.id}</span>
                   </span>
                   {(b.ore.enabled || b.shapes.length > 0) && (
@@ -532,9 +548,9 @@ export default function ContentTab({ project }: { project: Project }) {
                   onClick={() => setSel({ kind: "item", index: i })}
                   {...contextMenu(() => entryMenu("item", i))}
                 >
-                  {entryIcon("item", it.id, it.nameDe || it.id)}
+                  {entryIcon("item", it.id, it.nameEn || it.nameDe || it.id)}
                   <span className="entry-text">
-                    <span className="entry-name">{it.nameDe || it.id}</span>
+                    <span className="entry-name">{it.nameEn || it.nameDe || it.id}</span>
                     <span className="entry-id">{it.id}</span>
                   </span>
                   {it.kind !== "basic" && <span className="entry-badges">{it.kind === "tool" ? <SwordIcon size={12} /> : <ChestplateIcon size={12} />}</span>}
@@ -553,14 +569,14 @@ export default function ContentTab({ project }: { project: Project }) {
                 >
                   <img className="egg-icon" src={eggDataUrl(m.eggPrimary, m.eggSecondary)} alt="" />
                   <span className="entry-text">
-                    <span className="entry-name">{m.nameDe || m.id}</span>
+                    <span className="entry-name">{m.nameEn || m.nameDe || m.id}</span>
                     <span className="entry-id">{m.id}</span>
                   </span>
                 </button>
               ) : null,
             )}
           </ListGroup>
-          <ListGroup id="world" label={t("Welt")} icon={<GlobeIcon size={13} />} count={content.dimensions.length} forceOpen={!!q}>
+          <ListGroup id="world" label={t("Welt")} icon={<GlobeIcon size={13} />} count={content.dimensions.length + (content.structures ?? []).length} forceOpen={!!q}>
             {content.dimensions.map((d, i) =>
               !q || `${d.id} ${d.nameDe} ${d.nameEn}`.toLowerCase().includes(q) ? (
                 <button
@@ -583,8 +599,33 @@ export default function ContentTab({ project }: { project: Project }) {
                     <GlobeIcon size={14} />
                   </span>
                   <span className="entry-text">
-                    <span className="entry-name">{d.nameDe || d.id}</span>
+                    <span className="entry-name">{d.nameEn || d.nameDe || d.id}</span>
                     <span className="entry-id">{d.id}</span>
+                  </span>
+                </button>
+              ) : null,
+            )}
+            {(content.structures ?? []).map((st, i) =>
+              !q || `${st.id} ${st.nameEn} ${st.nameDe}`.toLowerCase().includes(q) ? (
+                <button
+                  key={`st${i}`}
+                  className={sel?.kind === "structure" && sel.index === i ? "entry active" : "entry"}
+                  onClick={() => setSel({ kind: "structure", index: i })}
+                  {...contextMenu(() => [
+                    { label: t("Bearbeiten"), icon: <PencilIcon size={15} />, onClick: () => setSel({ kind: "structure", index: i }) },
+                    "separator",
+                    { label: t("Entfernen"), icon: <TrashIcon size={15} />, danger: true, onClick: () => remove({ kind: "structure", index: i }) },
+                  ])}
+                >
+                  <span className="logic-icon">
+                    <BoxIcon size={14} />
+                  </span>
+                  <span className="entry-text">
+                    <span className="entry-name">{st.nameEn || st.nameDe || st.id}</span>
+                    <span className="entry-id">{st.id}</span>
+                  </span>
+                  <span className="entry-badges">
+                    <span className="badge-mini">{t("Struktur")}</span>
                   </span>
                 </button>
               ) : null,
@@ -670,7 +711,22 @@ export default function ContentTab({ project }: { project: Project }) {
             </div>
           </div>
         )}
-        {sel?.kind === "blueprint" && content.blueprints[sel.index] ? (
+        {sel?.kind === "structure" && (content.structures ?? [])[sel.index] ? (
+          <StructureEditor
+            key={`st-${sel.index}`}
+            project={project}
+            content={content}
+            st={(content.structures ?? [])[sel.index]}
+            onChange={(st) => setContent((c) => (c ? { ...c, structures: (c.structures ?? []).map((x, i) => (i === sel.index ? st : x)) } : c))}
+            onDuplicate={() => {
+              const list = content.structures ?? [];
+              const d = list[sel.index];
+              setContent({ ...content, structures: [...list, { ...structuredClone(d), id: `${d.id}_kopie`, nameEn: `${d.nameEn || d.id} (Copy)` }] });
+              setSel({ kind: "structure", index: list.length });
+            }}
+            onRemove={() => remove()}
+          />
+        ) : sel?.kind === "blueprint" && content.blueprints[sel.index] ? (
           <BlueprintEditor
             key={`bp-${sel.index}`}
             project={project}
@@ -711,6 +767,7 @@ export default function ContentTab({ project }: { project: Project }) {
           <MobEditor
             key={`mob-${sel!.index}`}
             project={project}
+            german={german}
             mob={mob}
             own={own}
             saved={(savedContent?.generatedMobs ?? []).includes(mob.id)}
@@ -728,7 +785,7 @@ export default function ContentTab({ project }: { project: Project }) {
               <div className="editor-head">
                 {entryIcon(block ? "block" : "item", current.id, current.nameDe)}
                 <div className="grow editor-head-text">
-                  <div className="editor-head-title">{current.nameDe || current.id}</div>
+                  <div className="editor-head-title">{current.nameEn || current.nameDe || current.id}</div>
                   <div className="editor-head-sub mono">
                     {project.modId}:{current.id} · {block ? (block.ore.enabled ? t("Erz") : t("Block")) : item!.kind === "tool" ? t("Werkzeug") : item!.kind === "armor" ? t("Rüstung") : t("Item")}
                   </div>
@@ -775,12 +832,13 @@ export default function ContentTab({ project }: { project: Project }) {
                 <Field label={t("Vollständige ID")}>
                   <input className="input mono" readOnly value={`${project.modId}:${current.id}`} />
                 </Field>
-                <Field label={t("Name (Deutsch)")}>
-                  <input className="input" value={current.nameDe} onChange={(e) => (block ? updBlock({ nameDe: e.target.value }) : updItem({ nameDe: e.target.value }))} />
-                </Field>
-                <Field label={t("Name (Englisch)")}>
-                  <input className="input" value={current.nameEn} onChange={(e) => (block ? updBlock({ nameEn: e.target.value }) : updItem({ nameEn: e.target.value }))} />
-                </Field>
+                <NameFields
+                  en={current.nameEn}
+                  de={current.nameDe}
+                  german={german}
+                  onEn={(v) => (block ? updBlock({ nameEn: v }) : updItem({ nameEn: v }))}
+                  onDe={(v) => (block ? updBlock({ nameDe: v }) : updItem({ nameDe: v }))}
+                />
                 <NamesField names={current.names ?? {}} onChange={(names) => (block ? updBlock({ names }) : updItem({ names }))} />
 
                   {block && (
@@ -1167,14 +1225,14 @@ function ContentOverview({
   const todos: Todo[] = [];
   if (dirty) todos.push({ text: t("Es gibt ungespeicherte Änderungen."), tone: "info", action: t("Speichern"), run: onSave });
   content.blocks.forEach((b, i) => {
-    const name = b.nameDe || b.id;
+    const name = b.nameEn || b.nameDe || b.id;
     if (content.generatedBlocks.includes(b.id) && !textures[b.id] && !b.model.length) todos.push({ text: t("„{name}“ hat noch keine eigene Textur", { name }), tone: "warn", action: t("Öffnen"), run: () => onSelect({ kind: "block", index: i }) });
     if (b.kind === "workbench" && !(b.workbenchRecipes ?? []).length) todos.push({ text: t("Werkbank „{name}“ hat noch keine eigenen Rezepte", { name }), tone: "warn", action: t("Öffnen"), run: () => onSelect({ kind: "block", index: i }) });
     if (b.kind === "machine" && !(b.machine?.recipes ?? []).length) todos.push({ text: t("Maschine „{name}“ hat noch kein Rezept", { name }), tone: "warn", action: t("Öffnen"), run: () => onSelect({ kind: "block", index: i }) });
     if (!b.nameEn.trim()) todos.push({ text: t("„{name}“ hat noch keinen englischen Namen", { name }), tone: "info", action: t("Öffnen"), run: () => onSelect({ kind: "block", index: i }) });
   });
   content.items.forEach((it, i) => {
-    const name = it.nameDe || it.id;
+    const name = it.nameEn || it.nameDe || it.id;
     if (content.generatedItems.includes(it.id) && !textures[it.id]) todos.push({ text: t("„{name}“ hat noch keine eigene Textur", { name }), tone: "warn", action: t("Öffnen"), run: () => onSelect({ kind: "item", index: i }) });
     if (!it.nameEn.trim()) todos.push({ text: t("„{name}“ hat noch keinen englischen Namen", { name }), tone: "info", action: t("Öffnen"), run: () => onSelect({ kind: "item", index: i }) });
   });

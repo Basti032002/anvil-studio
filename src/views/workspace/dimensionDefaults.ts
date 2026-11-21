@@ -118,9 +118,9 @@ export const ORE_PRESETS: { id: string; label: () => string; ores: () => DimOre[
   },
 ];
 
-const biome = (id: string, nameDe: string, nameEn: string, base: string): DimBiome => {
+const biome = (id: string, _nameDe: string, nameEn: string, base: string): DimBiome => {
   const b = BASES.find((x) => x.id === base);
-  return { id, nameDe, nameEn, base, topBlock: b?.top ?? "", fillBlock: b?.fill ?? "" };
+  return { id, nameDe: "", nameEn, base, topBlock: b?.top ?? "", fillBlock: b?.fill ?? "" };
 };
 
 /** Werte, die eine Vorlage vorgibt (Name und ID bleiben) */
@@ -165,11 +165,10 @@ export function templateDefaults(tp: DimTemplate): Partial<DimDef> {
 }
 
 export function newDimension(id: string, tp: DimTemplate = "overworld"): DimDef {
-  const label = TEMPLATES.find((x) => x.id === tp);
   return {
     ...(templateDefaults(tp) as DimDef),
     id,
-    nameDe: label ? label.label() : t("Neue Dimension"),
+    nameDe: "",
     nameEn: { overworld: "Overworld", amplified: "Amplified", nether: "Nether", end: "End", floating: "Floating Islands", caves: "Caves", flat: "Flatland", void: "Void" }[tp] + " Dimension",
   };
 }

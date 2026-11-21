@@ -228,7 +228,7 @@ export default function ModelEditor({
       <div className="model-editor" role="dialog" aria-label={t("3D-Modell")}>
         <div className="create-head">
           <div>
-            <div className="panel-title-lg">{t("3D-Modell · {name}", { name: block.nameDe || block.id })}</div>
+            <div className="panel-title-lg">{t("3D-Modell · {name}", { name: block.nameEn || block.nameDe || block.id })}</div>
             <div className="muted small">{t("Baue die Form aus Quadern. Ein Block ist 16 × 16 × 16 Pixel groß.")}</div>
           </div>
           <div className="row gap-6">

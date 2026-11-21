@@ -731,7 +731,7 @@ function PropInput({ project, content, own, spec, value, onChange }: { project: 
         <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
           {content.dimensions.map((d) => (
             <option key={d.id} value={d.id}>
-              {d.nameDe || d.id} ({t("eigene")})
+              {d.nameEn || d.nameDe || d.id} ({t("eigene")})
             </option>
           ))}
           <option value="minecraft:overworld">{t("Oberwelt")}</option>
@@ -753,7 +753,7 @@ function PropInput({ project, content, own, spec, value, onChange }: { project: 
       );
     case "entity": {
       const opts = [
-        ...content.mobs.map((m) => ({ id: `${project.modId}:${m.id}`, label: `${m.nameDe || m.id} (${t("eigene")})` })),
+        ...content.mobs.map((m) => ({ id: `${project.modId}:${m.id}`, label: `${m.nameEn || m.nameDe || m.id} (${t("eigene")})` })),
         ...ENTITIES.map((e) => ({ id: `minecraft:${e}`, label: e.replace(/_/g, " ") })),
       ];
       return (

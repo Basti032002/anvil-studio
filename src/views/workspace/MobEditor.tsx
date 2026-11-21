@@ -7,7 +7,7 @@ import { OwnEntry } from "../../components/ItemPicker";
 import { confirmDialog } from "../../components/Overlay";
 import { CopyIcon, GlobeIcon, HeartIcon, ImageIcon, PawIcon, SaveIcon, SkullIcon, SparkIcon, TrashIcon } from "../../icons";
 import { toast } from "../../state";
-import { Field, ItemField, SubTabs } from "./ContentForms";
+import { Field, ItemField, NameFields, SubTabs } from "./ContentForms";
 import { BIOMES, eggDataUrl, MOB_MODELS } from "./contentDefaults";
 import PixelEditor from "./PixelEditor";
 
@@ -46,6 +46,7 @@ async function applyVanillaTexture(project: Project, mob: MobDef): Promise<boole
 
 export default function MobEditor({
   project,
+  german,
   mob,
   own,
   saved,
@@ -56,6 +57,7 @@ export default function MobEditor({
   onRemove,
 }: {
   project: Project;
+  german: boolean;
   mob: MobDef;
   own: OwnEntry[];
   saved: boolean;
@@ -93,7 +95,7 @@ export default function MobEditor({
         <div className="editor-head">
           <img className="egg-icon" src={eggDataUrl(mob.eggPrimary, mob.eggSecondary)} alt="" />
           <div className="grow editor-head-text">
-            <div className="editor-head-title">{mob.nameDe || mob.id}</div>
+            <div className="editor-head-title">{mob.nameEn || mob.nameDe || mob.id}</div>
             <div className="editor-head-sub mono">
               {project.modId}:{mob.id} · {t("Kreatur")} · {model.label}
             </div>
@@ -123,12 +125,7 @@ export default function MobEditor({
           <Field label={t("Vollständige ID")}>
             <input className="input mono" readOnly value={`${project.modId}:${mob.id}`} />
           </Field>
-          <Field label={t("Name (Deutsch)")}>
-            <input className="input" value={mob.nameDe} onChange={(e) => onChange({ nameDe: e.target.value })} />
-          </Field>
-          <Field label={t("Name (Englisch)")}>
-            <input className="input" value={mob.nameEn} onChange={(e) => onChange({ nameEn: e.target.value })} />
-          </Field>
+          <NameFields en={mob.nameEn} de={mob.nameDe} german={german} onEn={(v) => onChange({ nameEn: v })} onDe={(v) => onChange({ nameDe: v })} />
           <NamesField names={mob.names ?? {}} onChange={(names) => onChange({ names })} />
 
           <div className="field span-2">

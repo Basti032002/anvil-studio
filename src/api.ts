@@ -235,6 +235,8 @@ export type Content = {
   events: EventDef[];
   blueprints: Blueprint[];
   dimensions: DimDef[];
+  /** Eigene Strukturen (im Spiel mit dem Strukturblock gebaut) */
+  structures?: StructDef[];
 };
 export type BrewDef = { input: string; ingredient: string; output: string };
 export type EventTrigger = "right_click_block" | "right_click_item" | "break_block" | "place_block" | "use_item" | "entity_hurt" | "entity_killed";
@@ -267,7 +269,32 @@ export const contentApi = {
   langEntries: (projectId: string, content: Content) => invoke<LangEntry[]>("content_lang_entries", { projectId, content }),
   langExport: (path: string, data: unknown) => invoke<void>("lang_export", { path, data }),
   langImport: (path: string) => invoke<Record<string, Record<string, string>>>("lang_import", { path }),
+  structuresScan: (projectId: string) => invoke<FoundStructure[]>("structures_scan", { projectId }),
+  structuresImported: (projectId: string) => invoke<FoundStructure[]>("structures_imported", { projectId }),
+  structureImport: (projectId: string, file: string, name: string) => invoke<StructInfo>("structure_import", { projectId, file, name }),
 };
+export type StructInfo = { size: [number, number, number]; blocks: number; palette: [string, number][]; pools: string[] };
+export type FoundStructure = { name: string; short: string; world: string; file: string; modified: number; info: StructInfo | null; error: string | null };
+export interface StructPiece {
+  template: string;
+  /** "" = Start */
+  pool: string;
+  weight: number;
+}
+export interface StructDef {
+  id: string;
+  nameEn: string;
+  nameDe: string;
+  pieces: StructPiece[];
+  overworld: boolean;
+  biomes: string[];
+  placement: "surface" | "underground" | "sky";
+  y: number;
+  spacing: number;
+  separation: number;
+  depth: number;
+  adapt: "" | "none" | "beard_thin" | "beard_box" | "bury" | "encapsulate";
+}
 export type LangEntry = { key: string; kind: "block" | "item" | "entity" | "egg" | "tab"; owner: string; shape: string; de: string; en: string; legacy: Record<string, string> };
 
 export const modsApi = {

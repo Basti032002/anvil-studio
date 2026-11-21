@@ -88,7 +88,7 @@ export default function LocalizationTab({ project }: { project: Project }) {
   const dirty = content ? JSON.stringify(content) !== saved : false;
   const legacyCodes = useMemo(() => [...new Set(entries.flatMap((e) => Object.keys(e.legacy)))], [entries]);
   const langs = useMemo(() => {
-    const extra = [...(content?.languages ?? []), ...legacyCodes, ...Object.keys(content?.translations ?? {})].filter((c) => c !== "de_de" && c !== "en_us");
+    const extra = [...(content?.languages ?? []), ...legacyCodes, ...Object.keys(content?.translations ?? {})].filter((c) => c !== "en_us");
     return [...new Set(extra)];
   }, [content, legacyCodes]);
   useEffect(() => {
@@ -169,6 +169,11 @@ export default function LocalizationTab({ project }: { project: Project }) {
         delete n[short];
         return { ...x, names: n };
       };
+      if (code === "de_de") {
+        // Deutsch: auch die deutschen Namen an den Inhalten löschen
+        const noDe = <T extends { nameDe: string }>(x: T): T => ({ ...strip(x as T & { names?: Record<string, string> }), nameDe: "" });
+        return { ...c, languages: (c.languages ?? []).filter((x) => x !== code), translations: all, blocks: c.blocks.map(noDe), items: c.items.map(noDe), mobs: c.mobs.map(noDe), dimensions: c.dimensions.map((d) => ({ ...d, nameDe: "" })) };
+      }
       return { ...c, languages: (c.languages ?? []).filter((x) => x !== code), translations: all, blocks: c.blocks.map(strip), items: c.items.map(strip), mobs: c.mobs.map(strip) };
     });
   }
@@ -229,7 +234,7 @@ export default function LocalizationTab({ project }: { project: Project }) {
       <header className="loc-head">
         <div className="grow">
           <h1>{t("Localization")}</h1>
-          <p className="muted">{t("Alle Texte deiner Mod an einem Ort. Deutsch und Englisch sind immer dabei, weitere Sprachen fügst du hinzu.")}</p>
+          <p className="muted">{t("Alle Texte deiner Mod an einem Ort. Englisch ist immer dabei, weitere Sprachen wie Deutsch fügst du hinzu.")}</p>
         </div>
         <button className="btn small" onClick={importJson}>
           <ImportIcon size={14} /> {t("Importieren")}
@@ -243,7 +248,7 @@ export default function LocalizationTab({ project }: { project: Project }) {
       </header>
 
       <div className="loc-langs">
-        {["de_de", "en_us"].map((code) => (
+        {["en_us"].map((code) => (
           <span key={code} className="loc-lang fixed">
             {langName(code)} <span className="mono muted">{code}</span> <span className="ok small">{pct(code)} %</span>
           </span>
@@ -303,7 +308,6 @@ export default function LocalizationTab({ project }: { project: Project }) {
             <thead>
               <tr>
                 <th style={{ width: 130 }}>{t("Art")}</th>
-                <th>{t("Deutsch")}</th>
                 <th>{t("Englisch")}</th>
                 {active && (
                   <th>
@@ -322,9 +326,6 @@ export default function LocalizationTab({ project }: { project: Project }) {
                     <div className="mono tiny muted loc-key">{e.key}</div>
                   </td>
                   <td>
-                    <input className="input" value={value("de_de", e)} aria-label={t("Deutsch")} onChange={(ev) => setBase("de_de", e, ev.target.value)} />
-                  </td>
-                  <td>
                     <input className="input" value={value("en_us", e)} aria-label={t("Englisch")} onChange={(ev) => setBase("en_us", e, ev.target.value)} />
                   </td>
                   {active && (
@@ -334,7 +335,7 @@ export default function LocalizationTab({ project }: { project: Project }) {
                         value={value(active, e)}
                         placeholder={t("Fehlt – übersetzen")}
                         aria-label={langName(active)}
-                        onChange={(ev) => setTr(active, e.key, ev.target.value)}
+                        onChange={(ev) => (active === "de_de" ? setBase("de_de", e, ev.target.value) : setTr(active, e.key, ev.target.value))}
                       />
                     </td>
                   )}
@@ -344,7 +345,7 @@ export default function LocalizationTab({ project }: { project: Project }) {
           </table>
         </div>
       )}
-      {adding && <LangPicker exclude={["de_de", "en_us", ...langs]} onPick={addLang} onClose={() => setAdding(false)} />}
+      {adding && <LangPicker exclude={["en_us", ...langs]} onPick={addLang} onClose={() => setAdding(false)} />}
     </div>
   );
 }

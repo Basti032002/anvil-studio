@@ -91,10 +91,10 @@ export function EventEditor({
     trig.target === "block"
       ? blocks.map((v) => ({ id: v.id, name: v.name }))
       : trig.target === "item"
-        ? content.items.map((i) => ({ id: i.id, name: i.nameDe || i.id }))
+        ? content.items.map((i) => ({ id: i.id, name: i.nameEn || i.nameDe || i.id }))
         : [
-            ...content.mobs.map((m) => ({ id: m.id, name: `${m.nameDe || m.id} (${t("Kreatur")})` })),
-            ...content.items.map((i) => ({ id: i.id, name: `${i.nameDe || i.id} (${t("Waffe")})` })),
+            ...content.mobs.map((m) => ({ id: m.id, name: `${m.nameEn || m.nameDe || m.id} (${t("Kreatur")})` })),
+            ...content.items.map((i) => ({ id: i.id, name: `${i.nameEn || i.nameDe || i.id} (${t("Waffe")})` })),
           ];
   const setAction = (i: number, patch: Partial<ActionDef>) => onChange({ ...event, actions: event.actions.map((a, j) => (j === i ? { ...a, ...patch } : a)) });
   const canCancel = !["use_item", "entity_killed"].includes(event.trigger);

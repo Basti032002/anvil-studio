@@ -398,7 +398,7 @@ export function OresPage({ project, dim, own, set }: { project: Project; dim: Di
                 const on = (sel.biomes ?? []).includes(b.id);
                 return (
                   <button key={b.id} className={on ? "dx-chip on" : "dx-chip"} onClick={() => upd(si, { biomes: on ? (sel.biomes ?? []).filter((x) => x !== b.id) : [...(sel.biomes ?? []), b.id] })}>
-                    {b.nameDe || b.id}
+                    {b.nameEn || b.nameDe || b.id}
                   </button>
                 );
               })}

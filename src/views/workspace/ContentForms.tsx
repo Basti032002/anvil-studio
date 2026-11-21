@@ -24,6 +24,22 @@ export function SubTabs({ tabs, value, onChange }: { tabs: [string, string][]; v
   );
 }
 
+/** Name des Inhalts: Englisch immer, Deutsch nur wenn als Sprache hinzugefügt */
+export function NameFields({ en, de, german, onEn, onDe }: { en: string; de: string; german: boolean; onEn: (v: string) => void; onDe: (v: string) => void }) {
+  return (
+    <>
+      <Field label={german ? t("Name (Englisch)") : t("Name")}>
+        <input className="input" value={en} onChange={(e) => onEn(e.target.value)} />
+      </Field>
+      {german && (
+        <Field label={t("Name (Deutsch)")}>
+          <input className="input" value={de} onChange={(e) => onDe(e.target.value)} />
+        </Field>
+      )}
+    </>
+  );
+}
+
 export function Field({ label, hint, children, span }: { label: string; hint?: string; children: React.ReactNode; span?: boolean }) {
   return (
     <label className={span ? "field span-2" : "field"}>

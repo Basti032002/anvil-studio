@@ -21,7 +21,7 @@ export const defaultOre = (): OreDef => ({
 
 export const newBlock = (id: string): BlockDef => ({
   id,
-  nameDe: "Neuer Block",
+  nameDe: "",
   nameEn: "New Block",
   material: "stone",
   hardness: 1.5,
@@ -64,7 +64,7 @@ const itemBase = {
 
 export const newItem = (id: string, kind: ItemDef["kind"] = "basic"): ItemDef => ({
   id,
-  nameDe: kind === "tool" ? t("Neues Werkzeug") : kind === "armor" ? t("Neue Rüstung") : t("Neues Item"),
+  nameDe: "",
   nameEn: kind === "tool" ? t("New Tool") : kind === "armor" ? t("New Armor") : t("New Item"),
   names: {},
   recipe: emptyRecipe(),
@@ -167,7 +167,7 @@ export const POTIONS: string[] = [
 ];
 
 export function variantIds(b: BlockDef): { id: string; shape: BlockShape | "block" | "deepslate"; name: string }[] {
-  const name = b.nameDe || b.nameEn || b.id;
+  const name = b.nameEn || b.nameDe || b.id;
   const out: { id: string; shape: BlockShape | "block" | "deepslate"; name: string }[] = [{ id: b.id, shape: "block", name }];
   if (b.ore?.enabled && b.ore.deepslate && b.ore.dimension === "overworld") out.push({ id: `deepslate_${b.id}`, shape: "deepslate", name: `Tiefenschiefer-${name}` });
   for (const s of SHAPES) if (b.shapes?.includes(s.id)) out.push({ id: `${b.id}_${s.id}`, shape: s.id, name: `${name}-${s.label}` });
@@ -219,7 +219,7 @@ export const newMob = (id: string, model: MobModel = "cow"): MobDef => {
   const m = MOB_MODELS.find((x) => x.id === model)!;
   return {
     id,
-    nameDe: "Neue Kreatur",
+    nameDe: "",
     nameEn: "New Creature",
     names: {},
     model,

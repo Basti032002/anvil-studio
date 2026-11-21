@@ -11,6 +11,7 @@ import {
   CubeIcon,
   FlaskIcon,
   GlobeIcon,
+  BoxIcon,
   FoodIcon,
   GemIcon,
   LampIcon,
@@ -35,7 +36,8 @@ export type CreateChoice =
   | { kind: "blueprint"; template: string }
   | { kind: "event" }
   | { kind: "brew" }
-  | { kind: "dimension"; preset: DimTemplate };
+  | { kind: "dimension"; preset: DimTemplate }
+  | { kind: "structure" };
 
 interface Card {
   choice: CreateChoice;
@@ -134,6 +136,10 @@ function cards(group: CreateGroup): { title: string; cards: Card[] }[] {
             { choice: { kind: "dimension", preset: "flat" }, icon: <GlobeIcon size={20} />, title: t("Flachland"), desc: t("Flache Schichten – ideal zum Bauen") },
             { choice: { kind: "dimension", preset: "void" }, icon: <GlobeIcon size={20} />, title: t("Leere"), desc: t("Nur Luft – für Skyblock und Lobbys") },
           ],
+        },
+        {
+          title: t("Struktur"),
+          cards: [{ choice: { kind: "structure" }, icon: <BoxIcon size={20} />, title: t("Eigene Struktur"), desc: t("Im Spiel mit dem Strukturblock bauen und in der Welt verteilen") }],
         },
       ];
     case "logic":
