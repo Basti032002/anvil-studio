@@ -1755,6 +1755,50 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
         }
         let _ = modid;
     }
+    // ---- Weltgenerierung: eigene Dichtefunktion „Abstand zur Mitte“ ----
+    if crate::dimension::uses_distance(&c.dimensions) {
+        imports.extend([
+            "com.mojang.serialization.Codec",
+            "com.mojang.serialization.MapCodec",
+            "com.mojang.serialization.codecs.RecordCodecBuilder",
+            "net.minecraft.util.KeyDispatchDataCodec",
+            "net.minecraft.world.level.levelgen.DensityFunction",
+        ]);
+        fields.push_str("    public static final DeferredRegister<MapCodec<? extends DensityFunction>> DENSITY_TYPES = DeferredRegister.create(Registries.DENSITY_FUNCTION_TYPE, MODID);\n");
+        fields.push_str("    public static final DeferredHolder<MapCodec<? extends DensityFunction>, MapCodec<AnvilDistance>> DISTANCE_TYPE = DENSITY_TYPES.register(\"distance\", () -> AnvilDistance.CODEC.codec());\n\n");
+        calls.push_str("        DENSITY_TYPES.register(modEventBus);\n");
+        methods.push_str(r#"
+    /** Abstand zur Mitte (für die Geländeformel), geteilt durch „scale“ */
+    public record AnvilDistance(double centerX, double centerZ, double scale) implements DensityFunction.SimpleFunction {
+        public static final KeyDispatchDataCodec<AnvilDistance> CODEC = KeyDispatchDataCodec.of(RecordCodecBuilder.mapCodec(i -> i.group(
+                Codec.DOUBLE.fieldOf("center_x").forGetter(AnvilDistance::centerX),
+                Codec.DOUBLE.fieldOf("center_z").forGetter(AnvilDistance::centerZ),
+                Codec.DOUBLE.fieldOf("scale").forGetter(AnvilDistance::scale)).apply(i, AnvilDistance::new)));
+
+        @Override
+        public double compute(DensityFunction.FunctionContext ctx) {
+            double dx = ctx.blockX() - centerX, dz = ctx.blockZ() - centerZ;
+            return Math.sqrt(dx * dx + dz * dz) / Math.max(1.0E-6, scale);
+        }
+
+        @Override
+        public double minValue() {
+            return 0.0;
+        }
+
+        @Override
+        public double maxValue() {
+            return 1.0E7;
+        }
+
+        @Override
+        public KeyDispatchDataCodec<? extends DensityFunction> codec() {
+            return CODEC;
+        }
+    }
+"#);
+    }
+
     (fields, imports, calls, methods)
 }
 
@@ -3674,7 +3718,7 @@ mod tests {
             deep_block: "minecraft:tuff".into(),
             ores: vec![
                 crate::dimension::DimOre { block: "ruby_ore".into(), size: 6, count: 4.0, min_y: -40, max_y: 60, ..Default::default() },
-                crate::dimension::DimOre { block: "minecraft:diamond_ore".into(), deep_block: "minecraft:deepslate_diamond_ore".into(), size: 4, count: 0.5, min_y: -64, max_y: 0 },
+                crate::dimension::DimOre { block: "minecraft:diamond_ore".into(), deep_block: "minecraft:deepslate_diamond_ore".into(), size: 4, count: 0.5, min_y: -64, max_y: 0, ..Default::default() },
             ],
             structures: vec!["village_plains".into(), "ruined_portal_standard".into()],
             spawns: vec![crate::dimension::DimSpawn { entity: "crystal_cow".into(), category: "creature".into(), weight: 20, min: 1, max: 3 }],
@@ -3690,6 +3734,92 @@ mod tests {
             biome_size: 2.0,
             ..Default::default()
         });
+        // Knoten-Modus mit allen Knotenarten
+        {
+            use crate::dimension::{TGraph, TLink, TNode};
+            let n = |id: &str, kind: &str, props: &[(&str, serde_json::Value)]| TNode {
+                id: id.into(),
+                kind: kind.into(),
+                props: props.iter().map(|(k, v)| (k.to_string(), v.clone())).collect(),
+                ..Default::default()
+            };
+            let l = |from: &str, to: &str, port: &str| TLink { from: from.into(), to: to.into(), port: port.into() };
+            let graph = TGraph {
+                nodes: vec![
+                    n("kont", "noise", &[("size", 800.into()), ("octaves", 4.into())]),
+                    n("kurve", "curve", &[("shape", "s".into())]),
+                    n("gipfel", "noise", &[("size", 220.into()), ("octaves", 6.into())]),
+                    n("treppe", "curve", &[("shape", "steps".into()), ("points", 5.into())]),
+                    n("mal", "math", &[("op", "mul".into()), ("b", 1.8.into())]),
+                    n("plus", "math", &[("op", "add".into())]),
+                    n("klippen", "noise", &[("size", 60.into()), ("dim", "3d".into()), ("strength", 0.3.into())]),
+                    n("y", "ygrad", &[("top", (-1).into()), ("bottom", 1.into())]),
+                    n("mitte", "distance", &[("scale", 2000.into())]),
+                    n("biom", "biome", &[("value", "erosion".into())]),
+                    n("grenze", "clamp", &[("min", (-1).into()), ("max", 1.into())]),
+                    n("misch", "mix", &[("t", 0.3.into())]),
+                    n("zufall", "random", &[("strength", 0.05.into())]),
+                    n("abs", "math", &[("op", "abs".into())]),
+                    n("summe", "math", &[("op", "add".into())]),
+                    n("summe2", "math", &[("op", "sub".into())]),
+                    n("out", "output", &[]),
+                ],
+                links: vec![
+                    l("kont", "kurve", "in"),
+                    l("gipfel", "treppe", "in"),
+                    l("treppe", "mal", "a"),
+                    l("kurve", "plus", "a"),
+                    l("mal", "plus", "b"),
+                    l("plus", "grenze", "in"),
+                    l("grenze", "misch", "a"),
+                    l("biom", "misch", "b"),
+                    l("misch", "summe", "a"),
+                    l("y", "summe", "b"),
+                    l("summe", "summe2", "a"),
+                    l("mitte", "abs", "a"),
+                    l("abs", "summe2", "b"),
+                    l("klippen", "out", "x"),
+                    l("summe2", "out", "in"),
+                    l("zufall", "out", "y"),
+                ],
+            };
+            c.dimensions.push(crate::dimension::DimDef {
+                id: "formelwelt".into(),
+                template: "overworld".into(),
+                terrain_mode: "nodes".into(),
+                graph: graph.clone(),
+                builder_graph: graph,
+                min_y: -32,
+                max_y: 256,
+                biome_mode: "own".into(),
+                biomes: vec![crate::dimension::DimBiome { id: "wiese".into(), base: "plains".into(), ..Default::default() }],
+                ores: vec![crate::dimension::DimOre {
+                    block: "ruby_ore".into(),
+                    size: 8,
+                    count: 6.0,
+                    min_y: -30,
+                    max_y: 40,
+                    distribution: "triangle".into(),
+                    hidden: true,
+                    biomes: vec!["wiese".into()],
+                    extra: vec![crate::dimension::DimOreTarget { target: "minecraft:andesite".into(), ore: "".into() }],
+                    ..Default::default()
+                }, crate::dimension::DimOre { block: "minecraft:gold_ore".into(), size: 6, count: 2.0, min_y: -30, max_y: 30, distribution: "bottom".into(), ..Default::default() },
+                   crate::dimension::DimOre { block: "minecraft:coal_ore".into(), size: 6, count: 2.0, min_y: 0, max_y: 100, distribution: "top".into(), disabled: true, ..Default::default() }],
+                islands: true,
+                islands_min_y: 160,
+                islands_max_y: 220,
+                islands_size_min: 20,
+                islands_size_max: 60,
+                islands_thickness: 12,
+                islands_rough: 0.5,
+                islands_top: "minecraft:grass_block".into(),
+                islands_waterfalls: true,
+                fluid: "water".into(),
+                sea_level: 63,
+                ..Default::default()
+            });
+        }
         for t in ["nether", "end", "floating", "caves", "flat", "void", "amplified"] {
             c.dimensions.push(crate::dimension::DimDef { id: format!("welt_{t}"), template: t.into(), biome_mode: if t == "end" || t == "caves" { "own".into() } else { "vanilla".into() }, fluid: if t == "nether" { "lava".into() } else { "water".into() }, sea_level: 32, ..Default::default() });
         }

@@ -33,6 +33,51 @@ pub struct DimOre {
     pub count: f32,
     pub min_y: i32,
     pub max_y: i32,
+    pub disabled: bool,
+    /// "" / "uniform" | "triangle" | "bottom" | "top"
+    pub distribution: String,
+    /// Nur in diesen eigenen Biomen (Kurznamen, leer = alle)
+    pub biomes: Vec<String>,
+    /// Weniger an der Luft (versteckter)
+    pub hidden: bool,
+    /// Weitere ersetzte Blöcke
+    pub extra: Vec<DimOreTarget>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DimOreTarget {
+    /// Block, der ersetzt wird
+    pub target: String,
+    /// Erz an dieser Stelle
+    pub ore: String,
+}
+
+/// Knoten der Geländeformel
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TNode {
+    pub id: String,
+    pub kind: String,
+    pub x: f64,
+    pub y: f64,
+    pub props: std::collections::BTreeMap<String, Value>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TLink {
+    pub from: String,
+    pub to: String,
+    /// Eingang am Ziel: "a", "b", "t" oder "in"
+    pub port: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TGraph {
+    pub nodes: Vec<TNode>,
+    pub links: Vec<TLink>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -56,6 +101,18 @@ pub struct DimDef {
     /// overworld | amplified | nether | end | floating | caves | flat | void ("" = alte Dimension → overworld)
     pub template: String,
 
+    /// "" (Form der Vorlage) | "builder" (Baukasten) | "nodes" (Knoten-Modus)
+    pub terrain_mode: String,
+    /// Einstellungen des Baukastens (gehören der Oberfläche)
+    pub terrain: Value,
+    /// Aus dem Baukasten erzeugte Formel
+    pub builder_graph: TGraph,
+    /// Formel im Knoten-Modus
+    pub graph: TGraph,
+    /// Weltgrenzen (0/0 = wie die Vorlage)
+    pub min_y: i32,
+    pub max_y: i32,
+
     // Gelände
     /// -0.5 … 0.5: mehr oder weniger Land
     pub land: f32,
@@ -64,6 +121,18 @@ pub struct DimDef {
     pub islands_y: i32,
     /// 0 … 1: wie viele Inseln
     pub islands_amount: f32,
+    /// Unter- und Obergrenze der Inseln (0 = automatisch)
+    pub islands_min_y: i32,
+    pub islands_max_y: i32,
+    /// Durchmesser in Blöcken
+    pub islands_size_min: i32,
+    pub islands_size_max: i32,
+    /// Dicke in Blöcken
+    pub islands_thickness: i32,
+    /// 0 … 1
+    pub islands_rough: f32,
+    pub islands_top: String,
+    pub islands_waterfalls: bool,
 
     // Schichten & Blöcke
     /// Ersatz für Grasblock (Oberfläche)
@@ -371,8 +440,17 @@ pub fn files(d: &DimDef, mc_at_least: &dyn Fn((u32, u32, u32)) -> bool, resolve:
         ("none", _) | (_, "end") | (_, "void") => json!({ "Name": "minecraft:air" }),
         _ => json!({ "Name": "minecraft:water", "Properties": { "level": "0" } }),
     };
+    // Weltgrenzen
+    let custom_bounds = d.max_y > d.min_y && !matches!(template.as_str(), "flat");
+    if custom_bounds {
+        let lo = ((d.min_y.clamp(-2032, 2000) as f64 / 16.0).floor() * 16.0) as i32;
+        let hi = ((d.max_y.clamp(lo + 16, 2031) as f64 / 16.0).ceil() * 16.0) as i32;
+        ns["noise"]["min_y"] = json!(lo);
+        ns["noise"]["height"] = json!((hi - lo).clamp(16, 4064));
+    }
     let min_y = ns["noise"]["min_y"].as_i64().unwrap_or(-64) as i32;
     let noise_h = ns["noise"]["height"].as_i64().unwrap_or(384) as i32;
+    let max_y = min_y + noise_h;
     ns["sea_level"] = json!(d.sea_level.clamp(min_y - 64, min_y + noise_h));
     if d.fluid == "none" {
         ns["aquifers_enabled"] = json!(false);
@@ -380,8 +458,32 @@ pub fn files(d: &DimDef, mc_at_least: &dyn Fn((u32, u32, u32)) -> bool, resolve:
     if d.no_ore_veins {
         ns["ore_veins_enabled"] = json!(false);
     }
+    let custom_terrain = matches!(d.terrain_mode.as_str(), "builder" | "nodes") && !matches!(template.as_str(), "flat" | "void");
+    let new_router = mc_at_least((1, 21, 9));
     if let Some(router) = ns.get_mut("noise_router") {
-        if d.no_noise_caves {
+        if custom_terrain {
+            let g = if d.terrain_mode == "nodes" { &d.graph } else { &d.builder_graph };
+            if let Some((terrain, noises, _)) = compile_graph(g, &modid, &d.id, min_y, max_y) {
+                out.extend(noises);
+                let t = json!({ "type": "minecraft:interpolated", "argument": terrain });
+                let mut fd = t.clone();
+                if !d.no_noise_caves {
+                    let cheese = json!({ "type": "minecraft:add", "argument1": 0.27, "argument2": { "type": "minecraft:noise", "noise": "minecraft:cave_cheese", "xz_scale": 1.0, "y_scale": 0.6666666666666666 } });
+                    let deep = json!({ "type": "minecraft:min", "argument1": t.clone(), "argument2": { "type": "minecraft:min", "argument1": cheese,
+                        "argument2": { "type": "minecraft:min", "argument1": "minecraft:overworld/caves/spaghetti_2d", "argument2": "minecraft:overworld/caves/entrances" } } });
+                    let near = json!({ "type": "minecraft:min", "argument1": t.clone(), "argument2": { "type": "minecraft:mul", "argument1": 5.0, "argument2": "minecraft:overworld/caves/entrances" } });
+                    fd = json!({ "type": "minecraft:min",
+                        "argument1": { "type": "minecraft:range_choice", "input": t.clone(), "min_inclusive": -1000000.0, "max_exclusive": 1.5625, "when_in_range": near, "when_out_of_range": deep },
+                        "argument2": "minecraft:overworld/caves/noodle" });
+                }
+                router["final_density"] = fd;
+                if new_router {
+                    router["preliminary_surface_level"] = json!({ "type": "minecraft:find_top_surface", "density": t, "upper_bound": max_y as f64, "lower_bound": min_y, "cell_height": 8 });
+                } else {
+                    router["initial_density_without_jaggedness"] = t;
+                }
+            }
+        } else if d.no_noise_caves {
             strip_noise_caves(&mut router["final_density"]);
         }
         if d.land.abs() > 0.001 && template != "void" {
@@ -389,22 +491,35 @@ pub fn files(d: &DimDef, mc_at_least: &dyn Fn((u32, u32, u32)) -> bool, resolve:
             router["final_density"] = json!({ "type": "minecraft:add", "argument1": fd, "argument2": d.land.clamp(-1.0, 1.0) });
         }
         if d.islands {
-            let y = if d.islands_y == 0 { min_y + noise_h - 96 } else { d.islands_y }.clamp(min_y + 16, min_y + noise_h - 24);
-            let amount = if d.islands_amount <= 0.0 { 0.5 } else { d.islands_amount.clamp(0.05, 1.0) };
-            // Band um die Inselhöhe (0 außerhalb, 1 in der Mitte)
+            let (lo, hi) = islands_range(d, min_y, max_y);
+            let amount = if d.islands_amount <= 0.0 { 0.5 } else { d.islands_amount.clamp(0.05, 1.0) } as f64;
+            let size = if d.islands_size_max > 0 { (d.islands_size_min.max(4) + d.islands_size_max.max(4)) as f64 / 2.0 } else { 40.0 };
+            let thick = if d.islands_thickness > 0 { d.islands_thickness as f64 } else { 12.0 };
+            let fade = ((hi - lo) as f64 / 4.0).clamp(4.0, 24.0) as i32;
+            // Band zwischen Unter- und Obergrenze (0 außerhalb, 1 innen)
             let band = json!({
                 "type": "minecraft:min",
-                "argument1": { "type": "minecraft:y_clamped_gradient", "from_y": y - 24, "to_y": y - 8, "from_value": 0.0, "to_value": 1.0 },
-                "argument2": { "type": "minecraft:y_clamped_gradient", "from_y": y + 8, "to_y": y + 24, "from_value": 1.0, "to_value": 0.0 }
+                "argument1": { "type": "minecraft:y_clamped_gradient", "from_y": lo, "to_y": lo + fade, "from_value": 0.0, "to_value": 1.0 },
+                "argument2": { "type": "minecraft:y_clamped_gradient", "from_y": hi - fade, "to_y": hi, "from_value": 1.0, "to_value": 0.0 }
             });
-            let noise = json!({ "type": "minecraft:noise", "noise": "minecraft:cave_cheese", "xz_scale": 1.5, "y_scale": 3.0 });
+            let first = -((size * 2.0).log2().round() as i32);
+            let xz = 1.0 / (size * 2.0 * 2f64.powi(first));
+            let name = format!("{}_islands", d.id);
+            out.push((format!("worldgen/noise/{name}.json"), json!({ "firstOctave": first, "amplitudes": [1.0, 0.5, 0.25] })));
+            let mut noise = json!({ "type": "minecraft:noise", "noise": format!("{modid}:{name}"), "xz_scale": xz, "y_scale": xz * (size / thick).clamp(0.5, 8.0) });
+            if d.islands_rough > 0.01 {
+                let rname = format!("{}_islands_rough", d.id);
+                out.push((format!("worldgen/noise/{rname}.json"), json!({ "firstOctave": -3, "amplitudes": [1.0, 0.5] })));
+                noise = json!({ "type": "minecraft:add", "argument1": noise, "argument2": { "type": "minecraft:mul", "argument1": d.islands_rough.clamp(0.0, 1.0) * 0.35,
+                    "argument2": { "type": "minecraft:noise", "noise": format!("{modid}:{rname}"), "xz_scale": 1.0, "y_scale": 1.0 } } });
+            }
             // w·(n + 0.3 + 0.5·Menge) − 1 → fest, wo das Rauschen hoch genug ist
             let islands = json!({
                 "type": "minecraft:interpolated",
                 "argument": {
                     "type": "minecraft:add",
                     "argument1": -1.0,
-                    "argument2": { "type": "minecraft:mul", "argument1": band, "argument2": { "type": "minecraft:add", "argument1": noise, "argument2": 0.3 + 0.5 * amount } }
+                    "argument2": { "type": "minecraft:mul", "argument1": band, "argument2": { "type": "minecraft:add", "argument1": noise, "argument2": 0.25 + 0.6 * amount } }
                 }
             });
             let fd = router["final_density"].take();
@@ -421,12 +536,25 @@ pub fn files(d: &DimDef, mc_at_least: &dyn Fn((u32, u32, u32)) -> bool, resolve:
         }
     }
     let flat = template == "flat";
+    let islands_range_v = islands_range(d, min_y, max_y);
+    if d.islands {
+        if let Some(top_isl) = pick(&d.islands_top) {
+            let rule = ns["surface_rule"].take();
+            ns["surface_rule"] = json!({ "type": "minecraft:sequence", "sequence": [
+                { "type": "minecraft:condition",
+                  "if_true": { "type": "minecraft:y_above", "anchor": { "absolute": islands_range_v.0 }, "surface_depth_multiplier": 0, "add_stone_depth": false },
+                  "then_run": { "type": "minecraft:sequence", "sequence": floor_rule(Some(&top_isl), None) } },
+                rule
+            ]});
+        }
+    }
     if !flat {
         out.push((format!("worldgen/noise_settings/{}.json", d.id), ns));
     }
 
     // ---- Dimensionstyp -----------------------------------------------------------
     let (dt_min, dt_h, logical) = match template.as_str() {
+        _ if custom_bounds => (min_y, noise_h, noise_h),
         "nether" => (0, 256, 128),
         "end" | "void" => (0, 256, 256),
         "flat" => (-64, 384, 384),
@@ -487,6 +615,9 @@ pub fn files(d: &DimDef, mc_at_least: &dyn Fn((u32, u32, u32)) -> bool, resolve:
         // Erze als eigene Merkmale
         let mut ore_features = vec![];
         for (i, o) in d.ores.iter().enumerate() {
+            if o.disabled {
+                continue;
+            }
             let Some(ore) = pick(&o.block) else { continue };
             let deep_ore = pick(&o.deep_block).unwrap_or_else(|| ore.clone());
             let mut targets = vec![json!({ "target": { "predicate_type": "minecraft:block_match", "block": stone }, "state": { "Name": ore } })];
@@ -494,10 +625,15 @@ pub fn files(d: &DimDef, mc_at_least: &dyn Fn((u32, u32, u32)) -> bool, resolve:
             if !deep_stone.is_empty() && deep_stone != stone {
                 targets.push(json!({ "target": { "predicate_type": "minecraft:block_match", "block": deep_stone }, "state": { "Name": deep_ore } }));
             }
+            for x in &o.extra {
+                if let (Some(tg), Some(st)) = (pick(&x.target), pick(&x.ore).or_else(|| Some(ore.clone()))) {
+                    targets.push(json!({ "target": { "predicate_type": "minecraft:block_match", "block": tg }, "state": { "Name": st } }));
+                }
+            }
             let name = format!("{}_ore_{}", d.id, i + 1);
             out.push((
                 format!("worldgen/configured_feature/{name}.json"),
-                json!({ "type": "minecraft:ore", "config": { "size": o.size.clamp(1, 64), "discard_chance_on_air_exposure": 0.0, "targets": targets } }),
+                json!({ "type": "minecraft:ore", "config": { "size": o.size.clamp(1, 64), "discard_chance_on_air_exposure": if o.hidden { 0.5 } else { 0.0 }, "targets": targets } }),
             ));
             let mut placement = vec![];
             if o.count >= 1.0 {
@@ -508,11 +644,44 @@ pub fn files(d: &DimDef, mc_at_least: &dyn Fn((u32, u32, u32)) -> bool, resolve:
             }
             let (lo, hi) = (o.min_y.min(o.max_y), o.min_y.max(o.max_y));
             placement.push(json!({ "type": "minecraft:in_square" }));
-            placement.push(json!({ "type": "minecraft:height_range", "height": { "type": "minecraft:uniform", "min_inclusive": { "absolute": lo }, "max_inclusive": { "absolute": hi } } }));
+            let height = match o.distribution.as_str() {
+                "triangle" => json!({ "type": "minecraft:trapezoid", "min_inclusive": { "absolute": lo }, "max_inclusive": { "absolute": hi }, "plateau": 0 }),
+                "bottom" => json!({ "type": "minecraft:biased_to_bottom", "min_inclusive": { "absolute": lo }, "max_inclusive": { "absolute": hi.max(lo + 2) }, "inner": 1 }),
+                "top" => json!({ "type": "minecraft:uniform", "min_inclusive": { "absolute": lo + (hi - lo) / 2 }, "max_inclusive": { "absolute": hi } }),
+                _ => json!({ "type": "minecraft:uniform", "min_inclusive": { "absolute": lo }, "max_inclusive": { "absolute": hi } }),
+            };
+            placement.push(json!({ "type": "minecraft:height_range", "height": height }));
             placement.push(json!({ "type": "minecraft:biome" }));
             out.push((format!("worldgen/placed_feature/{name}.json"), json!({ "feature": format!("{modid}:{name}"), "placement": placement })));
-            ore_features.push(format!("{modid}:{name}"));
+            ore_features.push((format!("{modid}:{name}"), o.biomes.clone()));
         }
+
+        // Wasserfälle an den schwebenden Inseln
+        let waterfall = if d.islands && d.islands_waterfalls {
+            let name = format!("{}_waterfall", d.id);
+            let mut valid = vec![stone.clone()];
+            for b in [pick(&d.islands_top), top.clone(), fill.clone(), Some("minecraft:dirt".into()), Some("minecraft:grass_block".into())].into_iter().flatten() {
+                if !valid.contains(&b) {
+                    valid.push(b);
+                }
+            }
+            out.push((
+                format!("worldgen/configured_feature/{name}.json"),
+                json!({ "type": "minecraft:spring_feature", "config": { "state": { "Name": "minecraft:water", "Properties": { "falling": "true" } },
+                    "requires_block_below": false, "rock_count": 3, "hole_count": 1, "valid_blocks": valid } }),
+            ));
+            let (lo, hi) = islands_range_v;
+            out.push((
+                format!("worldgen/placed_feature/{name}.json"),
+                json!({ "feature": format!("{modid}:{name}"), "placement": [
+                    { "type": "minecraft:count", "count": 40 }, { "type": "minecraft:in_square" },
+                    { "type": "minecraft:height_range", "height": { "type": "minecraft:uniform", "min_inclusive": { "absolute": lo }, "max_inclusive": { "absolute": hi } } },
+                    { "type": "minecraft:biome" } ] }),
+            ));
+            Some(format!("{modid}:{name}"))
+        } else {
+            None
+        };
 
         for b in &list {
             let base_name = if b.base.trim().is_empty() { default_base(&template) } else { b.base.trim().trim_start_matches("minecraft:") };
@@ -546,7 +715,14 @@ pub fn files(d: &DimDef, mc_at_least: &dyn Fn((u32, u32, u32)) -> bool, resolve:
                         || (d.no_plants && i == 9 && f != "minecraft:freeze_top_layer"))
                 });
             }
-            steps[6].extend(ore_features.iter().cloned());
+            for (feature, only) in &ore_features {
+                if only.is_empty() || only.iter().any(|x| x == &b.id) {
+                    steps[6].push(feature.clone());
+                }
+            }
+            if let Some(w) = &waterfall {
+                steps[8].push(w.clone());
+            }
             bj["features"] = json!(steps);
             // Kreaturen
             let mut spawners = if d.no_base_spawns { Map::new() } else { bj["spawners"].as_object().cloned().unwrap_or_default() };
@@ -688,7 +864,7 @@ mod tests {
                     DimBiome { id: "wiese".into(), base: "plains".into(), ..Default::default() },
                     DimBiome { id: "sand".into(), base: "desert".into(), top_block: "sand".into(), ..Default::default() },
                 ],
-                ores: vec![DimOre { block: "diamond_ore".into(), deep_block: "deepslate_diamond_ore".into(), size: 8, count: 0.5, min_y: -60, max_y: 16 }],
+                ores: vec![DimOre { block: "diamond_ore".into(), deep_block: "deepslate_diamond_ore".into(), size: 8, count: 0.5, min_y: -60, max_y: 16, ..Default::default() }],
                 structures: vec!["village_plains".into()],
                 spawns: vec![DimSpawn { entity: "zombie".into(), category: "monster".into(), weight: 50, min: 1, max: 3 }],
                 no_noise_caves: true,
@@ -726,4 +902,198 @@ mod tests {
             }
         }
     }
+}
+
+// ---- Geländeformel (Baukasten und Knoten-Modus) ---------------------------------
+
+fn num(props: &std::collections::BTreeMap<String, Value>, key: &str, def: f64) -> f64 {
+    match props.get(key) {
+        Some(Value::Number(n)) => n.as_f64().unwrap_or(def),
+        Some(Value::String(s)) => s.trim().replace(',', ".").parse().unwrap_or(def),
+        _ => def,
+    }
+}
+
+fn text<'a>(props: &'a std::collections::BTreeMap<String, Value>, key: &str, def: &'a str) -> &'a str {
+    props.get(key).and_then(|v| v.as_str()).unwrap_or(def)
+}
+
+/// Punkte (Ort, Wert) einer Kurvenform, Eingang und Ausgang je -1 … 1
+pub fn curve_points(shape: &str, steps: usize) -> Vec<(f64, f64)> {
+    match shape {
+        "linear" => vec![(-1.0, -1.0), (1.0, 1.0)],
+        "steps" => {
+            let n = steps.clamp(2, 12);
+            let mut pts = vec![];
+            for k in 0..n {
+                let a = -1.0 + 2.0 * k as f64 / n as f64;
+                let b = -1.0 + 2.0 * (k as f64 + 0.7) / n as f64;
+                let v = -1.0 + 2.0 * k as f64 / (n - 1) as f64;
+                pts.push((a, v));
+                pts.push((b, v));
+            }
+            pts
+        }
+        "ridge" => vec![(-1.0, -1.0), (-0.3, 0.2), (0.0, 1.0), (0.3, 0.2), (1.0, -1.0)],
+        "valley" => vec![(-1.0, 1.0), (-0.3, -0.2), (0.0, -1.0), (0.3, -0.2), (1.0, 1.0)],
+        "canyon" => vec![(-1.0, 0.3), (-0.12, 0.3), (-0.04, -1.0), (0.04, -1.0), (0.12, 0.3), (1.0, 0.3)],
+        "exp" => vec![(-1.0, -1.0), (0.0, -0.75), (0.5, -0.2), (1.0, 1.0)],
+        "plateau" => vec![(-1.0, -1.0), (-0.2, -0.6), (0.1, 0.8), (1.0, 1.0)],
+        // S-Kurve
+        _ => vec![(-1.0, -1.0), (-0.6, -0.9), (0.0, 0.0), (0.6, 0.9), (1.0, 1.0)],
+    }
+}
+
+struct GraphCx<'a> {
+    graph: &'a TGraph,
+    modid: &'a str,
+    dim: &'a str,
+    min_y: i32,
+    max_y: i32,
+    noises: Vec<(String, Value)>,
+    uses_distance: bool,
+}
+
+impl GraphCx<'_> {
+    fn input(&mut self, node: &TNode, port: &str, depth: usize) -> Option<Value> {
+        let link = self.graph.links.iter().find(|l| l.to == node.id && l.port == port)?;
+        let from = self.graph.nodes.iter().find(|n| n.id == link.from)?;
+        Some(self.compile(from, depth + 1))
+    }
+
+    fn noise_file(&mut self, node: &TNode, size: f64, octaves: usize) -> (String, f64) {
+        let size = size.clamp(1.0, 100000.0);
+        let first = -(size.log2().round() as i32);
+        let name = format!("{}_{}", self.dim, node.id.to_lowercase().replace(|c: char| !c.is_ascii_alphanumeric(), "_"));
+        self.noises.push((
+            format!("worldgen/noise/{name}.json"),
+            json!({ "firstOctave": first, "amplitudes": vec![1.0; octaves.clamp(1, 8)] }),
+        ));
+        // Frequenz genau treffen: 2^first · scale = 1 / size
+        let scale = 1.0 / (size * 2f64.powi(first));
+        (format!("{}:{name}", self.modid), scale)
+    }
+
+    fn compile(&mut self, node: &TNode, depth: usize) -> Value {
+        if depth > 64 {
+            return json!(0.0);
+        }
+        let p = &node.props;
+        match node.kind.as_str() {
+            "output" => self.input(node, "in", depth).unwrap_or(json!(-1.0)),
+            "const" => json!(num(p, "value", 0.0)),
+            "noise" => {
+                let three_d = text(p, "dim", "2d") == "3d";
+                let (id, scale) = self.noise_file(node, num(p, "size", 200.0), num(p, "octaves", 4.0) as usize);
+                let y_scale = if three_d { scale * num(p, "stretch", 1.0).max(0.01) } else { 0.0 };
+                let mut v = json!({ "type": "minecraft:noise", "noise": id, "xz_scale": scale, "y_scale": y_scale });
+                if !three_d {
+                    v = json!({ "type": "minecraft:flat_cache", "argument": v });
+                }
+                let k = num(p, "strength", 1.0);
+                if (k - 1.0).abs() > 1e-9 {
+                    v = json!({ "type": "minecraft:mul", "argument1": k, "argument2": v });
+                }
+                v
+            }
+            "random" => {
+                let (id, scale) = self.noise_file(node, num(p, "size", 2.0).max(1.0), 1);
+                json!({ "type": "minecraft:mul", "argument1": num(p, "strength", 1.0), "argument2": { "type": "minecraft:noise", "noise": id, "xz_scale": scale, "y_scale": scale } })
+            }
+            "curve" => {
+                let input = self.input(node, "in", depth).unwrap_or(json!(0.0));
+                let pts = curve_points(text(p, "shape", "s"), num(p, "points", 5.0) as usize);
+                let (lo, hi) = (num(p, "low", -1.0), num(p, "high", 1.0));
+                let map = |v: f64| lo + (v + 1.0) / 2.0 * (hi - lo);
+                let mut points = vec![];
+                for i in 0..pts.len() {
+                    let (x, v) = pts[i];
+                    let d = if pts.len() < 2 || text(p, "shape", "s") == "steps" {
+                        0.0
+                    } else {
+                        let (a, b) = (pts[i.saturating_sub(1)], pts[(i + 1).min(pts.len() - 1)]);
+                        if (b.0 - a.0).abs() < 1e-9 { 0.0 } else { (map(b.1) - map(a.1)) / (b.0 - a.0) }
+                    };
+                    points.push(json!({ "location": x, "value": map(v), "derivative": d }));
+                }
+                json!({ "type": "minecraft:spline", "spline": { "coordinate": input, "points": points } })
+            }
+            "math" => {
+                let a = self.input(node, "a", depth).unwrap_or(json!(num(p, "a", 0.0)));
+                let b = self.input(node, "b", depth).unwrap_or(json!(num(p, "b", 1.0)));
+                match text(p, "op", "add") {
+                    "sub" => json!({ "type": "minecraft:add", "argument1": a, "argument2": { "type": "minecraft:mul", "argument1": -1.0, "argument2": b } }),
+                    "mul" => json!({ "type": "minecraft:mul", "argument1": a, "argument2": b }),
+                    "min" => json!({ "type": "minecraft:min", "argument1": a, "argument2": b }),
+                    "max" => json!({ "type": "minecraft:max", "argument1": a, "argument2": b }),
+                    "abs" => json!({ "type": "minecraft:abs", "argument": a }),
+                    "square" => json!({ "type": "minecraft:square", "argument": a }),
+                    "cube" => json!({ "type": "minecraft:cube", "argument": a }),
+                    "neg" => json!({ "type": "minecraft:mul", "argument1": -1.0, "argument2": a }),
+                    _ => json!({ "type": "minecraft:add", "argument1": a, "argument2": b }),
+                }
+            }
+            "ygrad" => {
+                let from = num(p, "fromY", self.min_y as f64) as i32;
+                let to = num(p, "toY", self.max_y as f64) as i32;
+                let (from, to) = if from == to { (self.min_y, self.max_y) } else { (from, to) };
+                json!({ "type": "minecraft:y_clamped_gradient", "from_y": from.min(to), "to_y": from.max(to),
+                    "from_value": if from <= to { num(p, "bottom", 1.0) } else { num(p, "top", -1.0) },
+                    "to_value": if from <= to { num(p, "top", -1.0) } else { num(p, "bottom", 1.0) } })
+            }
+            "distance" => {
+                self.uses_distance = true;
+                json!({ "type": format!("{}:distance", self.modid), "center_x": num(p, "x", 0.0), "center_z": num(p, "z", 0.0), "scale": num(p, "scale", 1000.0).max(1.0) })
+            }
+            "biome" => match text(p, "value", "continents") {
+                "erosion" => json!("minecraft:overworld/erosion"),
+                "ridges" => json!("minecraft:overworld/ridges"),
+                "temperature" => json!({ "type": "minecraft:shifted_noise", "noise": "minecraft:temperature", "xz_scale": 0.25, "y_scale": 0.0, "shift_x": "minecraft:shift_x", "shift_y": 0.0, "shift_z": "minecraft:shift_z" }),
+                "humidity" => json!({ "type": "minecraft:shifted_noise", "noise": "minecraft:vegetation", "xz_scale": 0.25, "y_scale": 0.0, "shift_x": "minecraft:shift_x", "shift_y": 0.0, "shift_z": "minecraft:shift_z" }),
+                _ => json!("minecraft:overworld/continents"),
+            },
+            "clamp" => {
+                let input = self.input(node, "in", depth).unwrap_or(json!(0.0));
+                let (a, b) = (num(p, "min", -1.0), num(p, "max", 1.0));
+                json!({ "type": "minecraft:clamp", "input": input, "min": a.min(b), "max": a.max(b) })
+            }
+            "mix" => {
+                let a = self.input(node, "a", depth).unwrap_or(json!(num(p, "a", 0.0)));
+                let b = self.input(node, "b", depth).unwrap_or(json!(num(p, "b", 0.0)));
+                let t = self.input(node, "t", depth).unwrap_or(json!(num(p, "t", 0.5)));
+                // a + t · (b − a)
+                json!({ "type": "minecraft:add", "argument1": a.clone(), "argument2": { "type": "minecraft:mul", "argument1": t,
+                    "argument2": { "type": "minecraft:add", "argument1": b, "argument2": { "type": "minecraft:mul", "argument1": -1.0, "argument2": a } } } })
+            }
+            _ => json!(0.0),
+        }
+    }
+}
+
+/// Unter- und Obergrenze der schwebenden Inseln
+fn islands_range(d: &DimDef, min_y: i32, max_y: i32) -> (i32, i32) {
+    let (lo, hi) = if d.islands_max_y > d.islands_min_y {
+        (d.islands_min_y, d.islands_max_y)
+    } else {
+        let y = if d.islands_y == 0 { max_y - 96 } else { d.islands_y };
+        (y - 24, y + 24)
+    };
+    let (lo, hi) = (lo.clamp(min_y + 8, max_y - 16), hi.clamp(min_y + 16, max_y - 8));
+    (lo.min(hi - 8), hi)
+}
+
+/// Formel → (Dichtefunktion, Rausch-Dateien, braucht „Abstand“-Funktion)
+pub fn compile_graph(graph: &TGraph, modid: &str, dim: &str, min_y: i32, max_y: i32) -> Option<(Value, Vec<(String, Value)>, bool)> {
+    let out = graph.nodes.iter().find(|n| n.kind == "output")?;
+    let mut cx = GraphCx { graph, modid, dim, min_y, max_y, noises: vec![], uses_distance: false };
+    let v = cx.compile(out, 0);
+    Some((v, cx.noises, cx.uses_distance))
+}
+
+/// Braucht irgendeine Dimension die Java-Funktion „Abstand zur Mitte“?
+pub fn uses_distance(dims: &[DimDef]) -> bool {
+    dims.iter().any(|d| {
+        let g = if d.terrain_mode == "nodes" { &d.graph } else { &d.builder_graph };
+        matches!(d.terrain_mode.as_str(), "nodes" | "builder") && g.nodes.iter().any(|n| n.kind == "distance")
+    })
 }
