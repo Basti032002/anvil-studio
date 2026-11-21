@@ -145,6 +145,8 @@ export type BlockDef = {
   rows: number;
   workbenchRecipes: WorkbenchRecipe[];
   machine: { fuel: boolean; recipes: MachineRecipe[]; gui?: string };
+  /** Seiten-Texturen aus der Bibliothek */
+  faces?: Faces;
   names: Record<string, string>;
   model: Cuboid[];
   rotate: boolean;
@@ -194,6 +196,8 @@ export type ItemDef = {
   defense: number;
   toughness: number;
   knockbackResistance: number;
+  /** Textur aus der Bibliothek (leer = eigene) */
+  texture?: string;
 };
 export type TexKind = "block" | "item" | "armor" | "armor_legs" | "entity";
 export type MobModel = "cow" | "pig" | "chicken" | "zombie" | "spider" | "creeper";
@@ -524,3 +528,17 @@ export interface DimDef {
   noBaseSpawns: boolean;
   spawns: DimSpawn[];
 }
+
+export type FaceMode = "" | "all" | "pillar" | "each";
+export type Faces = { mode: FaceMode; all: string; top: string; bottom: string; side: string; north: string; south: string; east: string; west: string };
+export type LibTex = { id: string; size: number; frames: number; frametime: number; interpolate: boolean; png: string };
+export const texLibApi = {
+  list: (projectId: string) => invoke<LibTex[]>("lib_tex_list", { projectId }),
+  load: (projectId: string, id: string) => invoke<string | null>("lib_tex_load", { projectId, id }),
+  save: (projectId: string, id: string, doc: string, png: string) => invoke<void>("lib_tex_save", { projectId, id, doc, png }),
+  remove: (projectId: string, id: string) => invoke<void>("lib_tex_delete", { projectId, id }),
+  pngRead: (path: string) => invoke<string>("png_read", { path }),
+  pngWrite: (path: string, png: string) => invoke<void>("png_write", { path, png }),
+  mcList: (version: string) => invoke<string[]>("mc_texture_list", { version }),
+  mcTexture: (version: string, path: string) => invoke<string | null>("mc_texture", { version, path }),
+};

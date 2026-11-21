@@ -1,6 +1,7 @@
 mod admin;
 mod blueprint;
 mod gui;
+mod textures;
 mod content;
 mod dimension;
 mod export;
@@ -58,6 +59,14 @@ pub fn run() {
             modsettings::mod_settings_save,
             content::content_save,
             content::texture_get,
+            textures::lib_tex_list,
+            textures::lib_tex_load,
+            textures::lib_tex_save,
+            textures::lib_tex_delete,
+            textures::png_read,
+            textures::png_write,
+            mcassets::mc_texture_list,
+            mcassets::mc_texture,
             content::texture_save,
             content::project_open,
             mcassets::mc_catalog,

@@ -482,6 +482,43 @@ pub async fn mc_entity_texture(app: AppHandle, version: String, model: String) -
     Ok(None)
 }
 
+/// Alle Block- und Item-Texturen aus dem Minecraft-Client (Pfade wie "block/stone").
+#[tauri::command]
+pub async fn mc_texture_list(app: AppHandle, version: String) -> Result<Vec<String>, String> {
+    let cache = cache_dir(&app, &version)?;
+    let jar_path = cache.join("client.jar");
+    if !jar_path.exists() {
+        mc_catalog(app.clone(), version.clone()).await?;
+    }
+    let file = std::fs::File::open(&jar_path).map_err(err)?;
+    let jar = Jar { zip: zip::ZipArchive::new(file).map_err(err)? };
+    let mut out: Vec<String> = jar
+        .names()
+        .into_iter()
+        .filter_map(|n| n.strip_prefix("assets/minecraft/textures/").map(String::from))
+        .filter(|n| (n.starts_with("block/") || n.starts_with("item/")) && n.ends_with(".png"))
+        .map(|n| n.trim_end_matches(".png").to_string())
+        .collect();
+    out.sort();
+    Ok(out)
+}
+
+/// Eine Minecraft-Textur (Pfad wie "block/stone") als Base64-PNG.
+#[tauri::command]
+pub async fn mc_texture(app: AppHandle, version: String, path: String) -> Result<Option<String>, String> {
+    if !path.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "_/".contains(c)) || path.contains("..") {
+        return Err("Ungültiger Pfad".into());
+    }
+    let cache = cache_dir(&app, &version)?;
+    let jar_path = cache.join("client.jar");
+    if !jar_path.exists() {
+        mc_catalog(app.clone(), version.clone()).await?;
+    }
+    let file = std::fs::File::open(&jar_path).map_err(err)?;
+    let mut jar = Jar { zip: zip::ZipArchive::new(file).map_err(err)? };
+    Ok(jar.read(&format!("assets/minecraft/textures/{path}.png")).map(|b| base64::engine::general_purpose::STANDARD.encode(b)))
+}
+
 /// Minecraft-Namen in einer weiteren Sprache (z. B. "fr_fr"): Item-ID → Name.
 /// Lädt die Sprachdatei einmal aus dem Asset-Index von Mojang.
 #[tauri::command]

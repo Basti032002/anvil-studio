@@ -13,6 +13,7 @@ on:
       - "src-tauri/src/dimension.rs"
       - "src-tauri/src/blueprint.rs"
       - "src-tauri/src/gui.rs"
+      - "src-tauri/src/textures.rs"
       - "src-tauri/src/structures.rs"
       - "src-tauri/src/worldgen/**"
       - ".github/workflows/generator-test.yml"

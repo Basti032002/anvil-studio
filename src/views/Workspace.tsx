@@ -1,6 +1,7 @@
 import LocalizationTab from "./workspace/LocalizationTab";
 import VariablesTab from "./workspace/VariablesTab";
 import TagsTab from "./workspace/TagsTab";
+import TexturesTab from "./workspace/TexturesTab";
 import { t } from "../i18n";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { api, contentApi, CrashReport, Project, Task, TASK_LABELS } from "../api";
@@ -11,8 +12,8 @@ import ExportTab from "./workspace/ExportTab";
 import ConsoleView from "./workspace/ConsoleView";
 
 const CodeTab = lazy(() => import("./workspace/CodeTab"));
-type MainTab = "content" | "code" | "vars" | "tags" | "loc" | "mods" | "settings" | "export" | "console";
-import { RefreshIcon, UndoIcon, ChevronIcon, CodeIcon, CubeIcon, GearIcon, DownloadIcon, FolderIcon, HammerIcon, PackageIcon, PlayIcon, StopIcon, TerminalIcon, TranslateIcon, VariableIcon, TagIcon } from "../icons";
+type MainTab = "content" | "textures" | "code" | "vars" | "tags" | "loc" | "mods" | "settings" | "export" | "console";
+import { RefreshIcon, UndoIcon, ChevronIcon, CodeIcon, CubeIcon, GearIcon, DownloadIcon, FolderIcon, HammerIcon, PackageIcon, PlayIcon, StopIcon, TerminalIcon, TranslateIcon, VariableIcon, TagIcon, ImageIcon } from "../icons";
 import { toast, useSettings } from "../state";
 import { markNotRunning, markStarted, pushLog, useLastExit, useLogs, useRunning } from "../store";
 
@@ -272,6 +273,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
         {(
           [
             ["content", t("Inhalte"), <CubeIcon size={14} />],
+            ["textures", t("Texturen"), <ImageIcon size={14} />],
             ["code", t("Code"), <CodeIcon size={14} />],
             ["vars", t("Variablen"), <VariableIcon size={14} />],
             ["tags", t("Tags"), <TagIcon size={14} />],
@@ -294,6 +296,11 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
       {mainTab === "content" && (
         <div className="ws-view">
           <ContentTab project={project} />
+        </div>
+      )}
+      {mainTab === "textures" && (
+        <div className="ws-view">
+          <TexturesTab project={project} />
         </div>
       )}
       {mainTab === "tags" && (

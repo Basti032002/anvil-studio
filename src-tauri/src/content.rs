@@ -80,6 +80,24 @@ pub struct BlockDef {
     pub workbench_recipes: Vec<WorkbenchRecipe>,
     /// Maschine: Brennstoff und Rezepte
     pub machine: MachineDef,
+    /// Texturen aus der Bibliothek je Seite (leer = eigene Block-Textur)
+    pub faces: Faces,
+}
+
+/// Block-Seiten mit Texturen aus der Bibliothek
+#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Faces {
+    /// "" (eigene Textur) | all | pillar | each
+    pub mode: String,
+    pub all: String,
+    pub top: String,
+    pub bottom: String,
+    pub side: String,
+    pub north: String,
+    pub south: String,
+    pub east: String,
+    pub west: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -204,6 +222,7 @@ impl Default for BlockDef {
             rotate: false,
             workbench_recipes: vec![],
             machine: MachineDef::default(),
+            faces: Faces::default(),
         }
     }
 }
@@ -246,6 +265,8 @@ pub struct ItemDef {
     pub defense: u32,
     pub toughness: f32,
     pub knockback_resistance: f32,
+    /// Textur aus der Bibliothek (leer = eigene Item-Textur)
+    pub texture: String,
 }
 
 impl Default for ItemDef {
@@ -275,6 +296,7 @@ impl Default for ItemDef {
             defense: 2,
             toughness: 0.0,
             knockback_resistance: 0.0,
+            texture: String::new(),
         }
     }
 }
@@ -895,6 +917,33 @@ public final class AnvilClient {{
     )
 }
 
+
+/// Würfel-Modell: alle gleich → cube_all, sonst cube mit sechs Seiten
+fn cube(model: &dyn Fn(&str, &[&str]) -> Value, ft: &[String; 6]) -> Value {
+    if ft.iter().all(|x| x == &ft[0]) {
+        model("minecraft:block/cube_all", &["all"])
+    } else if ft[2..].iter().all(|x| x == &ft[2]) {
+        let mut v = model("minecraft:block/cube_bottom_top", &["top", "bottom", "side"]);
+        v["textures"]["particle"] = json!(ft[2]);
+        v
+    } else {
+        let mut v = model("minecraft:block/cube", &["up", "down", "north", "south", "east", "west"]);
+        v["textures"]["particle"] = json!(ft[2]);
+        v
+    }
+}
+
+/// Aufgelöste Seiten-Texturen: [oben, unten, nord, süd, ost, west]
+fn face_textures(b: &BlockDef, own: &str, modid: &str, lib: &[String]) -> [String; 6] {
+    let r = |x: &str| if !x.is_empty() && lib.iter().any(|l| l == x) { format!("{modid}:block/lib/{x}") } else { own.to_string() };
+    let f = &b.faces;
+    match f.mode.as_str() {
+        "all" => std::array::from_fn(|_| r(&f.all)),
+        "pillar" => [r(&f.top), r(&f.bottom), r(&f.side), r(&f.side), r(&f.side), r(&f.side)],
+        "each" => [r(&f.top), r(&f.bottom), r(&f.north), r(&f.south), r(&f.east), r(&f.west)],
+        _ => std::array::from_fn(|_| own.to_string()),
+    }
+}
 
 /// Block mit eigenem 3D-Modell?
 fn is_model(b: &BlockDef) -> bool {
@@ -2798,6 +2847,11 @@ fn png_rgba(w: u32, h: u32, pixel: impl Fn(u32, u32) -> [u8; 4]) -> Vec<u8> {
 }
 
 /// Platzhalter für die getragene Rüstung (einfarbig, Farbe aus dem Materialnamen).
+#[cfg(test)]
+pub fn test_png() -> Vec<u8> {
+    png_rgba(16, 16, |_, _| [200, 40, 40, 255])
+}
+
 fn armor_placeholder(mat: &str) -> Vec<u8> {
     let h = mat.bytes().fold(7u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
     let base = [80 + (h % 140) as u8, 80 + ((h >> 8) % 140) as u8, 80 + ((h >> 16) % 140) as u8];
@@ -2919,6 +2973,9 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
         }
     }
 
+    // Textur-Bibliothek in den Mod kopieren
+    let lib_ids = crate::textures::write_assets(&root(p), &assets)?;
+
     for v in &variants {
         let b = v.base;
         let id = &v.id;
@@ -2926,10 +2983,26 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
         let m = format!("{modid}:block/{id}");
         let tex = if v.shape == "deepslate" { format!("{modid}:block/{id}") } else { format!("{modid}:block/{}", b.id) };
         let base_model = format!("{modid}:block/{}", b.id);
+        // Seiten aus der Textur-Bibliothek (nicht beim Tiefenschiefer-Erz)
+        let ft = if v.shape == "deepslate" { std::array::from_fn(|_| tex.clone()) } else { face_textures(b, &tex, modid, &lib_ids) };
+        let [up, down, north, south, east, west] = ft.clone();
+        let side = north.clone();
+        let tex_for = |k: &str| -> String {
+            match k {
+                "top" | "up" | "end" => up.clone(),
+                "bottom" | "down" => down.clone(),
+                "north" => north.clone(),
+                "south" => south.clone(),
+                "east" => east.clone(),
+                "west" => west.clone(),
+                "all" => up.clone(),
+                _ => side.clone(),
+            }
+        };
         let model = |parent: &str, keys: &[&str]| -> Value {
             let mut t = Map::new();
             for k in keys {
-                t.insert(k.to_string(), json!(tex));
+                t.insert(k.to_string(), json!(tex_for(k)));
             }
             let mut v = json!({ "parent": parent, "textures": t });
             if b.material == "glass" {
@@ -3024,7 +3097,7 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
                     &assets.join(format!("blockstates/{id}.json")),
                     &json!({ "variants": { "lit=false": { "model": m }, "lit=true": { "model": format!("{m}_on") } } }),
                 )?;
-                write_json(&mb(""), &model("minecraft:block/cube_all", &["all"]))?;
+                write_json(&mb(""), &cube(&model, &ft))?;
                 write_json(&mb("_on"), &json!({ "parent": "minecraft:block/cube_all", "textures": { "all": on_tex } }))?;
                 item_model = m.clone();
             }
@@ -3046,7 +3119,7 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
             }
             _ => {
                 write_json(&assets.join(format!("blockstates/{id}.json")), &json!({ "variants": { "": { "model": m } } }))?;
-                write_json(&mb(""), &model("minecraft:block/cube_all", &["all"]))?;
+                write_json(&mb(""), &cube(&model, &ft))?;
                 item_model = m.clone();
             }
         }
@@ -3136,7 +3209,8 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
     for i in &c.items {
         let id = &i.id;
         let parent = if i.kind == "tool" { "minecraft:item/handheld" } else { "minecraft:item/generated" };
-        write_json(&assets.join(format!("models/item/{id}.json")), &json!({ "parent": parent, "textures": { "layer0": format!("{modid}:item/{id}") } }))?;
+        let layer0 = if !i.texture.is_empty() && lib_ids.contains(&i.texture) { format!("{modid}:block/lib/{}", i.texture) } else { format!("{modid}:item/{id}") };
+        write_json(&assets.join(format!("models/item/{id}.json")), &json!({ "parent": parent, "textures": { "layer0": layer0 } }))?;
         if client_items {
             write_json(&assets.join(format!("items/{id}.json")), &json!({ "model": { "type": "minecraft:model", "model": format!("{modid}:item/{id}") } }))?;
         }
@@ -3760,14 +3834,29 @@ mod tests {
         p.mod_id = std::env::var("ANVIL_TEST_MODID").unwrap_or("kristallhoehlen".into());
         p.package = std::env::var("ANVIL_TEST_PACKAGE").unwrap_or("de.sebigames.kristallhoehlen".into());
         let mut c = Content::default();
-        c.blocks.push(BlockDef { id: "ruby_block".into(), name_de: "Rubinblock".into(), light: 7, tier: "iron".into(), ..Default::default() });
+        // Textur-Bibliothek: Seiten einzeln, animierte Textur, Item-Textur
+        let lib = crate::textures::lib_dir(&dir);
+        std::fs::create_dir_all(&lib).unwrap();
+        for t in ["rubin_oben", "rubin_seite"] {
+            std::fs::write(lib.join(format!("{t}.png")), test_png()).unwrap();
+        }
+        std::fs::write(lib.join("glut.png"), png_rgba(16, 32, |_, y| [255, (y * 8) as u8, 0, 255])).unwrap();
+        std::fs::write(lib.join("glut.json"), r#"{"size":16,"frametime":5,"frames":[{},{}]}"#).unwrap();
+        c.blocks.push(BlockDef {
+            id: "ruby_block".into(),
+            name_de: "Rubinblock".into(),
+            light: 7,
+            tier: "iron".into(),
+            faces: Faces { mode: "each".into(), top: "rubin_oben".into(), bottom: "glut".into(), north: "rubin_seite".into(), east: "gibtsnicht".into(), ..Default::default() },
+            ..Default::default()
+        });
         c.blocks.push(BlockDef { id: "dream_glass".into(), name_de: "Traumglas".into(), material: "glass".into(), tool: "none".into(), ..Default::default() });
         let mut recipe = Recipe { enabled: true, shaped: true, grid: vec![String::new(); 9], count: 1, ..Default::default() };
         for i in 0..9 {
             recipe.grid[i] = format!("{}:ruby", p.mod_id);
         }
         c.blocks[0].recipe = recipe;
-        c.items.push(ItemDef { id: "ruby".into(), name_de: "Rubin".into(), rarity: "rare".into(), ..Default::default() });
+        c.items.push(ItemDef { id: "ruby".into(), name_de: "Rubin".into(), rarity: "rare".into(), texture: "glut".into(), ..Default::default() });
         let mut smelt = Recipe { enabled: true, kind: "smelting".into(), grid: vec![String::new(); 9], ..Default::default() };
         smelt.grid[0] = "minecraft:sweet_berries".into();
         c.items.push(ItemDef { id: "dream_berry".into(), name_de: "Traumbeere".into(), food: true, recipe: smelt, ..Default::default() });
@@ -4354,6 +4443,15 @@ mod tests {
         let reg = generate(&p, &mut c).unwrap();
         println!("{}", std::fs::read_to_string(dir.join("src/main/java").join(p.package.replace('.', "/")).join("anvil/AnvilContent.java")).unwrap());
         assert!(reg == "added" || reg == "ok", "{reg}");
+        let assets = dir.join(format!("src/main/resources/assets/{}", p.mod_id));
+        let m: Value = serde_json::from_str(&std::fs::read_to_string(assets.join("models/block/ruby_block.json")).unwrap()).unwrap();
+        assert_eq!(m["parent"], "minecraft:block/cube");
+        assert_eq!(m["textures"]["up"], format!("{}:block/lib/rubin_oben", p.mod_id));
+        assert_eq!(m["textures"]["east"], format!("{}:block/ruby_block", p.mod_id));
+        let stairs: Value = serde_json::from_str(&std::fs::read_to_string(assets.join("models/block/ruby_block_stairs.json")).unwrap()).unwrap();
+        assert_eq!(stairs["textures"]["top"], format!("{}:block/lib/rubin_oben", p.mod_id));
+        assert!(assets.join("textures/block/lib/glut.png.mcmeta").exists());
+        assert!(std::fs::read_to_string(assets.join("models/item/ruby.json")).unwrap().contains("block/lib/glut"));
         let data = dir.join("src/main/resources/data");
         if c.tags.iter().any(|t| t.id.ends_with(":edelsteine")) {
             let gems: Value = serde_json::from_str(&std::fs::read_to_string(data.join(format!("{}/tags/item/edelsteine.json", p.mod_id))).unwrap()).unwrap();

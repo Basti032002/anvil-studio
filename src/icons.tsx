@@ -97,6 +97,15 @@ import {
   Flask,
   BracketsCurly,
   AppWindow,
+  LineSegment,
+  Circle,
+  Gradient,
+  DotsNine,
+  EyeSlash,
+  Selection,
+  ArrowsOutCardinal,
+  FilmStrip,
+  Pause,
 } from "@phosphor-icons/react";
 
 type P = { size?: number };
@@ -227,3 +236,13 @@ export const BellIcon = ({ size = 16 }: P) => <Bell size={size} weight="bold" ar
 
 export const VariableIcon = ({ size = 16 }: P) => <BracketsCurly size={size} weight="bold" aria-hidden="true" />;
 export const GuiIcon = ({ size = 16 }: P) => <AppWindow size={size} weight="bold" aria-hidden="true" />;
+export const LineIcon = ({ size = 16 }: P) => <LineSegment size={size} weight="bold" aria-hidden="true" />;
+export const RectIcon = ({ size = 16 }: P) => <Square size={size} weight="bold" aria-hidden="true" />;
+export const CircleIcon = ({ size = 16 }: P) => <Circle size={size} weight="bold" aria-hidden="true" />;
+export const GradientIcon = ({ size = 16 }: P) => <Gradient size={size} weight="bold" aria-hidden="true" />;
+export const NoiseIcon = ({ size = 16 }: P) => <DotsNine size={size} weight="bold" aria-hidden="true" />;
+export const EyeOffIcon = ({ size = 16 }: P) => <EyeSlash size={size} weight="bold" aria-hidden="true" />;
+export const SelectIcon = ({ size = 16 }: P) => <Selection size={size} weight="bold" aria-hidden="true" />;
+export const MoveIcon = ({ size = 16 }: P) => <ArrowsOutCardinal size={size} weight="bold" aria-hidden="true" />;
+export const FramesIcon = ({ size = 16 }: P) => <FilmStrip size={size} weight="bold" aria-hidden="true" />;
+export const PauseIcon = ({ size = 16 }: P) => <Pause size={size} weight="bold" aria-hidden="true" />;

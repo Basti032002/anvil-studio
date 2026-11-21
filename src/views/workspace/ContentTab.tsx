@@ -11,6 +11,13 @@ import { BoxIcon, ChevronIcon, GridIcon, PawIcon, GlobeIcon, BlueprintIcon, Ches
 import { toast } from "../../state";
 import { useRunning } from "../../store";
 import PixelEditor from "./PixelEditor";
+import { FacesEditor, LibTexSelect } from "./TexturePickers";
+import { useLib } from "./texlib";
+import type { Faces } from "../../api";
+
+/** Nutzt der Block nur Bibliotheks-Texturen (dann braucht er keine eigene)? */
+const usesOnlyLib = (f: Faces) =>
+  f.mode === "all" ? !!f.all : f.mode === "pillar" ? !!(f.top && f.bottom && f.side) : f.mode === "each" ? !!(f.top && f.bottom && f.north && f.south && f.east && f.west) : false;
 import { ArmorForm, BlockExtras, Field, ItemKindSwitch, NameFields, SubTabs, ToolForm } from "./ContentForms";
 import MobEditor from "./MobEditor";
 import BlueprintEditor from "./BlueprintEditor";
@@ -74,6 +81,7 @@ export default function ContentTab({ project }: { project: Project }) {
   const [hint, setHint] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [textures, setTextures] = useState<Record<string, string>>({});
+  const libTex = useLib(project.id);
   const [createGroup, setCreateGroup] = useState<CreateGroup | null>(null);
   const [blockTab, setBlockTab] = useState<BlockTab>("general");
   const [itemTab, setItemTab] = useState<ItemTab>("general");
@@ -1020,7 +1028,15 @@ export default function ContentTab({ project }: { project: Project }) {
 
             <div className="panel texture-panel">
               <div className="panel-title-lg">{t("Textur")}</div>
-              {savedIds.includes(current.id) ? (
+              {block && !(block.kind === "normal" && !block.ore.enabled && block.model.length > 0) && (
+                <FacesEditor faces={block.faces} lib={libTex} own={textures[block.id] ?? ""} onChange={(faces) => updBlock({ faces })} onOpenLib={() => window.dispatchEvent(new CustomEvent("anvil:open-tab", { detail: "textures" }))} />
+              )}
+              {item && item.kind !== "armor" && (
+                <div className="faces">
+                  <LibTexSelect lib={libTex} own={textures[item.id] ?? ""} label={t("Textur aus der Bibliothek")} value={item.texture ?? ""} onChange={(texture) => updItem({ texture })} />
+                </div>
+              )}
+              {savedIds.includes(current.id) && !(item?.texture && item.kind !== "armor") && !(block?.faces?.mode && usesOnlyLib(block.faces)) ? (
                 <PixelEditor
                   projectId={project.id}
                   kind={block ? "block" : "item"}
