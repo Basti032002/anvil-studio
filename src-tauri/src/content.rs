@@ -3181,13 +3181,41 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
             }
         };
         let at_least = |v: (u32, u32, u32)| mc_at_least(&p.mc_version, v);
+        let mut structure_tags: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
         for d in c.dimensions.iter().filter(|d| valid_id(&d.id)) {
-            for (rel, v) in crate::dimension::files(d, &at_least, &resolve) {
+            let out = crate::dimension::files(d, &at_least, &resolve);
+            for (rel, v) in out.files {
                 let path = data.join(rel);
                 if let Some(parent) = path.parent() {
                     std::fs::create_dir_all(parent).map_err(err)?;
                 }
                 write_json(&path, &v)?;
+            }
+            for (tag, biome) in out.structure_tags {
+                structure_tags.entry(tag).or_default().push(biome);
+            }
+        }
+        // Strukturen in eigenen Biomen: Biome an die Vanilla-Tags anhängen
+        let tag_dir = data.parent().map(|d| d.join("minecraft/tags/worldgen/biome/has_structure"));
+        if let Some(dir) = tag_dir {
+            if dir.exists() {
+                for f in std::fs::read_dir(&dir).map_err(err)?.flatten() {
+                    // Nur Dateien entfernen, die ausschließlich eigene Biome enthalten
+                    let own = std::fs::read_to_string(f.path())
+                        .ok()
+                        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+                        .and_then(|v| v["values"].as_array().map(|a| !a.is_empty() && a.iter().all(|x| x.as_str().is_some_and(|x| x.starts_with(&format!("{modid}:"))))))
+                        .unwrap_or(false);
+                    if own {
+                        let _ = std::fs::remove_file(f.path());
+                    }
+                }
+            }
+            if !structure_tags.is_empty() {
+                std::fs::create_dir_all(&dir).map_err(err)?;
+                for (tag, values) in structure_tags {
+                    write_json(&dir.join(format!("{tag}.json")), &serde_json::json!({ "replace": false, "values": values }))?;
+                }
             }
         }
     }
@@ -3631,7 +3659,40 @@ mod tests {
             sky: "overworld".into(),
             ambient_light: 0.1,
             sea_level: 63,
+            ..Default::default()
         });
+        c.dimensions.push(crate::dimension::DimDef {
+            id: "inselwelt".into(),
+            name_de: "Inselwelt".into(),
+            template: "overworld".into(),
+            biome_mode: "own".into(),
+            biomes: vec![
+                crate::dimension::DimBiome { id: "wiese".into(), base: "cherry_grove".into(), ..Default::default() },
+                crate::dimension::DimBiome { id: "duene".into(), base: "desert".into(), top_block: "minecraft:sand".into(), fill_block: "minecraft:sandstone".into(), ..Default::default() },
+            ],
+            stone_block: "minecraft:calcite".into(),
+            deep_block: "minecraft:tuff".into(),
+            ores: vec![
+                crate::dimension::DimOre { block: "ruby_ore".into(), size: 6, count: 4.0, min_y: -40, max_y: 60, ..Default::default() },
+                crate::dimension::DimOre { block: "minecraft:diamond_ore".into(), deep_block: "minecraft:deepslate_diamond_ore".into(), size: 4, count: 0.5, min_y: -64, max_y: 0 },
+            ],
+            structures: vec!["village_plains".into(), "ruined_portal_standard".into()],
+            spawns: vec![crate::dimension::DimSpawn { entity: "crystal_cow".into(), category: "creature".into(), weight: 20, min: 1, max: 3 }],
+            islands: true,
+            islands_amount: 0.6,
+            land: 0.05,
+            no_noise_caves: true,
+            no_canyons: true,
+            fluid: "water".into(),
+            sea_level: 63,
+            sky_color: "#88ccff".into(),
+            weather: "rain".into(),
+            biome_size: 2.0,
+            ..Default::default()
+        });
+        for t in ["nether", "end", "floating", "caves", "flat", "void", "amplified"] {
+            c.dimensions.push(crate::dimension::DimDef { id: format!("welt_{t}"), template: t.into(), biome_mode: if t == "end" || t == "caves" { "own".into() } else { "vanilla".into() }, fluid: if t == "nether" { "lava".into() } else { "water".into() }, sea_level: 32, ..Default::default() });
+        }
         c.dimensions.push(crate::dimension::DimDef { id: "lavawelt".into(), top_block: "#minecraft:soul_fire_base_blocks".into(), fluid: "lava".into(), biome: "minecraft:desert".into(), time: "night".into(), sky: "nether".into(), sea_level: 40, ..Default::default() });
         // Blueprint mit allen Knoten
         {

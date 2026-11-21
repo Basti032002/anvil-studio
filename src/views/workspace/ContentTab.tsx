@@ -308,7 +308,7 @@ export default function ContentTab({ project }: { project: Project }) {
       setSel({ kind: "blueprint", index: content.blueprints.length });
     } else if (choice.kind === "dimension") {
       const used = new Set(content.dimensions.map((d) => d.id));
-      let id = choice.preset === "lava" ? "lavawelt" : choice.preset === "night" ? "schattenwelt" : "neue_dimension";
+      let id = `welt_${choice.preset}`;
       for (let n = 2; used.has(id); n++) id = `${id.replace(/_\d+$/, "")}_${n}`;
       setContent({ ...content, dimensions: [...content.dimensions, newDimension(id, choice.preset)] });
       setSel({ kind: "dimension", index: content.dimensions.length });

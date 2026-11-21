@@ -359,17 +359,69 @@ export interface Blueprint {
 }
 
 // ---- Dimensionen -----------------------------------------------------------
+export interface DimBiome {
+  id: string;
+  nameDe: string;
+  nameEn: string;
+  base: string;
+  topBlock: string;
+  fillBlock: string;
+}
+export interface DimOre {
+  block: string;
+  deepBlock: string;
+  size: number;
+  count: number;
+  minY: number;
+  maxY: number;
+}
+export interface DimSpawn {
+  entity: string;
+  category: string;
+  weight: number;
+  min: number;
+  max: number;
+}
+export type DimTemplate = "overworld" | "amplified" | "nether" | "end" | "floating" | "caves" | "flat" | "void";
 export interface DimDef {
   id: string;
   nameDe: string;
   nameEn: string;
+  /** "" = alte Dimension (wie Oberwelt) */
+  template: DimTemplate | "";
+  land: number;
+  islands: boolean;
+  islandsY: number;
+  islandsAmount: number;
   topBlock: string;
   fillBlock: string;
   stoneBlock: string;
+  deepBlock: string;
+  noBedrock: boolean;
   fluid: "water" | "lava" | "none";
+  seaLevel: number;
+  biomeMode: "" | "vanilla" | "own";
   biome: string;
+  biomes: DimBiome[];
+  biomeSize: number;
+  noNoiseCaves: boolean;
+  noCaves: boolean;
+  noCanyons: boolean;
+  noOreVeins: boolean;
+  ores: DimOre[];
+  structures: string[];
+  noPlants: boolean;
+  noLakes: boolean;
+  noSprings: boolean;
   time: "normal" | "day" | "night";
   sky: "overworld" | "nether" | "end";
   ambientLight: number;
-  seaLevel: number;
+  skyColor: string;
+  fogColor: string;
+  waterColor: string;
+  grassColor: string;
+  foliageColor: string;
+  weather: "" | "none" | "rain" | "snow";
+  noBaseSpawns: boolean;
+  spawns: DimSpawn[];
 }

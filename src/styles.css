@@ -1301,3 +1301,31 @@ select option { background: var(--panel); color: var(--text); }
 .lang-list button { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 0; border-radius: 8px; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
 .lang-list button:hover { background: var(--surface); }
 .loc-tools select.input { width: auto; min-width: 160px; }
+
+/* ---- Dimension: Baukasten ---------------------------------------------------- */
+.dim-editor { grid-template-columns: minmax(0, 1fr) 260px; }
+.dim-preview { display: flex; flex-direction: column; gap: 8px; padding: 16px; position: sticky; top: 0; }
+.dim-canvas { width: 100%; image-rendering: pixelated; border-radius: 8px; border: 1px solid var(--border); background: #000; }
+.dim-preview-label { margin-top: 4px; }
+.dim-templates { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.dim-template { text-align: left; padding: 12px 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--panel); color: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 4px; transition: border-color var(--fast) var(--ease), background var(--fast) var(--ease); }
+.dim-template:hover { border-color: var(--accent); }
+.dim-template.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
+.dim-template-title { font-weight: 600; }
+.dim-checks { display: flex; flex-direction: column; gap: 12px; }
+.dim-check { display: flex; align-items: center; gap: 12px; }
+.dim-list { display: flex; flex-direction: column; gap: 8px; }
+.dim-row { display: grid; grid-template-columns: 1.1fr 0.8fr 1.1fr 1.4fr auto; gap: 8px; align-items: center; }
+.dim-row > *, .dim-ore > * { min-width: 0; }
+.dim-row .item-field-btn .mono, .dim-ore .item-field-btn .mono { display: none; }
+.dim-ore { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: 8px; align-items: end; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); }
+.dim-ore-block { grid-column: span 2; }
+.dim-ore > .icon-btn { grid-column: 5; grid-row: 1; align-self: center; }
+.dim-num { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.dim-row.dim-spawn { grid-template-columns: 1.6fr 1.2fr 70px 64px 64px auto; }
+.dim-structures { display: flex; flex-wrap: wrap; gap: 6px; }
+.dim-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--border); cursor: pointer; font-size: 12.5px; user-select: none; }
+.dim-chip input { display: none; }
+.dim-chip.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.dim-color { width: 44px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: none; cursor: pointer; }
+@media (max-width: 1100px) { .dim-editor { grid-template-columns: 1fr; } .dim-row, .dim-row.dim-spawn { grid-template-columns: 1fr 1fr; } }

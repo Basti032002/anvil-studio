@@ -10,6 +10,9 @@ on:
       - "src-tauri/src/content.rs"
       - "src-tauri/src/template.rs"
       - "src-tauri/src/mcassets.rs"
+      - "src-tauri/src/dimension.rs"
+      - "src-tauri/src/blueprint.rs"
+      - "src-tauri/src/worldgen/**"
       - ".github/workflows/generator-test.yml"
   workflow_dispatch:
 

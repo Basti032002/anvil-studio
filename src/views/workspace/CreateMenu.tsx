@@ -1,6 +1,6 @@
 import { t } from "../../i18n";
 import { useEffect, useState } from "react";
-import { MobModel } from "../../api";
+import { DimTemplate, MobModel } from "../../api";
 import {
   BlueprintIcon,
   ChestIcon,
@@ -35,7 +35,7 @@ export type CreateChoice =
   | { kind: "blueprint"; template: string }
   | { kind: "event" }
   | { kind: "brew" }
-  | { kind: "dimension"; preset: "overworld" | "lava" | "night" };
+  | { kind: "dimension"; preset: DimTemplate };
 
 interface Card {
   choice: CreateChoice;
@@ -125,9 +125,14 @@ function cards(group: CreateGroup): { title: string; cards: Card[] }[] {
         {
           title: t("Dimension"),
           cards: [
-            { choice: { kind: "dimension", preset: "overworld" }, icon: <GlobeIcon size={20} />, title: t("Wie Oberwelt"), desc: t("Berge, Wälder, Meere – mit deinen eigenen Blöcken") },
-            { choice: { kind: "dimension", preset: "lava" }, icon: <GlobeIcon size={20} />, title: t("Lava-Welt"), desc: t("Dunkles Gestein, Lavaseen und Nether-Himmel") },
-            { choice: { kind: "dimension", preset: "night" }, icon: <GlobeIcon size={20} />, title: t("Schattenwelt"), desc: t("Ewige Nacht über Pilzboden") },
+            { choice: { kind: "dimension", preset: "overworld" }, icon: <GlobeIcon size={20} />, title: t("Oberwelt"), desc: t("Berge, Wälder, Meere – mit deinen eigenen Blöcken") },
+            { choice: { kind: "dimension", preset: "nether" }, icon: <GlobeIcon size={20} />, title: t("Nether"), desc: t("Höhlenwelt mit Decke, Lavameer und Nether-Himmel") },
+            { choice: { kind: "dimension", preset: "end" }, icon: <GlobeIcon size={20} />, title: t("End"), desc: t("Inseln im Nichts unter dunklem Himmel") },
+            { choice: { kind: "dimension", preset: "floating" }, icon: <GlobeIcon size={20} />, title: t("Schwebende Inseln"), desc: t("Inseln am Himmel, darunter nichts") },
+            { choice: { kind: "dimension", preset: "caves" }, icon: <GlobeIcon size={20} />, title: t("Höhlenwelt"), desc: t("Alles unter der Erde, mit Decke") },
+            { choice: { kind: "dimension", preset: "amplified" }, icon: <GlobeIcon size={20} />, title: t("Zerklüftet"), desc: t("Riesige Berge und tiefe Täler") },
+            { choice: { kind: "dimension", preset: "flat" }, icon: <GlobeIcon size={20} />, title: t("Flachland"), desc: t("Flache Schichten – ideal zum Bauen") },
+            { choice: { kind: "dimension", preset: "void" }, icon: <GlobeIcon size={20} />, title: t("Leere"), desc: t("Nur Luft – für Skyblock und Lobbys") },
           ],
         },
       ];
