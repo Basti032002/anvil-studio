@@ -274,23 +274,36 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
           [
             ["content", t("Inhalte"), <CubeIcon size={14} />],
             ["textures", t("Texturen"), <ImageIcon size={14} />],
-            ["code", t("Code"), <CodeIcon size={14} />],
+            "|",
             ["vars", t("Variablen"), <VariableIcon size={14} />],
             ["tags", t("Tags"), <TagIcon size={14} />],
-            ["loc", t("Localization"), <TranslateIcon size={14} />],
+            ["code", t("Code"), <CodeIcon size={14} />],
+            "|",
+            ["loc", t("Sprachen"), <TranslateIcon size={14} />],
             ["mods", t("Mods"), <PackageIcon size={14} />],
             ["settings", t("Mod-Einstellungen"), <GearIcon size={14} />],
             ["export", t("Export"), <DownloadIcon size={14} />],
-            ["console", t("Konsole"), <TerminalIcon size={14} />],
-          ] as [MainTab, string, React.ReactNode][]
-        ).map(([k, label, icon]) => (
-          <button key={k} className={mainTab === k ? "view-tab active" : "view-tab"} onClick={() => setMainTab(k)}>
-            {icon}
-            {label}
-            {k === "console" && busy && <span className="pulse-dot" />}
-            {k === "console" && !busy && problems.length > 0 && <span className="count">{problems.length}</span>}
-          </button>
-        ))}
+          ] as ([MainTab, string, React.ReactNode] | "|")[]
+        ).map((x, i) =>
+          x === "|" ? (
+            <span key={`sep${i}`} className="view-tab-sep" aria-hidden="true" />
+          ) : (
+            <button key={x[0]} className={mainTab === x[0] ? "view-tab active" : "view-tab"} onClick={() => setMainTab(x[0])}>
+              {x[2]}
+              {x[1]}
+            </button>
+          ),
+        )}
+        <span className="grow" />
+        <button
+          className={["view-tab", "console-tab", mainTab === "console" ? "active" : "", busy ? "running" : problems.length > 0 ? "problems" : ""].join(" ")}
+          onClick={() => setMainTab("console")}
+        >
+          <TerminalIcon size={14} />
+          {t("Konsole")}
+          {busy && <span className="console-tab-state"><span className="pulse-dot" />{t("läuft")}</span>}
+          {!busy && problems.length > 0 && <span className="count">{problems.length}</span>}
+        </button>
       </nav>
 
       {mainTab === "content" && (

@@ -7,7 +7,7 @@ import { useCatalog } from "../../catalog";
 import { Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
 import McIcon from "../../components/McIcon";
-import { BoxIcon, ChevronIcon, GridIcon, PawIcon, GlobeIcon, BlueprintIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, FlaskIcon, GemIcon, LampIcon, LightningIcon, PencilIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TagIcon, TrashIcon, GuiIcon } from "../../icons";
+import { BoxIcon, CheckIcon, ChevronIcon, GridIcon, PawIcon, GlobeIcon, BlueprintIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, FlaskIcon, GemIcon, LampIcon, LightningIcon, PencilIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TagIcon, TrashIcon, GuiIcon } from "../../icons";
 import { toast } from "../../state";
 import { useRunning } from "../../store";
 import PixelEditor from "./PixelEditor";
@@ -45,7 +45,7 @@ function ListGroup({ id, label, icon, count, forceOpen, children }: { id: string
   });
   const shown = forceOpen || open;
   return (
-    <div className="list-group">
+    <div className="list-group" data-cat={id}>
       <button
         className="list-group-head"
         aria-expanded={shown}
@@ -59,7 +59,7 @@ function ListGroup({ id, label, icon, count, forceOpen, children }: { id: string
         <span className={shown ? "list-group-chev open" : "list-group-chev"}>
           <ChevronIcon size={11} />
         </span>
-        {icon}
+        <span className="list-group-icon">{icon}</span>
         <span className="grow">{label}</span>
         <span className="list-group-count">{count}</span>
       </button>
@@ -472,7 +472,12 @@ export default function ContentTab({ project }: { project: Project }) {
     );
   };
 
-  const saveBlock = (
+  const saveBlock = !dirty && content.generatorVersion > 0 && !busy ? (
+    <div className="content-save clean">
+      <span className="content-save-ok"><CheckIcon size={13} /> {t("Alles gespeichert")}</span>
+      <kbd>{t("Strg S")}</kbd>
+    </div>
+  ) : (
     <div className="content-save">
       <button className={busy ? "btn primary full loading" : "btn primary full"} disabled={busy || (!dirty && content.generatorVersion > 0)} onClick={save}>
         <SaveIcon size={14} /> {dirty ? t("Speichern & Code erzeugen") : t("Alles gespeichert")}
@@ -852,14 +857,17 @@ export default function ContentTab({ project }: { project: Project }) {
         ) : !current ? (
           <ContentOverview project={project} content={content} textures={textures} dirty={dirty} onCreate={(g) => setCreateGroup(g)} onSelect={setSel} onSave={save} />
         ) : (
-          <div className="editor-grid" key={`${sel!.kind}-${sel!.index}`}>
+          <div className="editor-grid" data-cat={block ? "blocks" : "items"} key={`${sel!.kind}-${sel!.index}`}>
             <div className="panel form-panel">
               <div className="editor-head">
-                {entryIcon(block ? "block" : "item", current.id, current.nameDe)}
+                <span className="editor-head-icon">{entryIcon(block ? "block" : "item", current.id, current.nameDe)}</span>
                 <div className="grow editor-head-text">
-                  <div className="editor-head-title">{current.nameEn || current.nameDe || current.id}</div>
+                  <div className="editor-head-title">
+                    {current.nameEn || current.nameDe || current.id}
+                    <span className="editor-head-kind">{block ? (block.ore.enabled ? t("Erz") : t("Block")) : item!.kind === "tool" ? t("Werkzeug") : item!.kind === "armor" ? t("Rüstung") : t("Item")}</span>
+                  </div>
                   <div className="editor-head-sub mono">
-                    {project.modId}:{current.id} · {block ? (block.ore.enabled ? t("Erz") : t("Block")) : item!.kind === "tool" ? t("Werkzeug") : item!.kind === "armor" ? t("Rüstung") : t("Item")}
+                    {project.modId}:{current.id}
                   </div>
                 </div>
                 <button className="icon-btn" onClick={() => (block ? addBlock(block) : addItem(item))} aria-label={t("Duplizieren")} data-tip={t("Duplizieren")}>
@@ -1337,7 +1345,7 @@ function ContentOverview({
       </header>
       <div className="overview-tiles">
         {tiles.map((x) => (
-          <button key={x.label} className="overview-tile" onClick={() => onCreate(x.g)}>
+          <button key={x.label} className="overview-tile" data-cat={x.label === t("Brauen") ? "brew" : x.g === "block" ? "blocks" : x.g === "item" ? "items" : x.g === "mob" ? "mobs" : x.g} onClick={() => onCreate(x.g)}>
             <span className="overview-tile-top">
               <span className="overview-tile-icon">{x.icon}</span>
               <span className="overview-tile-label">{x.label}</span>

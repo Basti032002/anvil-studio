@@ -233,7 +233,7 @@ export default function LocalizationTab({ project }: { project: Project }) {
     <div className="loc-tab">
       <header className="loc-head">
         <div className="grow">
-          <h1>{t("Localization")}</h1>
+          <h1>{t("Sprachen")}</h1>
           <p className="muted">{t("Alle Texte deiner Mod an einem Ort. Englisch ist immer dabei, weitere Sprachen wie Deutsch fügst du hinzu.")}</p>
         </div>
         <button className="btn small" onClick={importJson}>

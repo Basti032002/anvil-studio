@@ -14,9 +14,9 @@ export function NamesField({ names }: { names: Record<string, string>; onChange?
   return (
     <div className="field span-2 loc-hint">
       <TranslateIcon size={15} />
-      <span className="grow">{filled ? t("{n} weitere Sprachen übersetzt", { n: filled }) : t("Weitere Sprachen übersetzt du im Localization-Tab.")}</span>
+      <span className="grow">{filled ? t("{n} weitere Sprachen übersetzt", { n: filled }) : t("Weitere Sprachen übersetzt du im Bereich „Sprachen“.")}</span>
       <button type="button" className="btn small" onClick={() => window.dispatchEvent(new CustomEvent("anvil:open-tab", { detail: "loc" }))}>
-        {t("In Localization öffnen")}
+        {t("Sprachen öffnen")}
       </button>
     </div>
   );
