@@ -2,7 +2,7 @@ import { getDraft, setDraft } from "./draft";
 import { t } from "../../i18n";
 import { confirmDialog, contextMenu, MenuItem } from "../../components/Overlay";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArmorSlot, BlockDef, Blueprint, Content, contentApi, ItemDef, MobDef, Project, Recipe } from "../../api";
+import { ArmorSlot, BlockDef, Blueprint, Content, contentApi, ItemDef, MobDef, Project, Recipe, DEFAULT_ENERGY } from "../../api";
 import { useCatalog } from "../../catalog";
 import { Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
@@ -278,13 +278,19 @@ export default function ContentTab({ project }: { project: Project }) {
     };
     if (choice.kind === "block") {
       const v = choice.variant;
-      const b = newBlock(uid(v === "ore" ? "neues_erz" : v === "lamp" ? "neue_lampe" : v === "storage" ? "neue_truhe" : v === "workbench" ? "neue_werkbank" : v === "machine" ? "neue_maschine" : "neuer_block"));
+      const b = newBlock(uid(v === "ore" ? "neues_erz" : v === "lamp" ? "neue_lampe" : v === "storage" ? "neue_truhe" : v === "workbench" ? "neue_werkbank" : v === "machine" || v === "electric" ? "neue_maschine" : v === "generator" ? "generator" : v === "solar" ? "solarpanel" : v === "battery" ? "akku" : v === "cable" ? "kabel" : "neuer_block"));
       if (v === "ore") Object.assign(b, { nameDe: "", nameEn: "New Ore", hardness: 3, resistance: 3, tier: "stone", ore: { ...b.ore, enabled: true } });
       if (v === "lamp") Object.assign(b, { nameDe: "", nameEn: "New Lamp", kind: "lamp", material: "glass", hardness: 0.3, resistance: 0.3, tool: "none" });
       if (v === "storage") Object.assign(b, { nameDe: "", nameEn: "New Chest", kind: "storage", material: "wood", hardness: 2.5, resistance: 2.5, tool: "axe", rows: 3 });
       if (v === "shapes") Object.assign(b, { shapes: ["stairs", "slab", "wall"] });
       if (v === "workbench") Object.assign(b, { nameDe: "", nameEn: "New Workbench", kind: "workbench", material: "wood", hardness: 2.5, resistance: 2.5, tool: "axe" });
       if (v === "machine") Object.assign(b, { nameDe: "", nameEn: "New Machine", kind: "machine", material: "metal", hardness: 3.5, resistance: 3.5, tool: "pickaxe", machine: { fuel: true, recipes: [{ input: "minecraft:cobblestone", inputCount: 1, output: "minecraft:gravel", outputCount: 1, time: 100 }] } });
+      const metal = { material: "metal" as const, hardness: 3, resistance: 6, tool: "pickaxe" as const, tier: "stone" };
+      if (v === "electric") Object.assign(b, { ...metal, nameDe: "", nameEn: "Electric Machine", kind: "machine", machine: { fuel: false, electric: true, recipes: [{ input: "minecraft:cobblestone", inputCount: 1, output: "minecraft:gravel", outputCount: 1, time: 100 }] }, energy: { ...DEFAULT_ENERGY } });
+      if (v === "generator") Object.assign(b, { ...metal, nameDe: "", nameEn: "Generator", kind: "generator", energy: { ...DEFAULT_ENERGY, source: "fuel", generate: 40, capacity: 20000, rate: 400 } });
+      if (v === "solar") Object.assign(b, { ...metal, nameDe: "", nameEn: "Solar Panel", kind: "generator", energy: { ...DEFAULT_ENERGY, source: "solar", generate: 10, capacity: 5000, rate: 100 } });
+      if (v === "battery") Object.assign(b, { ...metal, nameDe: "", nameEn: "Battery Cell", kind: "battery", energy: { ...DEFAULT_ENERGY, capacity: 100000, rate: 500 } });
+      if (v === "cable") Object.assign(b, { ...metal, hardness: 0.5, resistance: 1, nameDe: "", nameEn: "Energy Cable", kind: "cable", energy: { ...DEFAULT_ENERGY, capacity: 1000, rate: 1000 } });
       setContent({ ...content, blocks: [...content.blocks, b] });
       setSel({ kind: "block", index: content.blocks.length });
     } else if (choice.kind === "item") {
@@ -402,7 +408,7 @@ export default function ContentTab({ project }: { project: Project }) {
     if (target.kind === "gui") {
       const g = (content.guis ?? [])[target.index];
       if (!(await confirmDialog(t("„{name}“ entfernen?", { name: g.nameEn || g.id }), t("Die Oberfläche wird gelöscht. Verbundene Maschinen nutzen wieder die Ofen-Oberfläche."), t("Entfernen"), t("Abbrechen"), true))) return;
-      setContent((c) => (c ? { ...c, guis: (c.guis ?? []).filter((_, i) => i !== target.index), blocks: c.blocks.map((b) => (b.machine?.gui === g.id ? { ...b, machine: { ...b.machine, gui: "" } } : b)) } : c));
+      setContent((c) => (c ? { ...c, guis: (c.guis ?? []).filter((_, i) => i !== target.index), blocks: c.blocks.map((b) => (b.machine?.gui === g.id ? { ...b, machine: { ...b.machine, gui: "" } } : b.gui === g.id ? { ...b, gui: "" } : b)) } : c));
       setSel(null);
       return;
     }
@@ -766,7 +772,9 @@ export default function ContentTab({ project }: { project: Project }) {
             content={content}
             gui={(content.guis ?? [])[sel.index]}
             onChange={(g) => setContent((c) => (c ? { ...c, guis: (c.guis ?? []).map((x, i) => (i === sel.index ? g : x)) } : c))}
-            onLinkMachine={(blockId, guiId) => setContent((c) => (c ? { ...c, blocks: c.blocks.map((b) => (b.id === blockId ? { ...b, machine: { ...(b.machine ?? { fuel: true, recipes: [] }), gui: guiId } } : b)) } : c))}
+            onLinkMachine={(blockId, guiId) =>
+              setContent((c) => (c ? { ...c, blocks: c.blocks.map((b) => (b.id !== blockId ? b : b.kind === "machine" ? { ...b, machine: { ...(b.machine ?? { fuel: true, recipes: [] }), gui: guiId } } : { ...b, gui: guiId })) } : c))
+            }
             onDuplicate={() => {
               const list = content.guis ?? [];
               const d = list[sel.index];

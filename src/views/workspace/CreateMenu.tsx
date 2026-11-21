@@ -23,13 +23,13 @@ import {
   ShovelIcon,
   SkullIcon,
   SparkIcon,
-  SwordIcon, GuiIcon } from "../../icons";
+  SwordIcon, GuiIcon, BatteryIcon, PlugIcon, SolarIcon } from "../../icons";
 import { MOB_MODELS } from "./contentDefaults";
 import { TEMPLATES } from "./blueprints";
 
 export type CreateGroup = "all" | "block" | "item" | "mob" | "world" | "logic";
 export type CreateChoice =
-  | { kind: "block"; variant: "normal" | "ore" | "lamp" | "storage" | "shapes" | "workbench" | "machine" }
+  | { kind: "block"; variant: "normal" | "ore" | "lamp" | "storage" | "shapes" | "workbench" | "machine" | "electric" | "generator" | "solar" | "battery" | "cable" }
   | { kind: "item"; variant: "basic" | "food" | "sword" | "pickaxe" | "axe" | "shovel" | "hoe" | "toolset" | "armor" | "armorset" }
   | { kind: "mob"; model: MobModel }
   | { kind: "blueprint"; template: string }
@@ -79,6 +79,16 @@ function cards(group: CreateGroup): { title: string; cards: Card[] }[] {
             { choice: { kind: "block", variant: "storage" }, icon: <ChestIcon size={20} />, title: t("Lager-Truhe"), desc: t("Block mit Inventar zum Öffnen") },
             { choice: { kind: "block", variant: "workbench" }, icon: <HammerIcon size={20} />, title: t("Werkbank"), desc: t("Eigenes 3×3-Raster mit Rezepten, die nur hier gehen") },
             { choice: { kind: "block", variant: "machine" }, icon: <GearIcon size={20} />, title: t("Maschine"), desc: t("Verarbeitet Items über Zeit, mit Fortschrittsbalken") },
+          ],
+        },
+        {
+          title: t("Strom (FE/RF)"),
+          cards: [
+            { choice: { kind: "block", variant: "generator" }, icon: <LightningIcon size={20} />, title: t("Generator"), desc: t("Verbrennt Kohle & Co. und erzeugt Strom") },
+            { choice: { kind: "block", variant: "solar" }, icon: <SolarIcon size={20} />, title: t("Solarpanel"), desc: t("Erzeugt tagsüber Strom aus Sonnenlicht") },
+            { choice: { kind: "block", variant: "battery" }, icon: <BatteryIcon size={20} />, title: t("Akku / Batteriezelle"), desc: t("Speichert Strom und gibt ihn vorne ab") },
+            { choice: { kind: "block", variant: "cable" }, icon: <PlugIcon size={20} />, title: t("Kabel"), desc: t("Leitet Strom zu Maschinen weiter") },
+            { choice: { kind: "block", variant: "electric" }, icon: <GearIcon size={20} />, title: t("Elektrische Maschine"), desc: t("Verarbeitet Items mit Strom statt Kohle") },
           ],
         },
       ];

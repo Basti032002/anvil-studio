@@ -611,7 +611,7 @@ pub fn power_java(api: &EnergyApi, blocks: &[PowerBlock], be_ctor: &str, on_remo
             switch (cfg.kind()) {{
                 case "generator" -> {{
                     boolean on = switch (cfg.source()) {{
-                        case "solar" -> level.isDay() && level.canSeeSky(pos.above());
+                        case "solar" -> (level.getDayTime() % 24000L < 12300L || level.getDayTime() % 24000L > 23850L) && level.canSeeSky(pos.above()) && !level.isRaining();
                         case "redstone" -> level.hasNeighborSignal(pos);
                         case "always" -> true;
                         default -> false;

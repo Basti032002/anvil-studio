@@ -141,10 +141,14 @@ export type BlockDef = {
   recipe: Recipe;
   shapes: BlockShape[];
   ore: OreDef;
-  kind: "normal" | "lamp" | "storage" | "workbench" | "machine";
+  kind: "normal" | "lamp" | "storage" | "workbench" | "machine" | "generator" | "battery" | "cable";
   rows: number;
   workbenchRecipes: WorkbenchRecipe[];
-  machine: { fuel: boolean; recipes: MachineRecipe[]; gui?: string };
+  machine: { fuel: boolean; recipes: MachineRecipe[]; gui?: string; electric?: boolean };
+  /** Strom: Akku, Generator, Kabel, elektrische Maschine */
+  energy?: EnergyDef;
+  /** Akku/Generator: eigene Oberfläche */
+  gui?: string;
   /** Seiten-Texturen aus der Bibliothek */
   faces?: Faces;
   names: Record<string, string>;
@@ -542,3 +546,5 @@ export const texLibApi = {
   mcList: (version: string) => invoke<string[]>("mc_texture_list", { version }),
   mcTexture: (version: string, path: string) => invoke<string | null>("mc_texture", { version, path }),
 };
+export type EnergyDef = { capacity: number; rate: number; generate: number; source: "fuel" | "solar" | "redstone" | "always"; usePerTick: number };
+export const DEFAULT_ENERGY: EnergyDef = { capacity: 10000, rate: 200, generate: 20, source: "fuel", usePerTick: 20 };

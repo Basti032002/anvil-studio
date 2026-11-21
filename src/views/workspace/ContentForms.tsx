@@ -6,8 +6,8 @@ import { useCatalog } from "../../catalog";
 import { Segmented, Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
 import McIcon from "../../components/McIcon";
-import { WorkbenchRecipes, MachineEditor } from "./StationEditors";
-import { BoxIcon, ChestIcon, GearIcon, HammerIcon, ChestplateIcon, CloseIcon, CubeIcon, GemIcon, GlobeIcon, LampIcon, LayersIcon, PickaxeIcon, PlusIcon, SwordIcon } from "../../icons";
+import { WorkbenchRecipes, MachineEditor, EnergyEditor } from "./StationEditors";
+import { BoxIcon, ChestIcon, GearIcon, HammerIcon, ChestplateIcon, CloseIcon, CubeIcon, GemIcon, GlobeIcon, LampIcon, LayersIcon, PickaxeIcon, PlusIcon, SwordIcon, LightningIcon, BatteryIcon, PlugIcon } from "../../icons";
 import { armorPreset, ArmorTier, SHAPES, shapeIcon, SLOT_LABEL, Tier, TOOL_LABEL, toolPreset } from "./contentDefaults";
 
 /** Unterreiter in einem Editor */
@@ -164,6 +164,9 @@ export function BlockExtras({
               { k: "storage", label: t("Lager-Truhe"), icon: <ChestIcon size={16} /> },
               { k: "workbench", label: t("Werkbank"), icon: <HammerIcon size={16} /> },
               { k: "machine", label: t("Maschine"), icon: <GearIcon size={16} /> },
+              { k: "generator", label: t("Generator"), icon: <LightningIcon size={16} /> },
+              { k: "battery", label: t("Akku"), icon: <BatteryIcon size={16} /> },
+              { k: "cable", label: t("Kabel"), icon: <PlugIcon size={16} /> },
             ] as const
           ).map((x) => (
             <button
@@ -181,6 +184,7 @@ export function BlockExtras({
         {block.kind === "lamp" && <div className="muted small">{t("Leuchtet, sobald Redstone-Strom anliegt. Die Leuchtkraft oben gilt im eingeschalteten Zustand (0 = 15). Nach dem Speichern kannst du rechts eine eigene Textur für „an“ malen.")}</div>}
         {block.kind === "workbench" && <WorkbenchRecipes project={project} block={block} own={own} onChange={onChange} />}
         {block.kind === "machine" && <MachineEditor project={project} block={block} own={own} onChange={onChange} guis={guis} />}
+        {(block.kind === "generator" || block.kind === "battery" || block.kind === "cable") && <EnergyEditor block={block} onChange={onChange} guis={guis} />}
         {block.kind === "storage" && (
           <Field label={t("Reihen · {rows} × 9 = {slots} Plätze", { rows: block.rows, slots: block.rows * 9 })} hint={t("Truhe 3 · Doppeltruhe 6")}>
             <input type="range" className="range full" min={1} max={6} value={block.rows} onChange={(e) => onChange({ rows: Number(e.target.value) })} />

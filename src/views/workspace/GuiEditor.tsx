@@ -98,8 +98,9 @@ export default function GuiEditor({
   const setEl = (id: string, p: Partial<GuiEl>) => set({ elements: els.map((e) => (e.id === id ? { ...e, ...p } : e)) });
   const clampEl = (e: GuiEl, x: number, y: number) => ({ x: Math.max(0, Math.min(gui.width - e.w, Math.round(x))), y: Math.max(0, Math.min(gui.height - e.h, Math.round(y))) });
 
-  const machines = content.blocks.filter((b) => b.kind === "machine");
-  const linked = machines.filter((b) => b.machine?.gui === gui.id);
+  const machines = content.blocks.filter((b) => b.kind === "machine" || b.kind === "generator" || b.kind === "battery");
+  const guiOf = (b: (typeof machines)[number]) => (b.kind === "machine" ? b.machine?.gui : b.gui);
+  const linked = machines.filter((b) => guiOf(b) === gui.id);
   const hasSlots = els.some((e) => e.kind.startsWith("slot_"));
   const fns = [...new Set(content.blueprints.flatMap((b) => b.nodes.filter((n) => n.kind === "ev_function").map((n) => n.props.fn).filter(Boolean)))].sort();
   const vars = content.variables ?? [];
@@ -337,15 +338,15 @@ export default function GuiEditor({
                 </button>
               </span>
             ))}
-            {machines.filter((b) => b.machine?.gui !== gui.id).length > 0 && (
+            {machines.filter((b) => guiOf(b) !== gui.id).length > 0 && (
               <select className="input gui-link" value="" onChange={(e) => e.target.value && onLinkMachine(e.target.value, gui.id)}>
-                <option value="">{t("+ Maschine verbinden …")}</option>
+                <option value="">{t("+ Block verbinden …")}</option>
                 {machines
-                  .filter((b) => b.machine?.gui !== gui.id)
+                  .filter((b) => guiOf(b) !== gui.id)
                   .map((b) => (
                     <option key={b.id} value={b.id}>
                       {b.nameEn || b.nameDe || b.id}
-                      {b.machine?.gui ? ` (${t("hat schon eine")})` : ""}
+                      {guiOf(b) ? ` (${t("hat schon eine")})` : ""}
                     </option>
                   ))}
               </select>
@@ -403,6 +404,7 @@ export default function GuiEditor({
                   <span>{cur.kind === "switch" ? t("Schaltet Variable") : t("Zeigt an")}</span>
                   <select className="input" value={cur.var} onChange={(e) => setEl(cur.id, { var: e.target.value })}>
                     <option value="">{t("– Variable wählen –")}</option>
+                    {cur.kind !== "switch" && <option value="@fe">⚡ {t("Energie des Blocks (FE)")}</option>}
                     {vars
                       .filter((v) => (cur.kind === "switch" ? v.kind === "logic" : v.kind === "number"))
                       .map((v) => (
@@ -411,12 +413,12 @@ export default function GuiEditor({
                         </option>
                       ))}
                   </select>
-                  {vars.filter((v) => (cur.kind === "switch" ? v.kind === "logic" : v.kind === "number")).length === 0 && (
+                  {cur.var !== "@fe" && vars.filter((v) => (cur.kind === "switch" ? v.kind === "logic" : v.kind === "number")).length === 0 && (
                     <span className="muted tiny">{cur.kind === "switch" ? t("Lege im Variablen-Tab eine Wahr/Falsch-Variable an.") : t("Lege im Variablen-Tab eine Zahl-Variable an.")}</span>
                   )}
                 </label>
               )}
-              {(cur.kind === "energy" || cur.kind === "tank") && (
+              {(cur.kind === "energy" || cur.kind === "tank") && cur.var !== "@fe" && (
                 <label className="field">
                   <span>{t("Füllt sich bis")}</span>
                   <input className="input mono" type="number" min={1} value={cur.max} onChange={(e) => setEl(cur.id, { max: Math.max(1, Number(e.target.value) || 1) })} />

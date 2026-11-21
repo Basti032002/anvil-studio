@@ -97,6 +97,9 @@ import {
   Flask,
   BracketsCurly,
   AppWindow,
+  BatteryCharging,
+  Plug,
+  SolarPanel,
   LineSegment,
   Circle,
   Gradient,
@@ -246,3 +249,6 @@ export const SelectIcon = ({ size = 16 }: P) => <Selection size={size} weight="b
 export const MoveIcon = ({ size = 16 }: P) => <ArrowsOutCardinal size={size} weight="bold" aria-hidden="true" />;
 export const FramesIcon = ({ size = 16 }: P) => <FilmStrip size={size} weight="bold" aria-hidden="true" />;
 export const PauseIcon = ({ size = 16 }: P) => <Pause size={size} weight="bold" aria-hidden="true" />;
+export const BatteryIcon = ({ size = 16 }: P) => <BatteryCharging size={size} weight="bold" aria-hidden="true" />;
+export const PlugIcon = ({ size = 16 }: P) => <Plug size={size} weight="bold" aria-hidden="true" />;
+export const SolarIcon = ({ size = 16 }: P) => <SolarPanel size={size} weight="bold" aria-hidden="true" />;

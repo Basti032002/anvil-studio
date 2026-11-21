@@ -1,6 +1,6 @@
 import { t } from "../../i18n";
 import { useState } from "react";
-import { BlockDef, MachineRecipe, Project, WorkbenchRecipe, GuiDef } from "../../api";
+import { BlockDef, MachineRecipe, Project, WorkbenchRecipe, GuiDef, DEFAULT_ENERGY, EnergyDef } from "../../api";
 import { useCatalog } from "../../catalog";
 import { Segmented, Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
@@ -128,6 +128,8 @@ export function MachineEditor({ project, block, own, onChange, guis = [] }: { pr
   const recipes = machine.recipes;
   const [pick, setPick] = useState<{ r: number; field: "input" | "output" } | null>(null);
   const setMachine = (patch: Partial<typeof machine>) => onChange({ machine: { ...machine, ...patch } });
+  const energy = { ...DEFAULT_ENERGY, ...(block.energy ?? {}) };
+  const setEnergy = (patch: Partial<EnergyDef>) => onChange({ energy: { ...energy, ...patch } });
   const set = (i: number, patch: Partial<MachineRecipe>) => setMachine({ recipes: recipes.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
 
   return (
@@ -148,8 +150,22 @@ export function MachineEditor({ project, block, own, onChange, guis = [] }: { pr
           ? t("Rechtsklick öffnet deine eigene Oberfläche aus dem GUI-Editor.")
           : t("Rechtsklick öffnet eine Ofen-Oberfläche: oben die Eingabe, unten der Brennstoff, rechts das Ergebnis. Ein Pfeil zeigt den Fortschritt. Eine eigene Oberfläche legst du unter „Neu → Oberfläche“ an.")}
       </div>
-      <Toggle label={t("Braucht Brennstoff (Kohle, Holz …)")} checked={machine.fuel} onChange={(v) => setMachine({ fuel: v })} />
-      {!machine.fuel && <div className="muted small">{t("Ohne Brennstoff arbeitet die Maschine von selbst, sobald etwas Passendes in der Eingabe liegt.")}</div>}
+      <Toggle label={t("Läuft mit Strom (FE/RF)")} checked={!!machine.electric} onChange={(v) => setMachine({ electric: v })} />
+      {machine.electric ? (
+        <>
+          <div className="energy-grid">
+            <NumField label={t("Verbrauch beim Arbeiten (FE pro Tick)")} value={energy.usePerTick} min={0} onChange={(v) => setEnergy({ usePerTick: v })} />
+            <NumField label={t("Speicher (FE)")} value={energy.capacity} min={1} onChange={(v) => setEnergy({ capacity: v })} />
+            <NumField label={t("Aufnahme (FE pro Tick)")} value={energy.rate} min={1} onChange={(v) => setEnergy({ rate: v })} />
+          </div>
+          <div className="muted small">{t("Bekommt Strom von Generatoren, Akkus und Kabeln – auch aus anderen Mods wie Mekanism oder Thermal. Ein Rezept mit {t} Sekunden braucht {fe} FE.", { t: "5", fe: String(energy.usePerTick * 100) })}</div>
+        </>
+      ) : (
+        <>
+          <Toggle label={t("Braucht Brennstoff (Kohle, Holz …)")} checked={machine.fuel} onChange={(v) => setMachine({ fuel: v })} />
+          {!machine.fuel && <div className="muted small">{t("Ohne Brennstoff arbeitet die Maschine von selbst, sobald etwas Passendes in der Eingabe liegt.")}</div>}
+        </>
+      )}
       {recipes.map((r, i) => (
         <div key={i} className="station-recipe">
           <div className="recipe-body machine-row">
@@ -197,6 +213,73 @@ export function MachineEditor({ project, block, own, onChange, guis = [] }: { pr
             setPick(null);
           }}
         />
+      )}
+    </div>
+  );
+}
+
+function NumField({ label, value, onChange, min = 0 }: { label: string; value: number; onChange: (v: number) => void; min?: number }) {
+  return (
+    <label className="field">
+      <span className="field-label">{label}</span>
+      <input className="input" type="number" min={min} value={value} onChange={(e) => onChange(Math.max(min, Math.round(Number(e.target.value) || 0)))} />
+    </label>
+  );
+}
+
+/** Generator, Akku oder Kabel einstellen */
+export function EnergyEditor({ block, onChange, guis = [] }: { block: BlockDef; onChange: (patch: Partial<BlockDef>) => void; guis?: GuiDef[] }) {
+  const e = { ...DEFAULT_ENERGY, ...(block.energy ?? {}) };
+  const set = (patch: Partial<EnergyDef>) => onChange({ energy: { ...e, ...patch } });
+  const kind = block.kind;
+  const seconds = e.generate > 0 ? Math.round(e.capacity / e.generate / 20) : 0;
+  return (
+    <div className="station">
+      {kind === "generator" && (
+        <>
+          <div className="muted small">{t("Erzeugt Strom (FE) und gibt ihn an alle angrenzenden Blöcke ab – Kabel, Akkus und Maschinen, auch aus anderen Mods.")}</div>
+          <label className="field">
+            <span className="field-label">{t("Energiequelle")}</span>
+            <div className="energy-sources">
+              {(
+                [
+                  ["fuel", t("Brennstoff"), t("Kohle, Holz, Lava … (Rechtsklick legt ein)")],
+                  ["solar", t("Sonne"), t("Tagsüber unter freiem Himmel")],
+                  ["redstone", t("Redstone"), t("Solange ein Redstone-Signal anliegt")],
+                  ["always", t("Immer"), t("Ohne Bedingung – gut zum Testen")],
+                ] as const
+              ).map(([k, l, d]) => (
+                <button key={k} type="button" className={e.source === k ? "kind-card active" : "kind-card"} onClick={() => set({ source: k })}>
+                  <span>{l}</span>
+                  <span className="muted tiny">{d}</span>
+                </button>
+              ))}
+            </div>
+          </label>
+        </>
+      )}
+      {kind === "battery" && <div className="muted small">{t("Speichert Strom. Nimmt ihn an allen Seiten an und gibt ihn vorne wieder ab – die Vorderseite zeigt beim Setzen zu dir.")}</div>}
+      {kind === "cable" && <div className="muted small">{t("Leitet Strom weiter und verbindet sich automatisch mit allem, was Strom hat – auch mit Kabeln und Maschinen aus anderen Mods.")}</div>}
+      <div className="energy-grid">
+        {kind === "generator" && <NumField label={t("Erzeugt (FE pro Tick)")} value={e.generate} min={1} onChange={(v) => set({ generate: v })} />}
+        {kind !== "cable" && <NumField label={t("Speicher (FE)")} value={e.capacity} min={1} onChange={(v) => set({ capacity: v })} />}
+        <NumField label={kind === "cable" ? t("Durchsatz (FE pro Tick)") : t("Abgabe (FE pro Tick)")} value={e.rate} min={1} onChange={(v) => set({ rate: v })} />
+        {kind === "cable" && <NumField label={t("Puffer (FE)")} value={e.capacity} min={1} onChange={(v) => set({ capacity: v })} />}
+      </div>
+      {kind === "generator" && seconds > 0 && <div className="muted small">{t("Ist nach {s} Sekunden voll, wenn nichts abgenommen wird.", { s: String(seconds) })}</div>}
+      {kind !== "cable" && (
+        <label className="field">
+          <span className="field-label">{t("Oberfläche")}</span>
+          <select className="input" value={block.gui ?? ""} onChange={(ev) => onChange({ gui: ev.target.value })}>
+            <option value="">{t("Keine – Rechtsklick zeigt den Füllstand")}</option>
+            {guis.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.nameEn || g.id}
+              </option>
+            ))}
+          </select>
+          <span className="muted tiny">{t("Tipp: Im GUI-Editor zeigt eine Energieanzeige mit „Energie des Blocks (FE)“ den Füllstand.")}</span>
+        </label>
       )}
     </div>
   );
