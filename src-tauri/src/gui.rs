@@ -46,7 +46,7 @@ pub const KINDS: &[&str] = &["slot_in", "slot_fuel", "slot_out", "player_inv", "
 
 /// Elemente, deren Wert vom Server kommt (Reihenfolge = Datenplatz ab 4)
 pub fn var_elements(g: &GuiDef) -> Vec<(usize, &GuiEl)> {
-    g.elements.iter().enumerate().filter(|(_, e)| matches!(e.kind.as_str(), "energy" | "tank" | "switch" | "value") && !e.var.trim().is_empty()).collect()
+    g.elements.iter().enumerate().filter(|(_, e)| matches!(e.kind.as_str(), "energy" | "tank" | "switch" | "value") && !e.var.trim().is_empty() && e.var != "@fe").collect()
 }
 
 pub fn valid(g: &GuiDef) -> bool {
@@ -77,7 +77,7 @@ pub fn common_java(guis: &[GuiDef], machine_guis: &[(String, String)]) -> (Strin
             if !KINDS.contains(&e.kind.as_str()) {
                 continue;
             }
-            let slot = vars.iter().position(|(_, v)| std::ptr::eq(*v, e)).map(|i| i as i32 + 4).unwrap_or(-1);
+            let slot = if e.var == "@fe" { -2 } else { vars.iter().position(|(_, v)| std::ptr::eq(*v, e)).map(|i| i as i32 + 8).unwrap_or(-1) };
             let def_col = match e.kind.as_str() {
                 "energy" => 0xD83A3A,
                 "tank" => 0x3A7BD8,
@@ -144,7 +144,7 @@ pub fn common_java(guis: &[GuiDef], machine_guis: &[(String, String)]) -> (Strin
         sp.openMenu(new net.minecraft.world.SimpleMenuProvider((id, inv, p) -> anvilGuiMenu(id, inv, key, c, base, pos), t), buf -> {{
             buf.writeUtf(key);
             buf.writeVarInt(c.getContainerSize());
-            buf.writeVarInt(4 + g.vars());
+            buf.writeVarInt(8 + g.vars());
             buf.writeBlockPos(pos);
         }});
     }}
@@ -155,18 +155,18 @@ pub fn common_java(guis: &[GuiDef], machine_guis: &[(String, String)]) -> (Strin
         net.minecraft.world.inventory.ContainerData d = new net.minecraft.world.inventory.ContainerData() {{
             @Override
             public int get(int i) {{
-                if (i < 4) return base == null ? 0 : base.get(i);
-                return player.level() instanceof net.minecraft.server.level.ServerLevel sl ? anvilGuiValue(sl, player, key, i - 4) : 0;
+                if (i < 8) return base == null || i >= base.getCount() ? 0 : base.get(i);
+                return player.level() instanceof net.minecraft.server.level.ServerLevel sl ? anvilGuiValue(sl, player, key, i - 8) : 0;
             }}
 
             @Override
             public void set(int i, int v) {{
-                if (i < 4 && base != null) base.set(i, v);
+                if (i < 8 && base != null && i < base.getCount()) base.set(i, v);
             }}
 
             @Override
             public int getCount() {{
-                return 4 + (g == null ? 0 : g.vars());
+                return 8 + (g == null ? 0 : g.vars());
             }}
         }};
         return new AnvilGuiMenu(id, inv, key, c, d, pos);
@@ -181,7 +181,7 @@ pub fn common_java(guis: &[GuiDef], machine_guis: &[(String, String)]) -> (Strin
         private final int ownSlots;
 
         public AnvilGuiMenu(int id, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.RegistryFriendlyByteBuf buf) {{
-            this(id, inv, buf.readUtf(), new net.minecraft.world.SimpleContainer(Math.max(0, buf.readVarInt())), new net.minecraft.world.inventory.SimpleContainerData(Math.max(4, buf.readVarInt())), buf.readBlockPos());
+            this(id, inv, buf.readUtf(), new net.minecraft.world.SimpleContainer(Math.max(0, buf.readVarInt())), new net.minecraft.world.inventory.SimpleContainerData(Math.max(8, buf.readVarInt())), buf.readBlockPos());
         }}
 
         public AnvilGuiMenu(int id, net.minecraft.world.entity.player.Inventory inv, String key, net.minecraft.world.Container container, net.minecraft.world.inventory.ContainerData data, net.minecraft.core.BlockPos pos) {{
@@ -323,7 +323,13 @@ pub fn client_java(guis: &[GuiDef], get_value: bool) -> (String, String) {
         }}
 
         private int value(AnvilContent.AnvilGuiEl e) {{
+            if (e.data() == -2) return (menu.data.get(4) & 0xFFFF) | ((menu.data.get(5) & 0xFFFF) << 16);
             return e.data() >= 0 ? menu.data.get(e.data()) : 0;
+        }}
+
+        private long maxOf(AnvilContent.AnvilGuiEl e) {{
+            if (e.data() == -2) return Math.max(1, (menu.data.get(6) & 0xFFFF) | ((menu.data.get(7) & 0xFFFF) << 16));
+            return Math.max(1, e.max());
         }}
 
         @Override
@@ -373,7 +379,7 @@ pub fn client_java(guis: &[GuiDef], get_value: bool) -> (String, String) {
                     }}
                     case "energy", "tank" -> {{
                         bevel(g, x, y, e.w(), e.h(), 0xFF373737, 0xFFFFFFFF, 0xFF2A2A2A);
-                        long max = Math.max(1, e.max());
+                        long max = maxOf(e);
                         int fill = (int) Math.max(0, Math.min(e.h() - 2, (long) value(e) * (e.h() - 2) / max));
                         if (fill > 0) g.fill(x + 1, y + e.h() - 1 - fill, x + e.w() - 1, y + e.h() - 1, e.color());
                     }}
@@ -392,7 +398,7 @@ pub fn client_java(guis: &[GuiDef], get_value: bool) -> (String, String) {
             if (inventoryLabelY > -1000) g.drawString(font, playerInventoryTitle, inventoryLabelX, inventoryLabelY, 0xFF404040, false);
             for (AnvilContent.AnvilGuiEl e : menu.gui.els()) {{
                 if (e.kind().equals("text")) g.drawString(font, e.text(), e.x(), e.y(), e.color(), false);
-                else if (e.kind().equals("value")) g.drawString(font, e.text() + value(e), e.x(), e.y(), e.color(), false);
+                else if (e.kind().equals("value")) g.drawString(font, e.text() + value(e) + (e.data() == -2 ? " FE" : ""), e.x(), e.y(), e.color(), false);
             }}
         }}
 
@@ -427,7 +433,7 @@ mod tests {
         };
         let (f, c, m) = common_java(&[g.clone()], &[("presse_block".into(), "presse".into())]);
         assert!(f.contains("GUI_MENU") && c.contains("MENUS.register"));
-        assert!(m.contains("new AnvilGuiEl(\"energy\"") && m.contains(", 4, 1000,"));
+        assert!(m.contains("new AnvilGuiEl(\"energy\"") && m.contains(", 8, 1000,"));
         assert!(m.contains("Start \\\"jetzt\\\""));
         assert!(m.contains("\"presse_block\", \"presse\""));
         let (r, cl) = client_java(&[g], true);

@@ -1,6 +1,7 @@
 mod admin;
 mod blueprint;
 mod gui;
+mod energy;
 mod textures;
 mod content;
 mod dimension;

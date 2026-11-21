@@ -82,6 +82,10 @@ pub struct BlockDef {
     pub machine: MachineDef,
     /// Texturen aus der Bibliothek je Seite (leer = eigene Block-Textur)
     pub faces: Faces,
+    /// Strom: Akku, Generator, Kabel, elektrische Maschine
+    pub energy: crate::energy::EnergyDef,
+    /// Akku/Generator/Kabel: eigene Oberfläche
+    pub gui: String,
 }
 
 /// Block-Seiten mit Texturen aus der Bibliothek
@@ -124,11 +128,13 @@ pub struct MachineDef {
     pub recipes: Vec<MachineRecipe>,
     /// eigene Oberfläche aus dem GUI-Editor (leer = Ofen-Oberfläche)
     pub gui: String,
+    /// läuft mit Strom (FE) statt Brennstoff
+    pub electric: bool,
 }
 
 impl Default for MachineDef {
     fn default() -> Self {
-        Self { fuel: true, recipes: vec![], gui: String::new() }
+        Self { fuel: true, recipes: vec![], gui: String::new(), electric: false }
     }
 }
 
@@ -223,6 +229,8 @@ impl Default for BlockDef {
             workbench_recipes: vec![],
             machine: MachineDef::default(),
             faces: Faces::default(),
+            energy: Default::default(),
+            gui: String::new(),
         }
     }
 }
@@ -1162,7 +1170,18 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
     // ---- Block-Entities (Lager, Maschinen) teilen sich ein Register ----
     let storage: Vec<&BlockDef> = c.blocks.iter().filter(|b| b.kind == "storage").collect();
     let machines: Vec<&BlockDef> = c.blocks.iter().filter(|b| b.kind == "machine").collect();
-    if !storage.is_empty() || !machines.is_empty() {
+    let power: Vec<&BlockDef> = c.blocks.iter().filter(|b| matches!(b.kind.as_str(), "battery" | "generator" | "cable")).collect();
+    let electric = machines.iter().any(|b| b.machine.electric);
+    let energy_api = crate::energy::EnergyApi { handler: api.lazy_props, value_io: api.value_io, props_tools: api.props_tools, materials_v2: api.materials_v2 };
+    let bp_energy = c.blueprints.iter().filter(|b| b.enabled).flat_map(|b| b.nodes.iter()).any(|n| {
+        matches!(n.kind.as_str(), "energy_add" | "energy_take") || n.props.values().any(|v| v == "energy_at_least" || v == "block_energy")
+    });
+    let has_energy = !power.is_empty() || electric || bp_energy;
+    if has_energy {
+        imports.extend(["net.minecraft.core.BlockPos", "net.minecraft.world.level.Level"]);
+        methods.push_str(&crate::energy::helpers(&energy_api));
+    }
+    if !storage.is_empty() || !machines.is_empty() || !power.is_empty() {
         fields.push_str("    public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITIES = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, MODID);\n");
         calls.push_str("        BLOCK_ENTITIES.register(modEventBus);\n");
         imports.extend(["net.minecraft.world.level.block.entity.BlockEntityType"]);
@@ -1305,7 +1324,7 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
     let jq = |x: &str| format!("\"{}\"", java_str(x));
     // ---- Gemeinsame Helfer für eigene Rezepte (Werkbank, Maschine) ----
     let workbenches: Vec<&BlockDef> = c.blocks.iter().filter(|b| b.kind == "workbench").collect();
-    if !workbenches.is_empty() || !machines.is_empty() {
+    if !workbenches.is_empty() || !machines.is_empty() || !power.is_empty() {
         let get_item = if api.materials_v2 { "getValue" } else { "get" };
         methods.push_str(&format!(r##"
     /** Passt der Stapel zu "ns:id" oder "#ns:tag"? Leer passt nur zu leer. */
@@ -1561,18 +1580,35 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
             "net.minecraft.world.phys.BlockHitResult",
         ]);
         let burn = if api.materials_v2 { "level.fuelValues().burnDuration(stack)" } else { "stack.getBurnTime(net.minecraft.world.item.crafting.RecipeType.SMELTING)" };
-        let save_load = if api.value_io {
-            "        @Override\n        protected void loadAdditional(net.minecraft.world.level.storage.ValueInput input) {\n            super.loadAdditional(input);\n            items = NonNullList.withSize(3, ItemStack.EMPTY);\n            ContainerHelper.loadAllItems(input, items);\n            litTime = input.getIntOr(\"AnvilLit\", 0);\n            litDuration = input.getIntOr(\"AnvilLitTotal\", 0);\n            progress = input.getIntOr(\"AnvilProgress\", 0);\n            total = input.getIntOr(\"AnvilTotal\", 0);\n        }\n\n        @Override\n        protected void saveAdditional(net.minecraft.world.level.storage.ValueOutput output) {\n            super.saveAdditional(output);\n            ContainerHelper.saveAllItems(output, items);\n            output.putInt(\"AnvilLit\", litTime);\n            output.putInt(\"AnvilLitTotal\", litDuration);\n            output.putInt(\"AnvilProgress\", progress);\n            output.putInt(\"AnvilTotal\", total);\n        }\n".to_string()
-        } else {
-            let get = |k: &str| if api.props_tools { format!("tag.getIntOr(\"{k}\", 0)") } else { format!("tag.getInt(\"{k}\")") };
-            format!(
-                "        @Override\n        protected void loadAdditional(net.minecraft.nbt.CompoundTag tag, net.minecraft.core.HolderLookup.Provider registries) {{\n            super.loadAdditional(tag, registries);\n            items = NonNullList.withSize(3, ItemStack.EMPTY);\n            ContainerHelper.loadAllItems(tag, items, registries);\n            litTime = {};\n            litDuration = {};\n            progress = {};\n            total = {};\n        }}\n\n        @Override\n        protected void saveAdditional(net.minecraft.nbt.CompoundTag tag, net.minecraft.core.HolderLookup.Provider registries) {{\n            super.saveAdditional(tag, registries);\n            ContainerHelper.saveAllItems(tag, items, registries);\n            tag.putInt(\"AnvilLit\", litTime);\n            tag.putInt(\"AnvilLitTotal\", litDuration);\n            tag.putInt(\"AnvilProgress\", progress);\n            tag.putInt(\"AnvilTotal\", total);\n        }}\n",
-                get("AnvilLit"), get("AnvilLitTotal"), get("AnvilProgress"), get("AnvilTotal")
+        let mut sl_fields = vec![("AnvilLit", "litTime", "litTime = {v}"), ("AnvilLitTotal", "litDuration", "litDuration = {v}"), ("AnvilProgress", "progress", "progress = {v}"), ("AnvilTotal", "total", "total = {v}")];
+        if has_energy {
+            sl_fields.push(("AnvilEnergy", "energy.get()", "energy.set({v})"));
+        }
+        let save_load = crate::energy::save_load(&energy_api, &sl_fields, true);
+        // Strom: Speicher je Maschine (Kapazität, Rate, Verbrauch pro Tick)
+        let mut menergy = String::new();
+        for b in machines.iter().filter(|b| b.machine.electric) {
+            menergy.push_str(&format!("java.util.Map.entry({}, new int[] {{ {}, {}, {} }}), ", jq(&b.id), b.energy.capacity.clamp(1, 2_000_000_000), b.energy.rate.clamp(1, 1_000_000_000), b.energy.use_per_tick.min(1_000_000_000)));
+        }
+        let menergy = menergy.trim_end_matches(", ").to_string();
+        let (energy_field, energy_init, energy_slot, energy_cap) = if has_energy {
+            (
+                format!("        final AnvilEnergy energy;\n        static final java.util.Map<String, int[]> ENERGY = java.util.Map.ofEntries({menergy});\n"),
+                "            int[] cfg = ENERGY.getOrDefault(anvilBlockKey(state.getBlock()), new int[] { 0, 0, 0 });\n            energy = new AnvilEnergy(cfg[0], cfg[1], 0, this::setChanged);\n".to_string(),
+                "energy.slot(index - 4)".to_string(),
+                "\n        public AnvilEnergyCap cap(net.minecraft.core.Direction side) {\n            return energy.capacity() > 0 ? new AnvilEnergyCap(energy, true, false) : null;\n        }\n".to_string(),
             )
+        } else {
+            (String::new(), String::new(), "0".to_string(), String::new())
+        };
+        let energy_tick = if has_energy {
+            "                int[] ecfg = ENERGY.get(key);\n                if (ecfg != null) {\n                    if (be.energy.get() >= ecfg[2]) {\n                        be.energy.take(ecfg[2]);\n                        be.litTime = be.litDuration = 1;\n                    } else be.litTime = 0;\n                } else if (!needsFuel) {"
+        } else {
+            "                if (!needsFuel) {"
         };
         let on_remove = on_remove_drop.clone();
         let open_machine = if machines.iter().any(|b| !b.machine.gui.is_empty() && c.guis.iter().any(|g| g.id == b.machine.gui && crate::gui::valid(g))) {
-            "{\n                String anvilGui = ANVIL_MACHINE_GUI.get(anvilBlockKey(state.getBlock()));\n                if (anvilGui != null && player instanceof net.minecraft.server.level.ServerPlayer sp) anvilOpenGui(sp, anvilGui, machine, machine.data, pos, state.getBlock().getName());\n                else player.openMenu(machine);\n            }"
+            "{\n                String anvilGui = ANVIL_MACHINE_GUI.get(anvilBlockKey(state.getBlock()));\n                if (anvilGui != null && player instanceof net.minecraft.server.level.ServerPlayer sp) anvilOpenGui(sp, anvilGui, machine, machine.guiData, pos, state.getBlock().getName());\n                else player.openMenu(machine);\n            }"
         } else {
             "player.openMenu(machine);"
         };
@@ -1648,10 +1684,28 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
                 return 4;
             }}
         }};
+        /** Für eigene Oberflächen: zusätzlich Strom (Plätze 4–7) */
+        final net.minecraft.world.inventory.ContainerData guiData = new net.minecraft.world.inventory.ContainerData() {{
+            @Override
+            public int get(int index) {{
+                return index < 4 ? data.get(index) : {energy_slot};
+            }}
 
+            @Override
+            public void set(int index, int value) {{
+                if (index < 4) data.set(index, value);
+            }}
+
+            @Override
+            public int getCount() {{
+                return 8;
+            }}
+        }};
+{energy_field}
         public AnvilMachineBlockEntity(BlockPos pos, BlockState state) {{
             super(MACHINE_BE.get(), pos, state);
-        }}
+{energy_init}        }}
+{energy_cap}
 
         @Override
         public int getContainerSize() {{
@@ -1699,7 +1753,7 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
             ItemStack result = r == null ? ItemStack.EMPTY : anvilStack(r.output(), r.outputCount());
             boolean fits = !result.isEmpty() && (out.isEmpty() || (ItemStack.isSameItemSameComponents(out, result) && out.getCount() + result.getCount() <= out.getMaxStackSize()));
             if (fits) {{
-                if (!needsFuel) {{
+{energy_tick}
                     be.litTime = be.litDuration = 1;
                 }} else if (be.litTime <= 0) {{
                     ItemStack fuel = be.items.get(1);
@@ -1766,6 +1820,50 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
     }
 
     // ---- Blueprints ----
+    // ---- Strom: Generatoren, Akkus, Kabel ----
+    let has_guis_early = c.guis.iter().any(crate::gui::valid);
+    if !power.is_empty() {
+        imports.extend([
+            "com.mojang.serialization.MapCodec",
+            "net.minecraft.core.BlockPos",
+            "net.minecraft.core.NonNullList",
+            "net.minecraft.world.Container",
+            "net.minecraft.world.Containers",
+            "net.minecraft.world.ContainerHelper",
+            "net.minecraft.world.InteractionResult",
+            "net.minecraft.world.entity.player.Player",
+            "net.minecraft.world.level.Level",
+            "net.minecraft.world.level.block.entity.BlockEntity",
+            "net.minecraft.world.level.block.state.BlockState",
+            "net.minecraft.world.phys.BlockHitResult",
+            "net.minecraft.network.chat.Component",
+        ]);
+        let pb: Vec<crate::energy::PowerBlock> = power
+            .iter()
+            .map(|b| crate::energy::PowerBlock { id: b.id.clone(), kind: b.kind.clone(), e: b.energy.clone(), gui: if c.guis.iter().any(|g| g.id == b.gui && crate::gui::valid(g)) { b.gui.clone() } else { String::new() } })
+            .collect();
+        let (pf, pm) = crate::energy::power_java(&energy_api, &pb, &be_type("AnvilPowerBlockEntity", &power), &on_remove_drop);
+        fields.push_str(&pf);
+        methods.push_str(&pm);
+        methods.push_str(&if has_guis_early {
+            "\n    static boolean anvilPowerGui(net.minecraft.server.level.ServerPlayer sp, String key, net.minecraft.world.Container c, net.minecraft.world.inventory.ContainerData data, BlockPos pos, Component title) {\n        if (!ANVIL_GUIS.containsKey(key)) return false;\n        anvilOpenGui(sp, key, c, data, pos, title);\n        return true;\n    }\n".to_string()
+        } else {
+            "\n    static boolean anvilPowerGui(net.minecraft.server.level.ServerPlayer sp, String key, net.minecraft.world.Container c, net.minecraft.world.inventory.ContainerData data, BlockPos pos, Component title) {\n        return false;\n    }\n".to_string()
+        });
+    }
+    if !power.is_empty() || electric {
+        let cap = if energy_api.handler { "net.neoforged.neoforge.capabilities.Capabilities.Energy.BLOCK" } else { "net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK" };
+        let mut regs = String::new();
+        if !power.is_empty() {
+            regs.push_str(&format!("        event.registerBlockEntity({cap}, POWER_BE.get(), (be, side) -> be.cap(side));\n"));
+        }
+        if electric {
+            regs.push_str(&format!("        event.registerBlockEntity({cap}, MACHINE_BE.get(), (be, side) -> be.cap(side));\n"));
+        }
+        calls.push_str("        modEventBus.addListener(AnvilContent::anvilRegisterCaps);\n");
+        methods.push_str(&format!("\n    private static void anvilRegisterCaps(net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent event) {{\n{regs}    }}\n"));
+    }
+
     // ---- Eigene Oberflächen ----
     let has_guis = c.guis.iter().any(crate::gui::valid);
     if has_guis {
@@ -1973,6 +2071,9 @@ fn generate_java(p: &Project, c: &Content) -> String {
             "block" if b.kind == "lamp" => ("RedstoneLampBlock".to_string(), format!("BLOCKS.registerBlock(\"{}\", RedstoneLampBlock::new, {props})", v.id)),
             "block" if b.kind == "workbench" => ("AnvilWorkbenchBlock".to_string(), format!("BLOCKS.registerBlock(\"{}\", AnvilWorkbenchBlock::new, {props})", v.id)),
             "block" if b.kind == "machine" => ("AnvilMachineBlock".to_string(), format!("BLOCKS.registerBlock(\"{}\", AnvilMachineBlock::new, {props})", v.id)),
+            "block" if b.kind == "generator" => ("AnvilGeneratorBlock".to_string(), format!("BLOCKS.registerBlock(\"{}\", AnvilGeneratorBlock::new, {props})", v.id)),
+            "block" if b.kind == "battery" => ("AnvilBatteryBlock".to_string(), format!("BLOCKS.registerBlock(\"{}\", AnvilBatteryBlock::new, {props})", v.id)),
+            "block" if b.kind == "cable" => ("AnvilCableBlock".to_string(), format!("BLOCKS.registerBlock(\"{}\", AnvilCableBlock::new, {props})", v.id)),
             "block" if b.kind == "storage" => (
                 "AnvilStorageBlock".to_string(),
                 format!("BLOCKS.registerBlock(\"{}\", p -> new AnvilStorageBlock({}, p), {props})", v.id, b.rows.clamp(1, 6)),
@@ -2914,7 +3015,20 @@ fn validate_extra(c: &Content) -> Result<(), String> {
 }
 
 /// Erzeugt alle Dateien aus dem Inhalte-Modell.
+/// Erzeugt alles – auf einem eigenen Thread mit großem Stack (der Java-Generator ist groß)
 pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
+    std::thread::scope(|s| {
+        std::thread::Builder::new()
+            .name("anvil-generate".into())
+            .stack_size(64 * 1024 * 1024)
+            .spawn_scoped(s, || generate_inner(p, c))
+            .map_err(|e| e.to_string())?
+            .join()
+            .map_err(|_| "Fehler beim Erzeugen (Absturz im Generator)".to_string())?
+    })
+}
+
+fn generate_inner(p: &Project, c: &mut Content) -> Result<String, String> {
     validate(c)?;
     validate_extra(c)?;
     let modid = &p.mod_id;
@@ -3116,6 +3230,27 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
                 let own_blocks: Vec<String> = c.blocks.iter().map(|x| x.id.clone()).collect();
                 write_json(&mb(""), &cuboid_model(b, &tex, modid, &own_blocks))?;
                 item_model = m.clone();
+            }
+            "block" if b.kind == "battery" => {
+                write_json(
+                    &assets.join(format!("blockstates/{id}.json")),
+                    &json!({ "variants": {
+                        "facing=north": { "model": m },
+                        "facing=east": { "model": m, "y": 90 },
+                        "facing=south": { "model": m, "y": 180 },
+                        "facing=west": { "model": m, "y": 270 }
+                    } }),
+                )?;
+                write_json(&mb(""), &cube(&model, &ft))?;
+                item_model = m.clone();
+            }
+            "block" if b.kind == "cable" => {
+                let (core, side, inv) = crate::energy::cable_models(&ft[2]);
+                write_json(&assets.join(format!("blockstates/{id}.json")), &crate::energy::cable_blockstate(&m))?;
+                write_json(&mb("_core"), &core)?;
+                write_json(&mb("_side"), &side)?;
+                write_json(&mb("_inventory"), &inv)?;
+                item_model = format!("{m}_inventory");
             }
             _ => {
                 write_json(&assets.join(format!("blockstates/{id}.json")), &json!({ "variants": { "": { "model": m } } }))?;
@@ -3934,15 +4069,28 @@ mod tests {
                 fuel: true,
                 recipes: vec![MachineRecipe { input: format!("{m}:ruby"), input_count: 2, output: format!("{m}:ruby_block"), output_count: 1, time: 100 }],
                 gui: "presse".into(),
+                electric: false,
             },
             ..Default::default()
         });
         c.blocks.push(BlockDef {
             id: "ruby_grinder".into(),
             kind: "machine".into(),
-            machine: MachineDef { fuel: false, recipes: vec![MachineRecipe { input: "#minecraft:logs".into(), output: "minecraft:stick".into(), output_count: 8, ..Default::default() }], ..Default::default() },
+            machine: MachineDef { fuel: false, electric: true, recipes: vec![MachineRecipe { input: "#minecraft:logs".into(), output: "minecraft:stick".into(), output_count: 8, ..Default::default() }], ..Default::default() },
             ..Default::default()
         });
+        // Strom: Generatoren (Brennstoff mit Oberfläche, Sonne), Akku, Kabel
+        for (id, kind, source, gui) in [("coal_generator", "generator", "fuel", "generator_gui"), ("solar_panel", "generator", "solar", ""), ("ruby_battery", "battery", "", "generator_gui"), ("ruby_cable", "cable", "", "")] {
+            c.blocks.push(BlockDef {
+                id: id.into(),
+                kind: kind.into(),
+                material: "metal".into(),
+                energy: crate::energy::EnergyDef { source: source.into(), ..Default::default() },
+                gui: gui.into(),
+                faces: if id == "ruby_battery" { Faces { mode: "each".into(), top: "rubin_oben".into(), bottom: "rubin_oben".into(), north: "glut".into(), south: "rubin_seite".into(), east: "rubin_seite".into(), west: "rubin_seite".into(), ..Default::default() } } else { Faces::default() },
+                ..Default::default()
+            });
+        }
         for (kind, id) in [("blasting", "blast_gem"), ("smoking", "smoked_gem"), ("campfire", "camp_gem"), ("stonecutting", "cut_gem"), ("smithing", "smith_gem")] {
             let mut r = Recipe { enabled: true, kind: kind.into(), grid: vec![String::new(); 9], ..Default::default() };
             r.grid[0] = "minecraft:netherite_upgrade_smithing_template".into();
@@ -4327,6 +4475,9 @@ mod tests {
                 ("setblock_var", vec![("var", "bauklotz"), ("at", "var"), ("pos", "heimat")]),
                 ("summon_at_var", vec![("entity", "minecraft:pig"), ("var", "heimat")]),
                 ("remove_entity", vec![]),
+                ("energy_add", vec![("amount", "500"), ("where", "below")]),
+                ("energy_take", vec![("amount", "100")]),
+                ("var_set", vec![("var", "leben"), ("src", "game"), ("game", "block_energy")]),
                 ("kick", vec![("text", "Tschüss {player}")]),
             ];
             let mut nodes = vec![node("e", "ev_jump", &[])];
@@ -4352,6 +4503,7 @@ mod tests {
                 ("flying", vec![]),
                 ("is_baby", vec![]),
                 ("holding_any", vec![]),
+                ("energy_at_least", vec![("value", "1000")]),
                 ("block_in_tag", vec![("value", "minecraft:logs")]),
                 ("event_block_in_tag", vec![("value", "#edelsteinbloecke")]),
                 ("holding_tag", vec![("value", "edelsteine")]),
@@ -4404,6 +4556,20 @@ mod tests {
                     GuiEl { color: "#335577".into(), ..el("panel", 10, 66, 180, 44) },
                     GuiEl { item: "minecraft:diamond".into(), ..el("item", 20, 80, 16, 16) },
                     GuiEl { text: "Unbekannt".into(), ..el("button", 100, 80, 60, 20) },
+                ],
+                ..Default::default()
+            });
+            c.guis.push(GuiDef {
+                id: "generator_gui".into(),
+                width: 176,
+                height: 166,
+                show_title: true,
+                elements: vec![
+                    el("slot_fuel", 79, 52, 18, 18),
+                    el("flame", 81, 34, 14, 14),
+                    GuiEl { var: "@fe".into(), ..el("energy", 150, 16, 12, 54) },
+                    GuiEl { var: "@fe".into(), text: "Strom: ".into(), ..el("value", 8, 20, 100, 9) },
+                    el("player_inv", 7, 83, 162, 76),
                 ],
                 ..Default::default()
             });

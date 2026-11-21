@@ -141,6 +141,7 @@ fn game_expr(api: &BpApi, g: &str) -> (String, bool) {
         "random" => num("level.getRandom().nextDouble()"),
         "target_health" => num("(target != null ? target.getHealth() : 0)"),
         "held_count" => num("(player != null ? player.getMainHandItem().getCount() : 0)"),
+        "block_energy" => num("anvilEnergyAt(level, BlockPos.containing(x, y, z))"),
         "player_name" => txt("(player != null ? player.getName().getString() : \"\")".into()),
         "message" => txt("message".into()),
         "dimension" => txt("level.dimension().location().toString()".into()),
@@ -781,6 +782,12 @@ impl<'a> Gen<'a> {
                 let text = text_expr(self.api, prop(p, "text"));
                 format!("{ind}com.mojang.logging.LogUtils.getLogger().info(\"[Blueprint] \" + {text});\n") + &next(stack)
             }
+            "energy_add" | "energy_take" => {
+                let amount = num(p, "amount", 1000.0, 1.0, 2_000_000_000.0) as i64;
+                let pos = if prop(p, "where") == "below" { "BlockPos.containing(x, y - 1, z)" } else { "BlockPos.containing(x, y, z)" };
+                let f = if n.kind == "energy_add" { "anvilEnergyAdd" } else { "anvilEnergyTake" };
+                format!("{ind}{f}(level, {pos}, {amount});\n") + &next(stack)
+            }
             "open_gui" => {
                 let g = var_name(prop(p, "gui"));
                 if self.api.guis.iter().any(|x| x.id == g && crate::gui::valid(x)) {
@@ -914,6 +921,7 @@ impl<'a> Gen<'a> {
             "flying" => "player != null && player.getAbilities().flying".into(),
             "is_baby" => "target != null && target.isBaby()".into(),
             "holding_any" => "player != null && !player.getMainHandItem().isEmpty()".into(),
+            "energy_at_least" => format!("anvilEnergyAt(level, BlockPos.containing(x, y, z)) >= {}", num(p, "value", 1000.0, 0.0, 2_000_000_000.0) as i64),
             "block_in_tag" if id_ok(v.trim_start_matches('#')) => format!("level.getBlockState(BlockPos.containing(x, y - 0.5, z)).is(net.minecraft.tags.TagKey.create(Registries.BLOCK, ResourceLocation.parse(\"{}\")))", tag_ref(self.api, v)),
             "event_block_in_tag" if id_ok(v.trim_start_matches('#')) => format!("state != null && state.is(net.minecraft.tags.TagKey.create(Registries.BLOCK, ResourceLocation.parse(\"{}\")))", tag_ref(self.api, v)),
             "holding_tag" if id_ok(v.trim_start_matches('#')) => format!("player != null && player.getMainHandItem().is(net.minecraft.tags.TagKey.create(Registries.ITEM, ResourceLocation.parse(\"{}\")))", tag_ref(self.api, v)),
