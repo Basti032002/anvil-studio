@@ -9,7 +9,7 @@ import { toast } from "../../state";
 
 /** Alle Sprachen, die Minecraft kennt (Ordnername der Sprachdatei) */
 export const MC_LANGS = [
-  "af_za", "ar_sa", "ast_es", "az_az", "ba_ru", "bar", "be_by", "bg_bg", "br_fr", "brb", "bs_ba", "ca_es", "cs_cz", "cy_gb", "da_dk", "de_at", "de_ch",
+  "af_za", "ar_sa", "ast_es", "az_az", "ba_ru", "bar", "be_by", "bg_bg", "br_fr", "brb", "bs_ba", "ca_es", "cs_cz", "cy_gb", "da_dk", "de_at", "de_ch", "de_de",
   "el_gr", "en_au", "en_ca", "en_gb", "en_nz", "en_pt", "en_ud", "enp", "enws", "eo_uy", "es_ar", "es_cl", "es_ec", "es_es", "es_mx", "es_uy", "es_ve", "esan",
   "et_ee", "eu_es", "fa_ir", "fi_fi", "fil_ph", "fo_fo", "fr_ca", "fr_fr", "fra_de", "fur_it", "fy_nl", "ga_ie", "gd_gb", "gl_es", "haw_us", "he_il", "hi_in",
   "hr_hr", "hu_hu", "hy_am", "id_id", "ig_ng", "io_en", "is_is", "isv", "it_it", "ja_jp", "jbo_en", "ka_ge", "kk_kz", "kn_in", "ko_kr", "ksh", "kw_gb", "la_la",
@@ -211,7 +211,7 @@ export default function LocalizationTab({ project }: { project: Project }) {
             }
           }
           all[code] = m;
-          if (code !== "de_de" && code !== "en_us") langsNew.add(code);
+          if (code !== "en_us") langsNew.add(code);
         }
         return { ...c, translations: all, languages: [...langsNew] };
       });
