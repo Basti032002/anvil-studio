@@ -43,6 +43,8 @@ pub struct BpApi {
     pub own: HashSet<String>,
     /// Variablen aus dem Variablen-Tab (Schlüssel: var_name)
     pub vars: BTreeMap<String, VarDef>,
+    /// Oberflächen aus dem GUI-Editor (Knöpfe, Schalter, Anzeigen)
+    pub guis: Vec<crate::gui::GuiDef>,
 }
 
 /// Variable aus dem Variablen-Tab
@@ -779,6 +781,15 @@ impl<'a> Gen<'a> {
                 let text = text_expr(self.api, prop(p, "text"));
                 format!("{ind}com.mojang.logging.LogUtils.getLogger().info(\"[Blueprint] \" + {text});\n") + &next(stack)
             }
+            "open_gui" => {
+                let g = var_name(prop(p, "gui"));
+                if self.api.guis.iter().any(|x| x.id == g && crate::gui::valid(x)) {
+                    format!("{ind}if (player instanceof net.minecraft.server.level.ServerPlayer anvilSp) anvilOpenGui(anvilSp, \"{g}\", null, null, BlockPos.containing(x, y, z), Component.literal(\"\"));\n") + &next(stack)
+                } else {
+                    next(stack)
+                }
+            }
+            "close_gui" => format!("{ind}if (player instanceof net.minecraft.server.level.ServerPlayer anvilSp) anvilSp.closeContainer();\n") + &next(stack),
             // ---- mit Variablen ----
             "tp_var" => format!("{ind}anvilRun(level, {w}, x, y, z, \"tp @s \" + {v});\n", w = who(p), v = var_get(self.api, prop(p, "var"), "player")) + &next(stack),
             "give_var" => {
@@ -1036,7 +1047,8 @@ fn event_filter(api: &BpApi, n: &BpNode) -> Option<String> {
 /// Erzeugt (Importe, Aufrufe in register(), Methoden) für alle Blueprints.
 pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, String, String) {
     let active: Vec<&Blueprint> = blueprints.iter().filter(|b| b.enabled && !b.nodes.is_empty()).collect();
-    if active.is_empty() {
+    let guis: Vec<&crate::gui::GuiDef> = api.guis.iter().filter(|g| crate::gui::valid(g)).collect();
+    if active.is_empty() && guis.is_empty() {
         return (vec![], String::new(), String::new());
     }
     let imports = vec![
@@ -1305,6 +1317,40 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
         for n in bp.nodes.iter().filter(|n| n.kind == "call") {
             functions.entry(fn_name(prop(&n.props, "fn"))).or_default();
         }
+    }
+    // Oberflächen: Knöpfe rufen Funktionen auf, Schalter und Anzeigen lesen Variablen
+    if !guis.is_empty() {
+        let mut clicks = String::new();
+        let mut values = String::new();
+        for g in &guis {
+            for (i, e) in g.elements.iter().enumerate() {
+                match e.kind.as_str() {
+                    "button" if !e.action.trim().is_empty() => {
+                        let f = fn_name(&e.action);
+                        functions.entry(f.clone()).or_default();
+                        clicks.push_str(&format!("            case \"{}#{i}\" -> anvilFn_{f}(level, player, target, x, y, z, state, stack, message);\n", g.id));
+                    }
+                    "switch" if !e.var.trim().is_empty() => {
+                        let cur = var_get(api, &e.var, "player");
+                        let put = var_put(api, "", &e.var, "player", &format!("String.valueOf(!\"true\".equals({cur}))"), false);
+                        clicks.push_str(&format!("            case \"{}#{i}\" -> {{ {} }}\n", g.id, put.trim()));
+                    }
+                    _ => {}
+                }
+            }
+            for (k, (_, e)) in crate::gui::var_elements(g).iter().enumerate() {
+                let (_, kind, _) = api.var_info(&e.var, "player");
+                let expr = match kind.as_str() {
+                    "number" => format!("(int) Math.round({})", var_num(api, &e.var, "player")),
+                    "logic" => format!("\"true\".equals({}) ? 1 : 0", var_get(api, &e.var, "player")),
+                    _ => format!("(int) Math.round(anvilParse({}))", var_get(api, &e.var, "player")),
+                };
+                values.push_str(&format!("            case \"{}#{k}\" -> {expr};\n", g.id));
+            }
+        }
+        methods.push_str(&format!(
+            "\n    static void anvilGuiClick(net.minecraft.server.level.ServerPlayer sp, String key, int el, BlockPos pos) {{\n        if (!(sp.level() instanceof ServerLevel level)) return;\n        final Player player = sp;\n        final LivingEntity target = sp;\n        final double x = pos.getX() + 0.5, y = pos.getY() + 0.5, z = pos.getZ() + 0.5;\n        final BlockState state = level.getBlockState(pos);\n        final ItemStack stack = sp.getMainHandItem();\n        final String message = \"\";\n        switch (key + \"#\" + el) {{\n{clicks}            default -> {{}}\n        }}\n    }}\n\n    static int anvilGuiValue(ServerLevel level, Player player, String key, int k) {{\n        return switch (key + \"#\" + k) {{\n{values}            default -> 0;\n        }};\n    }}\n"
+        ));
     }
     for (name, body) in &functions {
         methods.push_str(&format!("\n    private static void anvilFn_{name}({BODY_PARAMS}) {{\n{body}    }}\n"));

@@ -104,11 +104,13 @@ pub struct MachineDef {
     /// braucht Brennstoff wie ein Ofen (sonst läuft sie von selbst)
     pub fuel: bool,
     pub recipes: Vec<MachineRecipe>,
+    /// eigene Oberfläche aus dem GUI-Editor (leer = Ofen-Oberfläche)
+    pub gui: String,
 }
 
 impl Default for MachineDef {
     fn default() -> Self {
-        Self { fuel: true, recipes: vec![] }
+        Self { fuel: true, recipes: vec![], gui: String::new() }
     }
 }
 
@@ -354,6 +356,8 @@ pub struct Content {
     pub languages: Vec<String>,
     /// Variablen (Variablen-Tab)
     pub variables: Vec<crate::blueprint::VarDef>,
+    /// Eigene Oberflächen (GUI-Editor)
+    pub guis: Vec<crate::gui::GuiDef>,
     /// Eigene Strukturen (im Spiel gebaut)
     pub structures: Vec<crate::structures::StructDef>,
     /// Zuletzt erzeugte Strukturen – zum Aufräumen
@@ -428,6 +432,7 @@ impl Default for Content {
             structures: vec![],
             generated_structures: vec![],
             variables: vec![],
+            guis: vec![],
             tags: vec![],
             generated_tags: Default::default(),
             translations: Default::default(),
@@ -857,6 +862,9 @@ fn generate_client_java(p: &Project, c: &Content) -> String {
         ));
     }
     let state_import = if api.materials_v2 { "import net.minecraft.client.renderer.entity.state.*;\n" } else { "" };
+    let (gui_regs, gui_classes) = crate::gui::client_java(&c.guis, api.materials_v2);
+    classes.push_str(&gui_classes);
+    let regs_call = if c.mobs.is_empty() { String::new() } else { "        modEventBus.addListener(AnvilClient::registerRenderers);\n".to_string() };
     format!(
         r#"// =============================================================================
 // AUTOMATISCH ERZEUGT von Anvil Studio – nur auf dem Client geladen.
@@ -876,8 +884,7 @@ import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 @Mod(value = AnvilContent.MODID, dist = Dist.CLIENT)
 public final class AnvilClient {{
     public AnvilClient(IEventBus modEventBus) {{
-        modEventBus.addListener(AnvilClient::registerRenderers);
-    }}
+{regs_call}{gui_regs}    }}
 
     private static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {{
 {regs}    }}
@@ -1515,6 +1522,11 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
             )
         };
         let on_remove = on_remove_drop.clone();
+        let open_machine = if machines.iter().any(|b| !b.machine.gui.is_empty() && c.guis.iter().any(|g| g.id == b.machine.gui && crate::gui::valid(g))) {
+            "{\n                String anvilGui = ANVIL_MACHINE_GUI.get(anvilBlockKey(state.getBlock()));\n                if (anvilGui != null && player instanceof net.minecraft.server.level.ServerPlayer sp) anvilOpenGui(sp, anvilGui, machine, machine.data, pos, state.getBlock().getName());\n                else player.openMenu(machine);\n            }"
+        } else {
+            "player.openMenu(machine);"
+        };
         methods.push_str(&format!(r##"
     record AnvilMachineRecipe(String block, String input, int inputCount, String output, int outputCount, int time) {{}}
 
@@ -1553,7 +1565,7 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
 
         @Override
         protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hit) {{
-            if (!level.isClientSide() && level.getBlockEntity(pos) instanceof AnvilMachineBlockEntity machine) player.openMenu(machine);
+            if (!level.isClientSide() && level.getBlockEntity(pos) instanceof AnvilMachineBlockEntity machine) {open_machine}
             return InteractionResult.SUCCESS;
         }}
 {on_remove}    }}
@@ -1705,13 +1717,24 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
     }
 
     // ---- Blueprints ----
-    if c.blueprints.iter().any(|b| b.enabled) {
+    // ---- Eigene Oberflächen ----
+    let has_guis = c.guis.iter().any(crate::gui::valid);
+    if has_guis {
+        let machine_guis: Vec<(String, String)> = c.blocks.iter().filter(|b| b.kind == "machine" && !b.machine.gui.is_empty()).map(|b| (b.id.clone(), b.machine.gui.clone())).collect();
+        let (gf, gc, gm) = crate::gui::common_java(&c.guis, &machine_guis);
+        fields.push_str(&gf);
+        calls.push_str(&gc);
+        methods.push_str(&gm);
+        imports.extend(["net.minecraft.network.chat.Component", "net.minecraft.world.item.ItemStack", "net.minecraft.core.registries.Registries"]);
+    }
+
+    if c.blueprints.iter().any(|b| b.enabled) || has_guis {
         let mut own: std::collections::HashSet<String> = all_variants(c).iter().map(|v| v.id.clone()).collect();
         own.extend(c.items.iter().map(|i| i.id.clone()));
         own.extend(c.mobs.iter().map(|m| m.id.clone()));
         own.extend(c.dimensions.iter().map(|d| d.id.clone()));
         let vars = c.variables.iter().filter(|v| !v.name.trim().is_empty()).map(|v| (crate::blueprint::var_name(&v.name), v.clone())).collect();
-        let bp_api = crate::blueprint::BpApi { get_value: api.materials_v2, modid: p.mod_id.clone(), own, vars };
+        let bp_api = crate::blueprint::BpApi { get_value: api.materials_v2, modid: p.mod_id.clone(), own, vars, guis: c.guis.clone() };
         let (bi, bc, bm) = crate::blueprint::generate(&c.blueprints, &bp_api);
         imports.extend(bi);
         calls.push_str(&bc);
@@ -2857,7 +2880,7 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
     std::fs::write(&java, java_code).map_err(err)?;
     write_dev_reload(p, &java)?;
     let client_java = java.with_file_name("AnvilClient.java");
-    if c.mobs.is_empty() {
+    if c.mobs.is_empty() && !c.guis.iter().any(crate::gui::valid) {
         remove_if_exists(client_java);
     } else {
         std::fs::write(&client_java, generate_client_java(p, c)).map_err(err)?;
@@ -3821,13 +3844,14 @@ mod tests {
             machine: MachineDef {
                 fuel: true,
                 recipes: vec![MachineRecipe { input: format!("{m}:ruby"), input_count: 2, output: format!("{m}:ruby_block"), output_count: 1, time: 100 }],
+                gui: "presse".into(),
             },
             ..Default::default()
         });
         c.blocks.push(BlockDef {
             id: "ruby_grinder".into(),
             kind: "machine".into(),
-            machine: MachineDef { fuel: false, recipes: vec![MachineRecipe { input: "#minecraft:logs".into(), output: "minecraft:stick".into(), output_count: 8, ..Default::default() }] },
+            machine: MachineDef { fuel: false, recipes: vec![MachineRecipe { input: "#minecraft:logs".into(), output: "minecraft:stick".into(), output_count: 8, ..Default::default() }], ..Default::default() },
             ..Default::default()
         });
         for (kind, id) in [("blasting", "blast_gem"), ("smoking", "smoked_gem"), ("campfire", "camp_gem"), ("stonecutting", "cut_gem"), ("smithing", "smith_gem")] {
@@ -4257,6 +4281,50 @@ mod tests {
                 links.push(link(&id, "true", &m));
                 prev = id;
             }
+            // Oberflächen: Maschine mit allen Elementen + Bedienfeld per Blueprint
+            use crate::gui::{GuiDef, GuiEl};
+            let el = |kind: &str, x: i32, y: i32, w: i32, h: i32| GuiEl { kind: kind.into(), x, y, w, h, ..Default::default() };
+            c.guis.push(GuiDef {
+                id: "presse".into(),
+                name_en: "Ruby Press".into(),
+                width: 176,
+                height: 166,
+                show_title: true,
+                elements: vec![
+                    el("slot_in", 55, 16, 18, 18),
+                    el("slot_fuel", 55, 52, 18, 18),
+                    el("slot_out", 111, 31, 26, 26),
+                    el("arrow", 79, 34, 24, 17),
+                    el("flame", 56, 36, 14, 14),
+                    GuiEl { var: "leben".into(), max: 20.0, ..el("energy", 10, 16, 12, 52) },
+                    GuiEl { var: "gruss".into(), ..el("tank", 150, 16, 16, 52) },
+                    el("player_inv", 7, 83, 162, 76),
+                ],
+                ..Default::default()
+            });
+            c.guis.push(GuiDef {
+                id: "bedienfeld".into(),
+                width: 200,
+                height: 120,
+                style: "dark".into(),
+                elements: vec![
+                    GuiEl { text: "Steuerung \"A\"".into(), color: "#ffffff".into(), ..el("text", 10, 8, 100, 10) },
+                    GuiEl { text: "Start".into(), action: "Belohnung geben".into(), ..el("button", 10, 24, 80, 20) },
+                    GuiEl { text: "Licht".into(), var: "aktiv".into(), ..el("switch", 100, 24, 90, 20) },
+                    GuiEl { text: "Punkte: ".into(), var: "leben".into(), ..el("value", 10, 52, 100, 10) },
+                    GuiEl { color: "#335577".into(), ..el("panel", 10, 66, 180, 44) },
+                    GuiEl { item: "minecraft:diamond".into(), ..el("item", 20, 80, 16, 16) },
+                    GuiEl { text: "Unbekannt".into(), ..el("button", 100, 80, 60, 20) },
+                ],
+                ..Default::default()
+            });
+            c.guis.push(GuiDef { id: "Ungültig!".into(), ..Default::default() });
+            nodes.push(node("og", "open_gui", &[("gui", "bedienfeld")]));
+            links.push(link(&prev, "next", "og"));
+            nodes.push(node("og2", "open_gui", &[("gui", "gibtsnicht")]));
+            links.push(link("og", "next", "og2"));
+            nodes.push(node("cg", "close_gui", &[]));
+            links.push(link("og2", "next", "cg"));
             c.blueprints.push(Blueprint { name: "Variablen".into(), enabled: true, nodes, links });
             // Tags: eigene + Minecraft-Tags ergänzen (auch doppelt zu Anvils eigenen Einträgen)
             for (registry, id, values) in [
