@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+import { useUndoTarget } from "../../undo";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Blueprint, BpLink, BpNode, Content, Project } from "../../api";
 import { Toggle } from "../../components/Chrome";
@@ -190,6 +191,8 @@ export default function BlueprintEditor({
   };
   const removeLink = (l: BpLink) => update({ links: bpRef.current.links.filter((x) => x !== l) });
 
+  useUndoTarget({ undo, redo, canUndo: () => undoStack.current.length > 0, canRedo: () => redoStack.current.length > 0, focused: () => !!canvasRef.current?.isConnected });
+
   // Tastatur: Entf, Strg+Z/Y/C/V/D/A
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -199,12 +202,8 @@ export default function BlueprintEditor({
       const ctrl = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
       const ids = selRef.current;
-      if (ctrl && k === "z" && !e.shiftKey) {
-        e.preventDefault();
-        undo();
-      } else if (ctrl && (k === "y" || (k === "z" && e.shiftKey))) {
-        e.preventDefault();
-        redo();
+      if (ctrl && (k === "z" || k === "y")) {
+        // Rückgängig/Wiederholen läuft über die Leiste oben (undo.ts)
       } else if (ctrl && k === "a") {
         e.preventDefault();
         setSel(bpRef.current.nodes.map((n) => n.id));

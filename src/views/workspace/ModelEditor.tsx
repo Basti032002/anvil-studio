@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+import { useUndoTarget } from "../../undo";
 import { useEffect, useRef, useState } from "react";
 import { BlockDef, Cuboid, Project } from "../../api";
 import { useCatalog } from "../../catalog";
@@ -198,10 +199,6 @@ export default function ModelEditor({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && (e.target as HTMLElement).tagName !== "INPUT") {
-        e.preventDefault();
-        undo();
-      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -216,6 +213,8 @@ export default function ModelEditor({
     const prev = history.current.pop();
     if (prev) onChange({ model: prev });
   };
+  useUndoTarget({ undo, redo() {}, canUndo: () => history.current.length > 0, canRedo: () => false });
+
   const setCur = (patch: Partial<Cuboid>) => set(cuboids.map((c, i) => (i === sel ? { ...c, ...patch } : c)));
   const setAxis = (which: "from" | "to", axis: number, v: number) => {
     const arr = [...cur[which]] as [number, number, number];

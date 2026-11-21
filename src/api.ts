@@ -531,6 +531,18 @@ export interface DimDef {
   weather: "" | "none" | "rain" | "snow";
   noBaseSpawns: boolean;
   spawns: DimSpawn[];
+  /** Anreise: Portal mit Rahmen wie das Nether-Portal */
+  portal?: boolean;
+  portalFrame?: string;
+  portalIgniter?: string;
+  portalColor?: string;
+  /** Ankunft: "" = sicher landen (automatisch), "fixed" = feste Koordinaten */
+  arrival?: "" | "fixed";
+  arrivalX?: number;
+  arrivalY?: number;
+  arrivalZ?: number;
+  arrivalBlock?: string;
+  arrivalNoPlatform?: boolean;
 }
 
 export type FaceMode = "" | "all" | "pillar" | "each";

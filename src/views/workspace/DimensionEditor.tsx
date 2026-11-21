@@ -71,6 +71,21 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
   );
 }
 
+/** Kleine Skizze: Rahmen 4×5 mit leuchtender Fläche */
+function PortalSketch({ color }: { color: string }) {
+  const cells = [];
+  for (let y = 0; y < 5; y++)
+    for (let x = 0; x < 4; x++) {
+      const edge = x === 0 || x === 3 || y === 0 || y === 4;
+      cells.push(<span key={`${x}-${y}`} className={edge ? "ps-frame" : "ps-glow"} />);
+    }
+  return (
+    <div className="portal-sketch" style={{ "--portal": color } as React.CSSProperties} aria-hidden="true">
+      {cells}
+    </div>
+  );
+}
+
 const MONSTERS = ["zombie", "skeleton", "creeper", "spider", "enderman", "witch", "slime", "blaze", "ghast", "phantom", "drowned", "husk", "pillager", "ravager", "warden"];
 
 export default function DimensionEditor({
@@ -557,21 +572,110 @@ export default function DimensionEditor({
         )}
 
         {step === "travel" && (
-          <div className="callout">
-            <BlueprintIcon size={18} />
-            <div className="grow">
-              <div className="callout-title">{t("Wie kommt man hin?")}</div>
-              <div className="muted small">
-                {hasTravel
-                  ? t("Ein Blueprint mit „In Dimension reisen“ führt schon hierher.")
-                  : t("Lege einen Blueprint an: Rechtsklick auf einen Block bringt dich hin und wieder zurück. Oder nutze den Knoten „In Dimension reisen“ in eigenen Blueprints.")}
+          <div className="travel">
+            <section className={dim.portal ? "travel-card on" : "travel-card"}>
+              <div className="travel-head">
+                <span className="travel-icon portal" style={{ "--portal": dim.portalColor || "#8a3cff" } as React.CSSProperties}>
+                  <RocketIcon size={17} />
+                </span>
+                <div className="grow">
+                  <div className="callout-title">{t("Portal mit Rahmen")}</div>
+                  <div className="muted small">{t("Wie das Nether-Portal: Rahmen bauen, anzünden, durchgehen. Am Ziel entsteht automatisch ein Rückportal.")}</div>
+                </div>
+                <Toggle checked={!!dim.portal} onChange={(v) => set({ portal: v })} label={t("Portal mit Rahmen")} />
               </div>
-            </div>
-            {!hasTravel && (
-              <button className="btn small primary" onClick={() => onAddBlueprint(travelBlueprint(dim, ownBlocks[0]?.id ?? "minecraft:crying_obsidian"))}>
-                {t("Reise-Blueprint anlegen")}
-              </button>
-            )}
+              {dim.portal && (
+                <div className="travel-body">
+                  <PortalSketch color={dim.portalColor || "#8a3cff"} />
+                  <div className="form-grid grow">
+                    <Field label={t("Rahmen-Block")} hint={t("Standard: Weinender Obsidian")}>
+                      {blockInput(dim.portalFrame ?? "", (v) => set({ portalFrame: v }), "minecraft:crying_obsidian")}
+                    </Field>
+                    <Field label={t("Anzünden mit")} hint={t("Standard: Feuerzeug")}>
+                      <ItemField project={project} own={own} value={dim.portalIgniter ?? ""} onChange={(v) => set({ portalIgniter: v })} placeholder="minecraft:flint_and_steel" />
+                    </Field>
+                    <Field label={t("Farbe der Portalfläche")}>
+                      <input type="color" className="dim-color" value={dim.portalColor || "#8a3cff"} onChange={(e) => set({ portalColor: e.target.value })} />
+                    </Field>
+                    <div className="muted small span-2">
+                      {t("Rahmen mindestens 4 breit und 5 hoch (innen 2×3 frei), höchstens 23×23. Mit dem Item auf den Rahmen klicken – fertig.")}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            <section className={hasTravel ? "travel-card on" : "travel-card"}>
+              <div className="travel-head">
+                <span className="travel-icon">
+                  <BlueprintIcon size={17} />
+                </span>
+                <div className="grow">
+                  <div className="callout-title">{t("Über einen Blueprint")}</div>
+                  <div className="muted small">
+                    {hasTravel
+                      ? t("Ein Blueprint mit „In Dimension reisen“ führt schon hierher.")
+                      : t("Lege einen Blueprint an: Rechtsklick auf einen Block bringt dich hin und wieder zurück. Oder nutze den Knoten „In Dimension reisen“ in eigenen Blueprints.")}
+                  </div>
+                </div>
+                {!hasTravel && (
+                  <button className="btn small primary" onClick={() => onAddBlueprint(travelBlueprint(dim, ownBlocks[0]?.id ?? "minecraft:crying_obsidian"))}>
+                    {t("Reise-Blueprint anlegen")}
+                  </button>
+                )}
+              </div>
+            </section>
+
+            <section className="travel-card on">
+              <div className="travel-head">
+                <span className="travel-icon arrive">
+                  <MountainsIcon size={17} />
+                </span>
+                <div className="grow">
+                  <div className="callout-title">{t("Ankunft")}</div>
+                  <div className="muted small">{t("Wo man landet – gilt für Portal und Blueprint. So landet man nie im Boden oder im Nichts.")}</div>
+                </div>
+              </div>
+              <div className="form-grid">
+                <Field label={t("Landeplatz")} span>
+                  <Segmented
+                    label={t("Landeplatz")}
+                    value={dim.arrival === "fixed" ? "fixed" : "auto"}
+                    options={[
+                      { value: "auto", label: t("Sicher landen (automatisch)") },
+                      { value: "fixed", label: t("Feste Koordinaten") },
+                    ]}
+                    onChange={(v) => set({ arrival: v === "fixed" ? "fixed" : "" })}
+                  />
+                </Field>
+                {dim.arrival === "fixed" ? (
+                  <div className="span-2 travel-xyz">
+                    {(["arrivalX", "arrivalY", "arrivalZ"] as const).map((k, i) => (
+                      <Field key={k} label={["X", "Y", "Z"][i]}>
+                        <input className="input mono" type="number" value={dim[k] ?? (k === "arrivalY" ? 100 : 0)} onChange={(e) => set({ [k]: Math.round(Number(e.target.value) || 0) } as Partial<DimDef>)} />
+                      </Field>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="muted small span-2">
+                    {t("Sucht dort, wo man hinreist, festen Boden mit genug Platz – bei Höhlen-Welten unter der Decke. Ist im Umkreis nichts (z. B. schwebende Inseln über dem Nichts), entsteht eine kleine Plattform.")}
+                  </div>
+                )}
+                <div className="span-2">
+                  <Check
+                    label={t("Plattform bauen, wenn kein Boden da ist")}
+                    hint={t("3×3 unter den Füßen, damit niemand ins Leere fällt")}
+                    checked={!dim.arrivalNoPlatform}
+                    onChange={(v) => set({ arrivalNoPlatform: !v })}
+                  />
+                </div>
+                {!dim.arrivalNoPlatform && (
+                  <Field label={t("Block für die Plattform")} hint={t("Standard: Stein")}>
+                    {blockInput(dim.arrivalBlock ?? "", (v) => set({ arrivalBlock: v }), "minecraft:stone")}
+                  </Field>
+                )}
+              </div>
+            </section>
           </div>
         )}
       </main>

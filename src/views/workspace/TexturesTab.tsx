@@ -753,12 +753,8 @@ function TexEditor({
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || !doc.current) return;
       const ctrl = e.ctrlKey || e.metaKey;
-      if (ctrl && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        e.shiftKey ? doRedo() : doUndo();
-      } else if (ctrl && e.key.toLowerCase() === "y") {
-        e.preventDefault();
-        doRedo();
+      if (ctrl && (e.key.toLowerCase() === "z" || e.key.toLowerCase() === "y")) {
+        // Rückgängig/Wiederholen läuft über die Leiste oben (undo.ts)
       } else if (ctrl && e.key.toLowerCase() === "a") {
         e.preventDefault();
         setSel({ x: 0, y: 0, w: size, h: size });

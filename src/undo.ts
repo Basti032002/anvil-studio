@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
  * - Die Knöpfe oben und Strg Z / Strg Y wirken immer auf das zuletzt angemeldete Ziel.
  */
 
-export type UndoTarget = { undo: () => void; redo: () => void; canUndo: () => boolean; canRedo: () => boolean };
+export type UndoTarget = { undo: () => void; redo: () => void; canUndo: () => boolean; canRedo: () => boolean; /** nur zuständig, solange das stimmt (z. B. zuletzt hineingeklickt) */ focused?: () => boolean };
 
 const targets: { id: number; t: () => UndoTarget }[] = [];
 const subs = new Set<() => void>();
@@ -23,8 +23,11 @@ export function notifyUndo() {
 }
 
 function current(): UndoTarget | null {
-  const top = targets[targets.length - 1];
-  return top ? top.t() : null;
+  for (let i = targets.length - 1; i >= 0; i--) {
+    const t = targets[i].t();
+    if (!t.focused || t.focused()) return t;
+  }
+  return null;
 }
 
 export function undo() {
@@ -171,7 +174,7 @@ export function useUndoable<T>(key: string, initial: T): [T, SetFn<T>, { load: (
   return [value, set, { load, replace }];
 }
 
-/** Strg Z / Strg Y / Strg Umschalt Z – nur, wenn kein Editor die Taste selbst benutzt hat */
+/** Strg Z / Strg Y / Strg Umschalt Z – gilt für den gerade zuständigen Bereich (Textfelder behalten ihr eigenes Rückgängig) */
 export function installUndoKeys() {
   const onKey = (e: KeyboardEvent) => {
     const ctrl = e.ctrlKey || e.metaKey;
@@ -183,13 +186,15 @@ export function installUndoKeys() {
     const el = e.target as HTMLElement | null;
     const tag = el?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el?.isContentEditable || el?.closest?.(".monaco-editor")) return;
-    // Erst alle anderen Tastenkürzel laufen lassen (Blueprint-, Textur-Editor …)
-    window.setTimeout(() => {
-      if (e.defaultPrevented) return;
-      if (isUndo) undo();
-      else redo();
-    }, 0);
+    // Browser-eigenes Rückgängig (würde z. B. das zuletzt getippte Feld zurücksetzen) verhindern
+    e.preventDefault();
+    if (isUndo) undo();
+    else redo();
   };
-  window.addEventListener("keydown", onKey);
-  return () => window.removeEventListener("keydown", onKey);
+  window.addEventListener("keydown", onKey, true);
+  return () => window.removeEventListener("keydown", onKey, true);
 }
+
+/** Wohin zuletzt geklickt wurde – für Editoren mit eigenem Verlauf (focused) */
+export let lastPointerDown: Node | null = null;
+if (typeof window !== "undefined") window.addEventListener("pointerdown", (e) => (lastPointerDown = e.target as Node), true);

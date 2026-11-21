@@ -1,5 +1,6 @@
 import { t } from "../../i18n";
 import { useEffect, useRef, useState } from "react";
+import { lastPointerDown, useUndoTarget } from "../../undo";
 import { contentApi } from "../../api";
 import { BucketIcon, CheckIcon, EraserIcon, GridToggleIcon, MirrorIcon, PencilIcon, PipetteIcon, RedoIcon, TrashIcon, UndoIcon } from "../../icons";
 import { toast } from "../../state";
@@ -168,16 +169,24 @@ export default function PixelEditor({ projectId, kind, id, onSaved, reload, rend
     scheduleSave();
   }
 
+  // Strg Z / Knöpfe oben: gilt hier, solange zuletzt in den Mal-Bereich geklickt wurde
+  useUndoTarget({
+    undo: () => history(undo, redo),
+    redo: () => history(redo, undo),
+    canUndo: () => undo.current.length > 0,
+    canRedo: () => redo.current.length > 0,
+    focused: () => {
+      const root = canvas.current?.closest(".pixel");
+      return !!root && !!lastPointerDown && root.contains(lastPointerDown);
+    },
+  });
+
   // Tastenkürzel im Editor
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === "INPUT") return;
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        e.shiftKey ? history(redo, undo) : history(undo, redo);
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
-        e.preventDefault();
-        history(redo, undo);
+      if (e.ctrlKey || e.metaKey) {
+        // Rückgängig/Wiederholen läuft über die Leiste oben (undo.ts)
       } else if (!e.ctrlKey && !e.metaKey) {
         const map: Record<string, Tool> = { b: "pencil", e: "eraser", g: "fill", i: "picker" };
         if (map[e.key]) setTool(map[e.key]);
