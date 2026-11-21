@@ -32,6 +32,7 @@ import { ItemField } from "./ContentForms";
 import { EFFECTS, SOUNDS } from "./LogicEditors";
 import { BpCat, CATS, ENTITIES, isEvent, makeNode, NODES, nodeId, nodeSpec, NodeSpec, PARTICLES, PropSpec, visibleProps, varKeyFor, GAME_VALUES } from "./blueprints";
 import { varKindLabel, varScopeLabel } from "./variables";
+import { KNOWN_TAGS } from "./TagsTab";
 
 type View = { x: number; y: number; zoom: number };
 type Pt = { x: number; y: number };
@@ -740,6 +741,20 @@ function PropInput({ project, content, own, spec, props = {}, value, onChange }:
         default:
           return <input className="input" type="number" step="any" value={value} onChange={(e) => onChange(e.target.value)} />;
       }
+    case "tag": {
+      const reg = /holding/.test(props[spec.key.replace("value", "cond")] ?? "") ? "item" : /target/.test(props[spec.key.replace("value", "cond")] ?? "") ? "entity_type" : "block";
+      const list = [...(content.tags ?? []).filter((x) => x.registry === reg).map((x) => x.id), ...KNOWN_TAGS.filter((k) => k.reg === reg).map((k) => k.id)];
+      return (
+        <>
+          <input className="input mono" list={`bp-tags-${reg}`} value={value} onChange={(e) => onChange(e.target.value.trim().toLowerCase())} placeholder="minecraft:logs" />
+          <datalist id={`bp-tags-${reg}`}>
+            {[...new Set(list)].map((n) => (
+              <option key={n} value={n} />
+            ))}
+          </datalist>
+        </>
+      );
+    }
     case "scope":
     case "select":
     case "who":

@@ -1,5 +1,6 @@
 import LocalizationTab from "./workspace/LocalizationTab";
 import VariablesTab from "./workspace/VariablesTab";
+import TagsTab from "./workspace/TagsTab";
 import { t, translateMessage } from "../i18n";
 import { MenuItem, openMenu } from "../components/Overlay";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -10,8 +11,8 @@ import ModSettingsTab from "./workspace/ModSettingsTab";
 import ExportTab from "./workspace/ExportTab";
 
 const CodeTab = lazy(() => import("./workspace/CodeTab"));
-type MainTab = "content" | "code" | "vars" | "loc" | "mods" | "settings" | "export" | "console";
-import { RefreshIcon, UndoIcon, AlertIcon, CheckIcon, CopyIcon, ChevronIcon, CloseIcon, CodeIcon, CubeIcon, GearIcon, DownloadIcon, FileIcon, FolderIcon, HammerIcon, PackageIcon, PlayIcon, SearchIcon, SparkIcon, StopIcon, TerminalIcon, TranslateIcon, TrashIcon, VariableIcon } from "../icons";
+type MainTab = "content" | "code" | "vars" | "tags" | "loc" | "mods" | "settings" | "export" | "console";
+import { RefreshIcon, UndoIcon, AlertIcon, CheckIcon, CopyIcon, ChevronIcon, CloseIcon, CodeIcon, CubeIcon, GearIcon, DownloadIcon, FileIcon, FolderIcon, HammerIcon, PackageIcon, PlayIcon, SearchIcon, SparkIcon, StopIcon, TerminalIcon, TranslateIcon, TrashIcon, VariableIcon, TagIcon } from "../icons";
 import { toast, useSettings } from "../state";
 import { clearLogs, markNotRunning, markStarted, pushLog, useLastExit, useLogs, useRunning } from "../store";
 
@@ -291,6 +292,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
             ["content", t("Inhalte"), <CubeIcon size={14} />],
             ["code", t("Code"), <CodeIcon size={14} />],
             ["vars", t("Variablen"), <VariableIcon size={14} />],
+            ["tags", t("Tags"), <TagIcon size={14} />],
             ["loc", t("Localization"), <TranslateIcon size={14} />],
             ["mods", t("Mods"), <PackageIcon size={14} />],
             ["settings", t("Mod-Einstellungen"), <GearIcon size={14} />],
@@ -310,6 +312,11 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
       {mainTab === "content" && (
         <div className="ws-view">
           <ContentTab project={project} />
+        </div>
+      )}
+      {mainTab === "tags" && (
+        <div className="ws-view">
+          <TagsTab project={project} />
         </div>
       )}
       {mainTab === "vars" && (

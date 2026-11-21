@@ -358,6 +358,10 @@ pub struct Content {
     pub structures: Vec<crate::structures::StructDef>,
     /// Zuletzt erzeugte Strukturen – zum Aufräumen
     pub generated_structures: Vec<String>,
+    /// Tags (Tags-Tab): eigene Tags und Ergänzungen zu Minecraft-Tags
+    pub tags: Vec<TagDef>,
+    /// Zuletzt geschriebene Tag-Werte je Datei – zum Aufräumen
+    pub generated_tags: std::collections::BTreeMap<String, Vec<String>>,
     /// Übersetzungen aus dem Localization-Tab: Sprachcode → Sprachschlüssel → Text (überschreibt Erzeugtes)
     pub translations: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>,
     /// Brau-Rezepte: Trank + Zutat → Trank
@@ -424,6 +428,8 @@ impl Default for Content {
             structures: vec![],
             generated_structures: vec![],
             variables: vec![],
+            tags: vec![],
+            generated_tags: Default::default(),
             translations: Default::default(),
             brewing: vec![],
             events: vec![],
@@ -444,6 +450,53 @@ fn anvil_dir(p: &Project) -> PathBuf {
 }
 fn content_file(p: &Project) -> PathBuf {
     anvil_dir(p).join("content.json")
+}
+
+/// Tag aus dem Tags-Tab
+#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TagDef {
+    /// block | item | entity_type | worldgen/biome | fluid
+    pub registry: String,
+    /// volle ID, z. B. minecraft:mineable/pickaxe oder meinemod:edelsteine
+    pub id: String,
+    pub values: Vec<String>,
+    pub desc: String,
+}
+
+pub const TAG_REGISTRIES: &[&str] = &["block", "item", "entity_type", "worldgen/biome", "fluid"];
+
+fn valid_tag_id(s: &str) -> bool {
+    let Some((ns, path)) = s.split_once(':') else { return false };
+    !ns.is_empty()
+        && !path.is_empty()
+        && s.len() < 160
+        && ns.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "_.-".contains(c))
+        && path.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "_./-".contains(c))
+        && !path.contains("..")
+        && !path.starts_with('/')
+        && !path.ends_with('/')
+}
+
+/// Tag-Dateien aus dem Tags-Tab: relativer Pfad (data/…) → Werte
+fn user_tag_files(c: &Content, modid: &str) -> std::collections::BTreeMap<String, Vec<String>> {
+    let mut out: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+    for t in &c.tags {
+        if !TAG_REGISTRIES.contains(&t.registry.as_str()) || !valid_tag_id(&t.id) {
+            continue;
+        }
+        let (ns, path) = t.id.split_once(':').unwrap();
+        let rel = format!("data/{ns}/tags/{}/{path}.json", t.registry);
+        let list = out.entry(rel).or_default();
+        for v in &t.values {
+            let v = v.trim();
+            let full = if v.contains(':') { v.to_string() } else if let Some(rest) = v.strip_prefix('#') { format!("#{modid}:{rest}") } else { format!("{modid}:{v}") };
+            if valid_tag_id(full.trim_start_matches('#')) && !list.contains(&full) {
+                list.push(full);
+            }
+        }
+    }
+    out
 }
 
 pub fn valid_id(id: &str) -> bool {
@@ -3225,35 +3278,48 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
 
     // Tags (Namensraum minecraft, Minecraft führt sie zusammen)
     let all_ours: Vec<String> = block_ids.iter().chain(c.generated_blocks.iter()).chain(item_ids.iter()).chain(c.generated_items.iter()).map(|id| format!("{modid}:{id}")).collect();
+    // Werte aus dem Tags-Tab (jetzt und beim letzten Mal) werden in diesen Dateien erst später gesetzt
+    let user_tags = user_tag_files(c, modid);
+    let mut user_rm: std::collections::BTreeMap<PathBuf, Vec<String>> = Default::default();
+    for (rel, vals) in user_tags.iter().chain(c.generated_tags.iter()) {
+        user_rm.entry(res.join(rel)).or_default().extend(vals.iter().cloned());
+    }
+    let rm_for = |f: &Path| -> Vec<String> {
+        let mut v = all_ours.clone();
+        if let Some(x) = user_rm.get(f) {
+            v.extend(x.iter().cloned());
+        }
+        v
+    };
     let btags = res.join("data/minecraft/tags/block");
     let itags = res.join("data/minecraft/tags/item");
     let ids_where = |f: &dyn Fn(&Variant) -> bool| -> Vec<String> { variants.iter().filter(|v| f(v)).map(|v| format!("{modid}:{}", v.id)).collect() };
     for tool in ["pickaxe", "axe", "shovel", "hoe"] {
-        merge_tag(&btags.join(format!("mineable/{tool}.json")), &ids_where(&|v| v.base.tool == tool), &all_ours)?;
+        merge_tag(&btags.join(format!("mineable/{tool}.json")), &ids_where(&|v| v.base.tool == tool), &rm_for(&btags.join(format!("mineable/{tool}.json"))))?;
     }
     for tier in ["stone", "iron", "diamond"] {
-        merge_tag(&btags.join(format!("needs_{tier}_tool.json")), &ids_where(&|v| v.base.tool != "none" && v.base.tier == tier), &all_ours)?;
+        merge_tag(&btags.join(format!("needs_{tier}_tool.json")), &ids_where(&|v| v.base.tool != "none" && v.base.tier == tier), &rm_for(&btags.join(format!("needs_{tier}_tool.json"))))?;
     }
     for (shape, tag) in [("stairs", "stairs"), ("slab", "slabs"), ("wall", "walls"), ("button", "buttons")] {
         let ours = ids_where(&|v| v.shape == shape);
-        merge_tag(&btags.join(format!("{tag}.json")), &ours, &all_ours)?;
-        merge_tag(&itags.join(format!("{tag}.json")), &ours, &all_ours)?;
+        merge_tag(&btags.join(format!("{tag}.json")), &ours, &rm_for(&btags.join(format!("{tag}.json"))))?;
+        merge_tag(&itags.join(format!("{tag}.json")), &ours, &rm_for(&itags.join(format!("{tag}.json"))))?;
     }
     let wooden = ids_where(&|v| v.shape == "fence" && v.base.material == "wood");
     let other_fences = ids_where(&|v| v.shape == "fence" && v.base.material != "wood");
-    merge_tag(&btags.join("wooden_fences.json"), &wooden, &all_ours)?;
-    merge_tag(&itags.join("wooden_fences.json"), &wooden, &all_ours)?;
-    merge_tag(&btags.join("fences.json"), &other_fences, &all_ours)?;
-    merge_tag(&itags.join("fences.json"), &other_fences, &all_ours)?;
+    merge_tag(&btags.join("wooden_fences.json"), &wooden, &rm_for(&btags.join("wooden_fences.json")))?;
+    merge_tag(&itags.join("wooden_fences.json"), &wooden, &rm_for(&itags.join("wooden_fences.json")))?;
+    merge_tag(&btags.join("fences.json"), &other_fences, &rm_for(&btags.join("fences.json")))?;
+    merge_tag(&itags.join("fences.json"), &other_fences, &rm_for(&itags.join("fences.json")))?;
     let ores = ids_where(&|v| v.base.ore.enabled && matches!(v.shape, "block" | "deepslate"));
-    merge_tag(&res.join("data/c/tags/block/ores.json"), &ores, &all_ours)?;
-    merge_tag(&res.join("data/c/tags/item/ores.json"), &ores, &all_ours)?;
+    merge_tag(&res.join("data/c/tags/block/ores.json"), &ores, &rm_for(&res.join("data/c/tags/block/ores.json")))?;
+    merge_tag(&res.join("data/c/tags/item/ores.json"), &ores, &rm_for(&res.join("data/c/tags/item/ores.json")))?;
     let item_ids_where = |f: &dyn Fn(&ItemDef) -> bool| -> Vec<String> { c.items.iter().filter(|i| f(i)).map(|i| format!("{modid}:{}", i.id)).collect() };
     for (t, tag) in [("sword", "swords"), ("pickaxe", "pickaxes"), ("axe", "axes"), ("shovel", "shovels"), ("hoe", "hoes")] {
-        merge_tag(&itags.join(format!("{tag}.json")), &item_ids_where(&|i| i.kind == "tool" && i.tool_type == t), &all_ours)?;
+        merge_tag(&itags.join(format!("{tag}.json")), &item_ids_where(&|i| i.kind == "tool" && i.tool_type == t), &rm_for(&itags.join(format!("{tag}.json"))))?;
     }
     for (slot, tag) in [("helmet", "head_armor"), ("chestplate", "chest_armor"), ("leggings", "leg_armor"), ("boots", "foot_armor")] {
-        merge_tag(&itags.join(format!("{tag}.json")), &item_ids_where(&|i| i.kind == "armor" && i.armor_slot == slot), &all_ours)?;
+        merge_tag(&itags.join(format!("{tag}.json")), &item_ids_where(&|i| i.kind == "armor" && i.armor_slot == slot), &rm_for(&itags.join(format!("{tag}.json"))))?;
     }
 
     // Dimensionen
@@ -3343,6 +3409,31 @@ pub fn generate(p: &Project, c: &mut Content) -> Result<String, String> {
             }
         }
         generated_structures = struct_ids;
+    }
+
+    // Tags-Tab: eigene Tags ganz schreiben, Minecraft-/andere Tags ergänzen
+    {
+        let all_files: std::collections::BTreeSet<String> = user_tags.keys().chain(c.generated_tags.keys()).cloned().collect();
+        for rel in &all_files {
+            let file = res.join(rel);
+            let now = user_tags.get(rel).cloned().unwrap_or_default();
+            if rel.starts_with(&format!("data/{modid}/")) {
+                if now.is_empty() {
+                    let _ = std::fs::remove_file(&file);
+                } else {
+                    write_json(&file, &json!({ "replace": false, "values": now }))?;
+                }
+            } else {
+                let mut rm = now.clone();
+                rm.extend(c.generated_tags.get(rel).cloned().unwrap_or_default());
+                // Werte, die Anvil hier selbst einträgt, nicht doppelt schreiben
+                let existing: Vec<String> = read_json(&file).and_then(|v| v["values"].as_array().cloned()).unwrap_or_default().iter().filter_map(|v| v.as_str().map(String::from)).collect();
+                let auto: Vec<String> = existing.into_iter().filter(|v| !rm.contains(v)).collect();
+                let add: Vec<String> = now.iter().filter(|v| !auto.contains(v)).cloned().collect();
+                merge_tag(&file, &add, &rm)?;
+            }
+        }
+        c.generated_tags = user_tags;
     }
 
     c.generated_blocks = block_ids;
@@ -3524,6 +3615,8 @@ pub fn content_save(app: AppHandle, project_id: String, content: Content) -> Res
     c.generated_items = old.generated_items;
     c.generated_mobs = old.generated_mobs;
     c.generated_dims = old.generated_dims;
+    c.generated_structures = old.generated_structures;
+    c.generated_tags = old.generated_tags;
     let registration = generate(&p, &mut c)?;
     let java_changed = LAST_JAVA_CHANGED.load(std::sync::atomic::Ordering::SeqCst);
     Ok(SaveResult { content: c, registration, java_changed })
@@ -4146,6 +4239,10 @@ mod tests {
                 ("flying", vec![]),
                 ("is_baby", vec![]),
                 ("holding_any", vec![]),
+                ("block_in_tag", vec![("value", "minecraft:logs")]),
+                ("event_block_in_tag", vec![("value", "#edelsteinbloecke")]),
+                ("holding_tag", vec![("value", "edelsteine")]),
+                ("target_in_tag", vec![("value", "minecraft:undead")]),
             ]
             .into_iter()
             .enumerate()
@@ -4161,6 +4258,19 @@ mod tests {
                 prev = id;
             }
             c.blueprints.push(Blueprint { name: "Variablen".into(), enabled: true, nodes, links });
+            // Tags: eigene + Minecraft-Tags ergänzen (auch doppelt zu Anvils eigenen Einträgen)
+            for (registry, id, values) in [
+                ("item", format!("{}:edelsteine", p.mod_id), vec!["ruby".to_string(), "minecraft:diamond".into(), "#minecraft:coals".into()]),
+                ("block", format!("{}:edelsteinbloecke", p.mod_id), vec!["ruby_block".to_string()]),
+                ("block", "minecraft:mineable/pickaxe".to_string(), vec![format!("{}:ruby_block", p.mod_id), "minecraft:dirt".into()]),
+                ("block", "minecraft:beacon_base_blocks".to_string(), vec![format!("{}:ruby_block", p.mod_id)]),
+                ("item", "minecraft:piglin_loved".to_string(), vec![format!("{}:ruby", p.mod_id)]),
+                ("entity_type", "minecraft:undead".to_string(), vec![]),
+                ("worldgen/biome", "c:is_hot".to_string(), vec!["minecraft:desert".to_string()]),
+                ("block", "../boese".to_string(), vec!["x".to_string()]),
+            ] {
+                c.tags.push(TagDef { registry: registry.into(), id, values, desc: String::new() });
+            }
         }
         for (i, model) in ["cow", "pig", "chicken", "zombie", "spider", "creeper"].iter().enumerate() {
             c.mobs.push(MobDef {
@@ -4176,6 +4286,21 @@ mod tests {
         let reg = generate(&p, &mut c).unwrap();
         println!("{}", std::fs::read_to_string(dir.join("src/main/java").join(p.package.replace('.', "/")).join("anvil/AnvilContent.java")).unwrap());
         assert!(reg == "added" || reg == "ok", "{reg}");
+        let data = dir.join("src/main/resources/data");
+        if c.tags.iter().any(|t| t.id.ends_with(":edelsteine")) {
+            let gems: Value = serde_json::from_str(&std::fs::read_to_string(data.join(format!("{}/tags/item/edelsteine.json", p.mod_id))).unwrap()).unwrap();
+            assert_eq!(gems["values"].as_array().unwrap().len(), 3);
+            let pick = std::fs::read_to_string(data.join("minecraft/tags/block/mineable/pickaxe.json")).unwrap();
+            assert_eq!(pick.matches(&format!("{}:ruby_block\"", p.mod_id)).count(), 1, "{pick}");
+            assert!(pick.contains("minecraft:dirt"));
+            // Ergänzung wieder entfernen → Anvils eigener Eintrag bleibt
+            c.tags.retain(|t| t.id != "minecraft:mineable/pickaxe" && t.id != "minecraft:piglin_loved");
+            generate(&p, &mut c).unwrap();
+            let pick = std::fs::read_to_string(data.join("minecraft/tags/block/mineable/pickaxe.json")).unwrap();
+            assert!(!pick.contains("minecraft:dirt"), "{pick}");
+            assert!(pick.contains(&format!("{}:ruby_block", p.mod_id)), "{pick}");
+            assert!(!data.join("minecraft/tags/item/piglin_loved.json").exists());
+        }
         // Zweiter Lauf ohne Glas: Aufräumen prüfen
         c.blocks.retain(|b| b.id != "dream_glass");
         generate(&p, &mut c).unwrap();

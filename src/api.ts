@@ -241,7 +241,11 @@ export type Content = {
   structures?: StructDef[];
   /** Variablen (Variablen-Tab) */
   variables?: VarDef[];
+  /** Tags (Tags-Tab) */
+  tags?: TagDef[];
 };
+export type TagRegistry = "block" | "item" | "entity_type" | "worldgen/biome";
+export type TagDef = { registry: TagRegistry; id: string; values: string[]; desc: string };
 export type VarKind = "number" | "logic" | "text" | "item" | "block" | "direction" | "position";
 export type VarScope = "world" | "session" | "player" | "player_life";
 export type VarDef = { name: string; kind: VarKind; scope: VarScope; default: string; desc: string };

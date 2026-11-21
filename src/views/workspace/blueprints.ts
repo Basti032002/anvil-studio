@@ -4,7 +4,7 @@ import { Blueprint, BpNode } from "../../api";
 // Katalog der Blueprint-Knoten. Muss zu src-tauri/src/blueprint.rs passen.
 
 export type BpCat = "event" | "flow" | "vars" | "world" | "player" | "other";
-export type PropType = "text" | "number" | "select" | "item" | "block" | "entity" | "effect" | "sound" | "particle" | "who" | "var" | "dim" | "fn" | "varvalue" | "varop" | "varcmp" | "game" | "scope";
+export type PropType = "text" | "number" | "select" | "item" | "block" | "entity" | "effect" | "sound" | "particle" | "who" | "var" | "dim" | "fn" | "varvalue" | "varop" | "varcmp" | "game" | "scope" | "tag";
 export interface PropSpec {
   key: string;
   label: string;
@@ -125,6 +125,10 @@ function condProps(prefix: string, extra?: { key: string; values: string[] }): P
         ["flying", t("Spieler fliegt")],
         ["is_baby", t("Ziel ist ein Baby")],
         ["holding_any", t("Hält irgendetwas")],
+        ["block_in_tag", t("Block darunter ist im Tag")],
+        ["event_block_in_tag", t("Block des Ereignisses ist im Tag")],
+        ["holding_tag", t("Hält Item aus Tag")],
+        ["target_in_tag", t("Ziel ist im Tag")],
       ]),
       ...(extra ? { when: extra } : {}),
     },
@@ -153,6 +157,7 @@ function condProps(prefix: string, extra?: { key: string; values: string[] }): P
     P({ key: "value", label: t("Biom"), type: "text", def: "minecraft:plains" }, ["biome"]),
     P({ key: "value", label: t("Licht (0–15)"), type: "number", def: "8" }, ["dark"]),
     P({ key: "value", label: t("Kreatur"), type: "entity", def: "minecraft:zombie" }, ["entity_is"]),
+    P({ key: "value", label: t("Tag"), type: "tag", def: "minecraft:logs" }, ["block_in_tag", "event_block_in_tag", "holding_tag", "target_in_tag"]),
     P({ key: "value", label: t("Item"), type: "item", def: "" }, ["has_item"]),
     P({ key: "count", label: t("Anzahl"), type: "number", def: "1" }, ["has_item"]),
     P({ key: "value", label: t("Level"), type: "number", def: "5" }, ["level_at_least"]),

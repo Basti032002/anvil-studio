@@ -93,6 +93,12 @@ fn default_of(kind: &str) -> &'static str {
     }
 }
 
+/// Tag-ID ohne # und mit Namensraum (ohne: eigene Mod)
+fn tag_ref(api: &BpApi, v: &str) -> String {
+    let v = v.trim().trim_start_matches('#');
+    if v.contains(':') { v.to_string() } else { format!("{}:{v}", api.modid) }
+}
+
 /// Java-Ausdruck: Wert einer Variablen als Text
 fn var_get(api: &BpApi, name: &str, legacy_scope: &str) -> String {
     let (scope, _, def) = api.var_info(name, legacy_scope);
@@ -897,6 +903,10 @@ impl<'a> Gen<'a> {
             "flying" => "player != null && player.getAbilities().flying".into(),
             "is_baby" => "target != null && target.isBaby()".into(),
             "holding_any" => "player != null && !player.getMainHandItem().isEmpty()".into(),
+            "block_in_tag" if id_ok(v.trim_start_matches('#')) => format!("level.getBlockState(BlockPos.containing(x, y - 0.5, z)).is(net.minecraft.tags.TagKey.create(Registries.BLOCK, ResourceLocation.parse(\"{}\")))", tag_ref(self.api, v)),
+            "event_block_in_tag" if id_ok(v.trim_start_matches('#')) => format!("state != null && state.is(net.minecraft.tags.TagKey.create(Registries.BLOCK, ResourceLocation.parse(\"{}\")))", tag_ref(self.api, v)),
+            "holding_tag" if id_ok(v.trim_start_matches('#')) => format!("player != null && player.getMainHandItem().is(net.minecraft.tags.TagKey.create(Registries.ITEM, ResourceLocation.parse(\"{}\")))", tag_ref(self.api, v)),
+            "target_in_tag" if id_ok(v.trim_start_matches('#')) => format!("target != null && target.getType().is(net.minecraft.tags.TagKey.create(Registries.ENTITY_TYPE, ResourceLocation.parse(\"{}\")))", tag_ref(self.api, v)),
             "message_contains" => format!("message.toLowerCase().contains(\"{}\".toLowerCase())", js(v)),
             // Zufall in Prozent (Standard)
             _ => format!("level.getRandom().nextFloat() < {:.3}f", num(p, "value", 50.0, 0.0, 100.0) / 100.0),
