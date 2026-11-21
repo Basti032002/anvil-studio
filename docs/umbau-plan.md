@@ -24,7 +24,7 @@ nächsten offenen Etappe weitermachen.
    neue Ereignisse (Block abgebaut/platziert, Mob getötet, Tod, Sprung, Dimension, Item benutzt,
    Timer, Chat-Befehl) und Aktionen (Block setzen, Bereich füllen, Mob spawnen, Explosion,
    Partikel, Sound, Bossleiste, Scoreboard, Item geben/nehmen, Titel, Teleport, Befehl)
-5. [ ] **Weltgenerierung – Vorlagen & Baukasten**: Vorlagen Overworld/Nether/End/eigene (+ weitere),
+5. [x] **Weltgenerierung – Vorlagen & Baukasten** (0.5.0-dev.18): Vorlagen Overworld/Nether/End/eigene (+ weitere),
    Schritte Gelände, Schichten & Blöcke, Biome, Höhlen & Schluchten, Erze, schwebende Inseln,
    Strukturen & Pflanzen, Flüssigkeiten, Himmel & Licht, Kreaturen; Live-Vorschau (Karte + Querschnitt)
 6. [ ] **Weltgenerierung – Knoten-Modus**: Gelände-Dichte aus Rauschen, Kurven, Mathe, Y-Verlauf
