@@ -6,7 +6,7 @@ import { useSyncExternalStore } from "react";
 import { api, RunInfo, Task } from "./api";
 
 export type Level = "info" | "warn" | "error" | "system" | "success";
-export type Log = { id: number; line: string; level: Level };
+export type Log = { id: number; line: string; level: Level; at: number };
 
 type ExitInfo = { task: string; success: boolean; at: number };
 
@@ -33,7 +33,7 @@ function classify(line: string, stream: string): Level {
 
 export function pushLog(projectId: string, line: string, stream = "system") {
   const list = logs[projectId] ?? [];
-  const next = [...list, { id: nextId++, line, level: classify(line, stream) }];
+  const next = [...list, { id: nextId++, line, level: classify(line, stream), at: Date.now() }];
   logs = { ...logs, [projectId]: next.length > MAX_LINES ? next.slice(-MAX_LINES) : next };
   scheduleNotify();
 }
