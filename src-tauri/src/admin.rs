@@ -37,36 +37,128 @@ const VERSION_FILES: &[&str] = &[
 fn entry() -> Result<keyring::Entry, String> {
     keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(err)
 }
-pub fn load_token() -> Option<String> {
-    entry().ok()?.get_password().ok().filter(|t| !t.is_empty())
+
+/// Gespeicherte Anmeldung. GitHub-App-Tokens laufen nach 8 Stunden ab,
+/// der Refresh-Token hält 6 Monate – damit wird still erneuert.
+#[derive(Serialize, serde::Deserialize, Clone, Default)]
+struct Session {
+    access: String,
+    #[serde(default)]
+    refresh: String,
+    /// Unix-Sekunden; 0 = unbekannt
+    #[serde(default)]
+    expires: u64,
+    #[serde(default)]
+    refresh_expires: u64,
 }
-fn store_token(t: &str) -> Result<(), String> {
-    entry()?.set_password(t).map_err(err)
+
+fn now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+fn load_session() -> Option<Session> {
+    let raw = entry().ok()?.get_password().ok().filter(|t| !t.is_empty())?;
+    // Ältere Versionen haben nur den reinen Token gespeichert
+    Some(serde_json::from_str::<Session>(&raw).unwrap_or(Session { access: raw, ..Default::default() }))
+}
+fn store_session(s: &Session) -> Result<(), String> {
+    entry()?.set_password(&serde_json::to_string(s).map_err(err)?).map_err(err)
+}
+fn session_from(v: &Value) -> Option<Session> {
+    let access = v["access_token"].as_str()?.to_string();
+    let t = now();
+    Some(Session {
+        access,
+        refresh: v["refresh_token"].as_str().unwrap_or_default().into(),
+        expires: v["expires_in"].as_u64().map(|e| t + e).unwrap_or(0),
+        refresh_expires: v["refresh_token_expires_in"].as_u64().map(|e| t + e).unwrap_or(0),
+    })
 }
 fn clear_token() {
     if let Ok(e) = entry() {
         let _ = e.delete_credential();
     }
 }
-fn token() -> Result<String, String> {
-    load_token().ok_or_else(|| "Nicht angemeldet.".to_string())
+
+/// Nur eine Erneuerung gleichzeitig – ein benutzter Refresh-Token ist danach ungültig
+static REFRESH_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Token mit dem Refresh-Token erneuern (Device-Flow: ohne Client-Secret)
+async fn refresh_session(force: bool) -> Option<Session> {
+    let _guard = REFRESH_LOCK.lock().await;
+    let s = load_session()?;
+    // Inzwischen von einem anderen Aufruf erneuert?
+    if !force && (s.expires == 0 || s.expires > now() + 300) {
+        return Some(s);
+    }
+    if s.refresh.is_empty() || (s.refresh_expires != 0 && s.refresh_expires <= now()) {
+        return None;
+    }
+    let client_id = CLIENT_ID?;
+    let resp = http_client()
+        .ok()?
+        .post("https://github.com/login/oauth/access_token")
+        .header("Accept", "application/json")
+        .form(&[("client_id", client_id), ("grant_type", "refresh_token"), ("refresh_token", s.refresh.as_str())])
+        .send()
+        .await
+        .ok()?;
+    let v: Value = serde_json::from_str(&resp.text().await.ok()?).ok()?;
+    if v["error"].is_string() {
+        // Refresh-Token ungültig → wirklich abgemeldet
+        clear_token();
+        return None;
+    }
+    let fresh = session_from(&v)?;
+    store_session(&fresh).ok()?;
+    Some(fresh)
+}
+
+/// Gültiger Zugangs-Token (wird bei Bedarf still erneuert)
+pub async fn valid_token() -> Option<String> {
+    let s = load_session()?;
+    if s.expires != 0 && s.expires <= now() + 300 {
+        return refresh_session(false).await.map(|s| s.access);
+    }
+    Some(s.access)
+}
+
+pub fn has_session() -> bool {
+    load_session().is_some()
+}
+
+async fn token() -> Result<String, String> {
+    valid_token().await.ok_or_else(|| "Die Anmeldung ist abgelaufen. Bitte neu anmelden.".to_string())
 }
 
 // ---- GitHub-API -------------------------------------------------------------
 
 async fn gh(method: reqwest::Method, path: &str, body: Option<Value>) -> Result<Value, String> {
     let url = if path.starts_with("https://") { path.to_string() } else { format!("https://api.github.com{path}") };
-    let mut req = http_client()?
-        .request(method, &url)
-        .bearer_auth(token()?)
-        .header("Accept", "application/vnd.github+json")
-        .header("X-GitHub-Api-Version", "2022-11-28");
-    if let Some(b) = body {
-        req = req.json(&b);
-    }
-    let resp = req.send().await.map_err(|e| net_err(&e))?;
-    let status = resp.status();
-    let text = resp.text().await.map_err(|e| net_err(&e))?;
+    let mut tok = token().await?;
+    let mut retried = false;
+    let (status, text) = loop {
+        let mut req = http_client()?
+            .request(method.clone(), &url)
+            .bearer_auth(&tok)
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28");
+        if let Some(b) = &body {
+            req = req.json(b);
+        }
+        let resp = req.send().await.map_err(|e| net_err(&e))?;
+        let status = resp.status();
+        let text = resp.text().await.map_err(|e| net_err(&e))?;
+        if status.as_u16() == 401 && !retried {
+            // Token abgelaufen oder widerrufen → einmal erneuern und nochmal versuchen
+            retried = true;
+            if let Some(s) = refresh_session(true).await {
+                tok = s.access;
+                continue;
+            }
+        }
+        break (status, text);
+    };
     if status.as_u16() == 401 {
         clear_token();
         return Err("Die Anmeldung ist abgelaufen. Bitte neu anmelden.".into());
@@ -202,9 +294,9 @@ pub async fn account_poll_login(device_code: String) -> Result<PollResult, Strin
             other => return Err(format!("GitHub: {}", v["error_description"].as_str().unwrap_or(other))),
         });
     }
-    let Some(access) = v["access_token"].as_str() else { return Err("Kein Token erhalten.".into()) };
+    let Some(session) = session_from(&v) else { return Err("Kein Token erhalten.".into()) };
 
-    store_token(access)?;
+    store_session(&session)?;
     let user = match fetch_user().await {
         Ok(u) => u,
         Err(e) => {
@@ -217,7 +309,7 @@ pub async fn account_poll_login(device_code: String) -> Result<PollResult, Strin
 
 #[tauri::command]
 pub async fn account_session() -> Result<Option<AccountInfo>, String> {
-    if load_token().is_none() {
+    if !has_session() {
         return Ok(None);
     }
     match fetch_user().await {

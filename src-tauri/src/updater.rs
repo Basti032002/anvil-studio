@@ -128,7 +128,7 @@ pub async fn check_update(app: AppHandle, channel: Option<String>, include_prere
 
     let mut sources: Vec<(Vec<serde_json::Value>, bool)> = vec![(fetch_releases(RELEASE_REPO, None).await?, false)];
     if channel == "dev" {
-        match crate::admin::load_token() {
+        match crate::admin::valid_token().await {
             Some(t) => match fetch_releases(DEV_REPO, Some(&t)).await {
                 Ok(r) => sources.push((r, true)),
                 Err(e) => eprintln!("Dev-Kanal nicht verfügbar: {e}"),
@@ -194,7 +194,7 @@ pub async fn install_update(app: AppHandle, info: UpdateInfo) -> Result<(), Stri
         if !info.asset_api_url.starts_with(&format!("https://api.github.com/repos/{DEV_REPO}/releases/assets/")) {
             return Err("Unerwartete Download-Adresse – Update abgebrochen.".into());
         }
-        let token = crate::admin::load_token().ok_or("Für Dev-Versionen bitte mit GitHub anmelden.")?;
+        let token = crate::admin::valid_token().await.ok_or("Für Dev-Versionen bitte mit GitHub anmelden.")?;
         (
             info.asset_api_url.clone(),
             vec![("Authorization", format!("Bearer {token}")), ("Accept", "application/octet-stream".to_string())],
@@ -301,7 +301,7 @@ pub async fn patch_notes_pending(app: AppHandle) -> Result<Option<PatchNotes>, S
         return Ok(None);
     }
     let (repo, token) = if version.contains("-dev") {
-        match crate::admin::load_token() {
+        match crate::admin::valid_token().await {
             Some(t) => (DEV_REPO, Some(t)),
             None => return Ok(None),
         }
