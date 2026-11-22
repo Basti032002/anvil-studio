@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+import { BetaBadge } from "../../features";
 import { NamesField } from "./LogicEditors";
 import { useState } from "react";
 import { contentApi, mcEntityTexture, MobDef, MobModel, Project } from "../../api";
@@ -95,7 +96,7 @@ export default function MobEditor({
         <div className="editor-head">
           <img className="egg-icon" src={eggDataUrl(mob.eggPrimary, mob.eggSecondary)} alt="" />
           <div className="grow editor-head-text">
-            <div className="editor-head-title">{mob.nameEn || mob.nameDe || mob.id}</div>
+            <div className="editor-head-title">{mob.nameEn || mob.nameDe || mob.id}<BetaBadge feature="mobs" /></div>
             <div className="editor-head-sub mono">
               {project.modId}:{mob.id} · {t("Kreatur")} · {model.label}
             </div>

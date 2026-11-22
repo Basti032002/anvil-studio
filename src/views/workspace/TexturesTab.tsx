@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { BetaBadge } from "../../features";
 import { notifyUndo, useUndoTarget } from "../../undo";
 import { t } from "../../i18n";
 import { Content, contentApi, Project, texLibApi, pickSaveFile } from "../../api";
@@ -1147,6 +1148,7 @@ function TexEditor({
             <div className="tx-frames-head">
               <FramesIcon size={14} />
               <strong>{t("Animation")}</strong>
+              <BetaBadge feature="animation" />
               <button className="icon-btn" onClick={() => setPlaying((p) => !p)} disabled={d.frames.length < 2} aria-label={playing ? t("Pause") : t("Abspielen")} data-tip={playing ? t("Pause") : t("Abspielen")}>
                 {playing ? <PauseIcon size={14} /> : <PlayIcon size={12} />}
               </button>

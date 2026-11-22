@@ -262,7 +262,8 @@ function VersionPanel({ project, onChanged }: { project: Project; onChanged?: ()
           {versions.map((v) => (
             <option key={v} value={v}>
               {t("Minecraft")}{" "}{v}
-              {v === project.mcVersion ? " (aktuell)" : ""}
+              {v === "1.21.1" ? t(" · empfohlen") : t(" · experimentell")}
+              {v === project.mcVersion ? t(" (aktuell)") : ""}
             </option>
           ))}
         </select>

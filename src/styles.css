@@ -2041,3 +2041,43 @@ button.cx-stat { cursor: pointer; }
 .ps-frame { background: linear-gradient(135deg, #2b1f3d, #160f22); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06); }
 .ps-glow { background: var(--portal); opacity: 0.75; animation: ps-glow 2.4s ease-in-out infinite; }
 @keyframes ps-glow { 50% { opacity: 0.45; } }
+
+/* Beta-Plaketten */
+.beta-badge { display: inline-flex; align-items: center; height: 16px; padding: 0 5px; margin-left: 6px; border-radius: 5px; font-size: 9.5px; font-weight: 750; letter-spacing: 0.04em; text-transform: uppercase; line-height: 1; vertical-align: middle; color: #f0b44c; background: color-mix(in srgb, #f0b44c 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, #f0b44c 30%, transparent); flex: none; }
+.beta-admin { display: flex; flex-direction: column; gap: 16px; }
+.beta-admin .row { gap: 8px; }
+.beta-admin-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.beta-admin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; }
+.beta-admin-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--panel); cursor: pointer; }
+.beta-admin-item.on { border-color: color-mix(in srgb, #f0b44c 40%, var(--border)); }
+.beta-admin-item input { accent-color: var(--accent); }
+.icon-btn:has(.beta-badge) { position: relative; }
+.icon-btn .beta-badge { position: absolute; top: -5px; right: -10px; margin: 0; height: 13px; font-size: 8px; padding: 0 3px; }
+.dimx-mode .beta-badge { margin-left: 5px; }
+.warn-text { color: var(--warn); }
+.mcver-note { margin-top: 6px; line-height: 1.4; }
+
+/* Willkommens-Tour */
+.tour { position: fixed; inset: 0; z-index: 9000; pointer-events: none; }
+.tour-dim { position: fixed; inset: 0; background: rgba(5, 6, 8, 0.62); }
+.tour-spot { position: fixed; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(5, 6, 8, 0.6), 0 0 0 2px var(--accent), 0 0 24px 4px color-mix(in srgb, var(--accent) 35%, transparent); transition: left 0.25s ease, top 0.25s ease, width 0.25s ease, height 0.25s ease; }
+.tour-spot::after { content: ""; position: absolute; inset: -2px; border-radius: 13px; border: 2px solid var(--accent); animation: tour-pulse 1.8s ease-out infinite; }
+@keyframes tour-pulse { 0% { opacity: 0.9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.08); } }
+.tour-bubble { position: fixed; width: 360px; pointer-events: auto; display: flex; flex-direction: column; gap: 10px; padding: 16px 18px 14px; border-radius: 14px; background: var(--elevated); border: 1px solid var(--border-strong); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55); transition: left 0.25s ease, top 0.25s ease; animation: tour-in 0.25s ease; }
+.tour-bubble.big { width: 460px; padding: 22px 24px 18px; }
+.tour-bubble.big .tour-title { font-size: 20px; }
+@keyframes tour-in { from { opacity: 0; transform: translateY(6px); } }
+.tour-top { display: flex; align-items: center; }
+.tour-count { font-size: 11px; font-weight: 650; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tour-skip { border: none; background: none; color: var(--muted); font-size: 12px; padding: 2px 4px; }
+.tour-skip:hover { color: var(--text); }
+.tour-title { font-size: 16px; font-weight: 700; }
+.tour-body { color: #c9ccd2; line-height: 1.5; font-size: 13px; }
+[data-theme="light"] .tour-body { color: var(--text); }
+.tour-todo { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 9px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-weight: 600; font-size: 12.5px; }
+.tour-todo.done { opacity: 0.6; }
+.tour-todo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; animation: tour-blink 1.2s ease-in-out infinite; }
+@keyframes tour-blink { 50% { opacity: 0.3; } }
+.tour-progress { height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.tour-progress span { display: block; height: 100%; background: var(--accent); transition: width 0.3s ease; }
+.tour-actions { display: flex; align-items: center; gap: 8px; }

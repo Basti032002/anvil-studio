@@ -88,12 +88,27 @@ pub const REMOTE_CONFIG_URL: &str = "https://raw.githubusercontent.com/Basti0320
 pub struct RemoteConfig {
     pub enabled: bool,
     pub url: String,
+    /// Funktionen, die überall mit „Beta“ gekennzeichnet werden
+    pub beta: Vec<String>,
 }
 
 impl Default for RemoteConfig {
     fn default() -> Self {
-        Self { enabled: true, url: crate::settings::DEFAULT_WORKSHOP.into() }
+        Self { enabled: false, url: crate::settings::DEFAULT_WORKSHOP.into(), beta: Vec::new() }
     }
+}
+
+/// Nur kurze, harmlose Kennungen (a-z, 0-9, -) zulassen
+pub fn clean_beta(list: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = list
+        .iter()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty() && s.len() <= 32 && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'))
+        .collect();
+    out.sort();
+    out.dedup();
+    out.truncate(100);
+    out
 }
 
 /// Gültige Workshop-Adresse? (https, ohne Pfad-Tricks)
@@ -123,7 +138,7 @@ async fn fetch_remote() -> Result<RemoteConfig, String> {
 
 /// Neue zentrale Einstellung anwenden und alle Fenster informieren
 pub fn apply_remote(app: &AppHandle, c: &RemoteConfig) {
-    if let Ok(true) = crate::settings::set_workshop(app, &c.url, c.enabled) {
+    if let Ok(true) = crate::settings::set_workshop(app, &c.url, c.enabled, &clean_beta(&c.beta)) {
         reset_session();
         let _ = app.emit("workshop-config", c.clone());
     }
@@ -144,7 +159,7 @@ pub fn start_remote_poll(app: AppHandle) {
 #[tauri::command]
 pub fn ws_remote_config(app: AppHandle) -> RemoteConfig {
     let s = crate::settings::load(&app);
-    RemoteConfig { enabled: s.workshop_enabled, url: s.workshop_url }
+    RemoteConfig { enabled: s.workshop_enabled, url: s.workshop_url, beta: s.beta_features }
 }
 
 /// Prüft, ob unter der Adresse ein Workshop-Server antwortet

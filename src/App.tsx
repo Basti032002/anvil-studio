@@ -1,5 +1,6 @@
 import { Tooltips } from "./components/Tooltips";
 import { installUndoKeys } from "./undo";
+import { Tour } from "./components/Tour";
 import { t, takeReturnNav } from "./i18n";
 import { ContextMenuHost, DialogHost } from "./components/Overlay";
 import PatchNotesDialog from "./components/PatchNotes";
@@ -48,6 +49,12 @@ export default function App() {
   const settings = useSettings();
   // Workshop ausgeschaltet: nur Admins sehen ihn noch
   const workshopVisible = settings?.workshopEnabled !== false || admin || !!ws.me?.admin;
+  // Die Tour (und andere) können zu einem Bereich wechseln
+  useEffect(() => {
+    const on = (e: Event) => setNav((e as CustomEvent<NavKey>).detail);
+    window.addEventListener("anvil:nav", on);
+    return () => window.removeEventListener("anvil:nav", on);
+  });
   useEffect(() => installUndoKeys(), []);
   useEffect(() => {
     if (!workshopVisible && nav === "workshop") setNavRaw("projects");
@@ -162,6 +169,7 @@ export default function App() {
       { id: "ws-run", label: t("Starten"), group: t("Arbeitsbereich"), icon: <PlayIcon size={13} />, shortcut: "F5", disabled: !inWs, run: () => workspaceCommand("run") },
       { id: "ws-stop", label: t("Stoppen"), group: t("Arbeitsbereich"), icon: <StopIcon size={13} />, shortcut: t("Umschalt F5"), disabled: !inWs, run: () => workspaceCommand("stop") },
       { id: "ws-build", label: t("Bauen"), group: t("Arbeitsbereich"), icon: <HammerIcon size={15} />, shortcut: t("Strg B"), disabled: !inWs, run: () => workspaceCommand("build") },
+      { id: "tour", label: t("Einführung starten"), group: t("Anvil Studio"), icon: <RocketIcon size={15} />, run: () => window.dispatchEvent(new Event("anvil:tour-start")) },
       { id: "upd", label: t("Nach Updates suchen"), group: t("Anvil Studio"), icon: <RefreshIcon size={15} />, run: () => checkForUpdate(true) },
       ...(admin
         ? [{ id: "publish", label: t("Neue Version veröffentlichen"), group: t("Entwickler"), icon: <RocketIcon size={15} />, run: () => setNav("admin") }]
@@ -258,6 +266,7 @@ export default function App() {
       <DialogHost />
       <PatchNotesDialog />
       <ContextMenuHost editLabels={EDIT_LABELS} />
+      <Tour />
     </div>
   );
 }

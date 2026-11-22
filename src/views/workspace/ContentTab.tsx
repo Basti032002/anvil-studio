@@ -1,4 +1,5 @@
 import { getDraft, setDraft } from "./draft";
+import { BetaBadge, featureOfBlock, featureOfItem } from "../../features";
 import { useUndoable } from "../../undo";
 import { t } from "../../i18n";
 import { confirmDialog, contextMenu, MenuItem } from "../../components/Overlay";
@@ -543,7 +544,7 @@ export default function ContentTab({ project }: { project: Project }) {
             </label>
             <input id="cfilter" placeholder={t("Inhalte durchsuchen …")} value={filter} onChange={(e) => setFilter(e.target.value)} />
           </div>
-          <button className="btn primary content-add" onClick={() => setCreateGroup("all")} aria-label={t("Neuer Inhalt")} data-tip={t("Neuer Inhalt (Strg+N)")}>
+          <button className="btn primary content-add" data-tour="create" onClick={() => setCreateGroup("all")} aria-label={t("Neuer Inhalt")} data-tip={t("Neuer Inhalt (Strg+N)")}>
             <PlusIcon size={16} />
           </button>
         </div>
@@ -872,6 +873,7 @@ export default function ContentTab({ project }: { project: Project }) {
                   <div className="editor-head-title">
                     {current.nameEn || current.nameDe || current.id}
                     <span className="editor-head-kind">{block ? (block.ore.enabled ? t("Erz") : t("Block")) : item!.kind === "tool" ? t("Werkzeug") : item!.kind === "armor" ? t("Rüstung") : t("Item")}</span>
+                    <BetaBadge feature={block ? featureOfBlock(block) : featureOfItem(item!)} />
                   </div>
                   <div className="editor-head-sub mono">
                     {project.modId}:{current.id}

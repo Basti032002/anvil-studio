@@ -723,6 +723,29 @@ pub async fn admin_workshop_config() -> Result<crate::workshop::RemoteConfig, St
     }
 }
 
+/// Zentrale Einstellung schreiben – alle Anvil-Studio-Installationen übernehmen sie
+async fn write_remote_config(app: &tauri::AppHandle, cfg: &crate::workshop::RemoteConfig, message: String) -> Result<(), String> {
+    // Zweig anlegen, falls es ihn noch nicht gibt
+    if get(&format!("/repos/{CODE_REPO}/git/ref/heads/{CONFIG_BRANCH}")).await.is_err() {
+        let head = get(&format!("/repos/{CODE_REPO}/git/ref/heads/main")).await?;
+        let sha = head["object"]["sha"].as_str().ok_or("main nicht gefunden")?;
+        gh(reqwest::Method::POST, &format!("/repos/{CODE_REPO}/git/refs"), Some(json!({ "ref": format!("refs/heads/{CONFIG_BRANCH}"), "sha": sha }))).await?;
+    }
+    let old_sha = get(&format!("/repos/{CODE_REPO}/contents/{CONFIG_FILE}?ref={CONFIG_BRANCH}")).await.ok().and_then(|v| v["sha"].as_str().map(String::from));
+    let text = serde_json::to_string_pretty(cfg).map_err(err)? + "\n";
+    let mut body = json!({
+        "message": message,
+        "content": base64::engine::general_purpose::STANDARD.encode(text),
+        "branch": CONFIG_BRANCH,
+    });
+    if let Some(s) = old_sha {
+        body["sha"] = json!(s);
+    }
+    gh(reqwest::Method::PUT, &format!("/repos/{CODE_REPO}/contents/{CONFIG_FILE}"), Some(body)).await?;
+    crate::workshop::apply_remote(app, cfg);
+    Ok(())
+}
+
 /// Zentrale Workshop-Einstellung ändern – alle Anvil-Studio-Installationen übernehmen sie
 #[tauri::command]
 pub async fn admin_set_workshop_config(app: tauri::AppHandle, enabled: bool, url: String) -> Result<crate::workshop::RemoteConfig, String> {
@@ -731,24 +754,21 @@ pub async fn admin_set_workshop_config(app: tauri::AppHandle, enabled: bool, url
     if !crate::workshop::valid_workshop_url(&url) {
         return Err("Die Adresse muss mit https:// beginnen.".into());
     }
-    let cfg = crate::workshop::RemoteConfig { enabled, url };
-    // Zweig anlegen, falls es ihn noch nicht gibt
-    if get(&format!("/repos/{CODE_REPO}/git/ref/heads/{CONFIG_BRANCH}")).await.is_err() {
-        let head = get(&format!("/repos/{CODE_REPO}/git/ref/heads/main")).await?;
-        let sha = head["object"]["sha"].as_str().ok_or("main nicht gefunden")?;
-        gh(reqwest::Method::POST, &format!("/repos/{CODE_REPO}/git/refs"), Some(json!({ "ref": format!("refs/heads/{CONFIG_BRANCH}"), "sha": sha }))).await?;
-    }
-    let old_sha = get(&format!("/repos/{CODE_REPO}/contents/{CONFIG_FILE}?ref={CONFIG_BRANCH}")).await.ok().and_then(|v| v["sha"].as_str().map(String::from));
-    let text = serde_json::to_string_pretty(&cfg).map_err(err)? + "\n";
-    let mut body = json!({
-        "message": format!("Workshop: {} · {}", if cfg.enabled { "an" } else { "aus" }, cfg.url),
-        "content": base64::engine::general_purpose::STANDARD.encode(text),
-        "branch": CONFIG_BRANCH,
-    });
-    if let Some(s) = old_sha {
-        body["sha"] = json!(s);
-    }
-    gh(reqwest::Method::PUT, &format!("/repos/{CODE_REPO}/contents/{CONFIG_FILE}"), Some(body)).await?;
-    crate::workshop::apply_remote(&app, &cfg);
+    let mut cfg = admin_workshop_config().await?;
+    cfg.enabled = enabled;
+    cfg.url = url;
+    let msg = format!("Workshop: {} · {}", if cfg.enabled { "an" } else { "aus" }, cfg.url);
+    write_remote_config(&app, &cfg, msg).await?;
+    Ok(cfg)
+}
+
+/// „Beta“-Plaketten festlegen – erscheinen bei allen Nutzern
+#[tauri::command]
+pub async fn admin_set_beta(app: tauri::AppHandle, beta: Vec<String>) -> Result<crate::workshop::RemoteConfig, String> {
+    require_admin().await?;
+    let mut cfg = admin_workshop_config().await?;
+    cfg.beta = crate::workshop::clean_beta(&beta);
+    let msg = format!("Beta-Plaketten: {}", if cfg.beta.is_empty() { "keine".to_string() } else { cfg.beta.join(", ") });
+    write_remote_config(&app, &cfg, msg).await?;
     Ok(cfg)
 }

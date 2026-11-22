@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+import { BetaBadge } from "../../features";
 import { useEffect, useState } from "react";
 import { Content, contentApi, FoundStructure, Project, StructDef, StructPiece } from "../../api";
 import { Segmented, Toggle } from "../../components/Chrome";
@@ -121,7 +122,7 @@ export default function StructureEditor({
             <BoxIcon size={18} />
           </span>
           <div className="grow editor-head-text">
-            <div className="editor-head-title">{st.nameEn || st.nameDe || st.id}</div>
+            <div className="editor-head-title">{st.nameEn || st.nameDe || st.id}<BetaBadge feature="structures" /></div>
             <div className="editor-head-sub mono">
               {project.modId}:{st.id} · {t("Struktur")}
             </div>

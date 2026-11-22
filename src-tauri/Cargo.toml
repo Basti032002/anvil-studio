@@ -1,6 +1,6 @@
 [package]
 name = "anvil-studio"
-version = "0.5.0-dev.32"
+version = "0.5.0-dev.33"
 description = "Anvil Studio – Launcher zum Erstellen und Testen von Minecraft-Mods"
 edition = "2021"
 

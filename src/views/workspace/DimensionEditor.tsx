@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+import { BetaBadge } from "../../features";
 import { useState } from "react";
 import { Blueprint, Content, DimBiome, DimDef, DimSpawn, Project } from "../../api";
 import { OwnEntry } from "../../components/ItemPicker";
@@ -205,7 +206,10 @@ export default function DimensionEditor({
             <GlobeIcon size={18} />
           </span>
           <div className="grow dimx-id-text">
-            <div className="dimx-name">{dim.nameEn || dim.nameDe || dim.id}</div>
+            <div className="dimx-name">
+              {dim.nameEn || dim.nameDe || dim.id}
+              <BetaBadge feature="dimensions" />
+            </div>
             <div className="muted small">
               {t("Dimension")} · {t("Vorlage {name}", { name: tplLabel ?? "" })}
             </div>
@@ -223,6 +227,7 @@ export default function DimensionEditor({
           </button>
           <button className={nodesMode ? "on" : ""} onClick={() => !nodesMode && toNodes()} disabled={tp === "flat" || tp === "void"}>
             {t("Knoten")}
+            <BetaBadge feature="nodes" />
           </button>
         </div>
         <nav className="dimx-steps">
@@ -579,7 +584,10 @@ export default function DimensionEditor({
                   <RocketIcon size={17} />
                 </span>
                 <div className="grow">
-                  <div className="callout-title">{t("Portal mit Rahmen")}</div>
+                  <div className="callout-title">
+                    {t("Portal mit Rahmen")}
+                    <BetaBadge feature="portals" />
+                  </div>
                   <div className="muted small">{t("Wie das Nether-Portal: Rahmen bauen, anzünden, durchgehen. Am Ziel entsteht automatisch ein Rückportal.")}</div>
                 </div>
                 <Toggle checked={!!dim.portal} onChange={(v) => set({ portal: v })} label={t("Portal mit Rahmen")} />

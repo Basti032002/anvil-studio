@@ -50,7 +50,7 @@ export function TitleBar({ subtitle, onSearch }: { subtitle?: string; onSearch: 
           </span>
         )}
       </div>
-      <button className="command-center" onClick={onSearch} aria-label={t("Befehlspalette öffnen")}>
+      <button className="command-center" data-tour="search" onClick={onSearch} aria-label={t("Befehlspalette öffnen")}>
         <SearchIcon size={13} />
         <span>{t("Befehl oder Projekt suchen")}</span>
         <kbd>{t("Strg K")}</kbd>
@@ -100,13 +100,14 @@ export function ActivityBar({
   ];
 
   return (
-    <nav className="activitybar" aria-label={t("Hauptnavigation")}>
+    <nav className="activitybar" aria-label={t("Hauptnavigation")} data-tour="activitybar">
       <div className="activity-group">
         {topIndex >= 0 && <span className="activity-indicator" style={{ transform: `translateY(${topIndex * 48}px)` }} />}
         {top.map((t) => (
           <button
             key={t.key}
             className={active === t.key ? "activity-item active" : "activity-item"}
+            data-tour={`nav-${t.key}`}
             aria-label={t.label}
             data-tip={t.label}
             disabled={t.disabled}
@@ -124,6 +125,7 @@ export function ActivityBar({
           <button
             key={b.key}
             className={active === b.key ? "activity-item active" : "activity-item"}
+            data-tour={`nav-${b.key}`}
             aria-label={b.label}
             data-tip={b.label}
             onClick={() => onNavigate(b.key)}

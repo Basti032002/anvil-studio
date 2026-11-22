@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+import { BetaBadge } from "../../features";
 import { useUndoTarget } from "../../undo";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Blueprint, BpLink, BpNode, Content, Project } from "../../api";
@@ -436,6 +437,7 @@ export default function BlueprintEditor({
         <span className="sub-icon">
           <BlueprintIcon size={16} />
         </span>
+        <BetaBadge feature="blueprints" />
         <input className="input bp-name" value={bp.name} onChange={(e) => update({ name: e.target.value }, "name")} aria-label={t("Name")} placeholder={t("Name")} />
         <span className="row gap-6 bp-enabled">
           <Toggle label={t("Aktiv")} checked={bp.enabled} onChange={(v) => update({ enabled: v })} />

@@ -87,6 +87,8 @@ export type Settings = {
   workshopUrl: string;
   /** zentral festgelegt */
   workshopEnabled: boolean;
+  /** Funktionen mit „Beta“-Plakette (zentral im Entwicklerbereich festgelegt) */
+  betaFeatures: string[];
   startPage: "workshop" | "projects";
   playMemoryMb: number;
 };

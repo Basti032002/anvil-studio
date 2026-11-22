@@ -86,7 +86,7 @@ export default function NewProject({ onCancel, onCreated }: Props) {
   }
 
   return (
-    <form className="page new-project" onSubmit={submit}>
+    <form className="page new-project" onSubmit={submit} data-tour="np-form">
       <header className="page-header">
         <div>
           <div className="eyebrow">{t("Neues Projekt")}</div>
@@ -121,10 +121,13 @@ export default function NewProject({ onCancel, onCreated }: Props) {
               {versions.map((v) => (
                 <option key={v} value={v}>
                   {v}
-                  {v === "1.21.1" ? t(" · empfohlen") : ""}
+                  {v === "1.21.1" ? t(" · empfohlen") : t(" · experimentell")}
                 </option>
               ))}
             </select>
+            {mcVersion !== "1.21.1" && (
+              <div className="small warn-text mcver-note">{t("Experimentell: wird automatisch getestet, aber noch nicht im Spiel ausprobiert. Für deine erste Mod ist 1.21.1 die sichere Wahl.")}</div>
+            )}
           </Field>
           <Field label={t("Mod-Loader")} id="loader">
             <select id="loader" className="input" value="neoforge" disabled>
@@ -213,7 +216,7 @@ export default function NewProject({ onCancel, onCreated }: Props) {
         <button type="button" className="btn ghost" onClick={onCancel} disabled={busy}>
           <CloseIcon size={14} />{" "}{t("Abbrechen")}
         </button>
-        <button type="submit" className={busy ? "btn primary loading" : "btn primary"} disabled={busy || !name.trim()}>
+        <button type="submit" data-tour="np-create" className={busy ? "btn primary loading" : "btn primary"} disabled={busy || !name.trim()}>
           <PlusIcon size={14} /> {busy ? t("Wird erstellt …") : t("Projekt erstellen")}
         </button>
       </div>

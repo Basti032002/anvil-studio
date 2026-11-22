@@ -50,6 +50,7 @@ pub fn run() {
             workshop::ws_image_preview,
             admin::admin_workshop_config,
             admin::admin_set_workshop_config,
+            admin::admin_set_beta,
             content::structures_imported,
             content::structure_import,
             content::lang_export,

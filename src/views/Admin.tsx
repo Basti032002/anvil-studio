@@ -1,4 +1,5 @@
 import { t } from "../i18n";
+import { ALL_FEATURES, FEATURE_GROUPS } from "../features";
 import { confirmDialog } from "../components/Overlay";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -185,7 +186,7 @@ export function GitHubLogin({ compact }: { compact?: boolean }) {
 
 // ---- Dashboard ------------------------------------------------------------------
 
-type Tab = "overview" | "publish" | "releases" | "testers" | "builds" | "workshop";
+type Tab = "overview" | "publish" | "releases" | "testers" | "builds" | "features" | "workshop";
 
 function Dashboard({ account }: { account: AccountInfo }) {
   const user = account.user;
@@ -249,11 +250,14 @@ function Dashboard({ account }: { account: AccountInfo }) {
           { value: "releases", label: t("Releases") },
           { value: "testers", label: t("Tester") },
           { value: "builds", label: t("Builds") },
+          { value: "features", label: t("Funktionen") },
           { value: "workshop", label: t("Workshop") },
         ]}
       />
 
-      {tab === "workshop" ? (
+      {tab === "features" ? (
+        <BetaCard />
+      ) : tab === "workshop" ? (
         <>
           <WorkshopServerCard />
           <WorkshopAdmin />
@@ -283,6 +287,71 @@ function Dashboard({ account }: { account: AccountInfo }) {
           {tab === "builds" && <BuildsTab runs={data.runs} onChanged={refresh} />}
         </div>
       )}
+    </div>
+  );
+}
+
+/** „Beta“-Plaketten zentral festlegen – erscheinen nach dem Speichern bei allen Nutzern */
+function BetaCard() {
+  const [saved, setSaved] = useState<string[] | null>(null);
+  const [sel, setSel] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    adminApi
+      .workshopConfig()
+      .then((c) => {
+        setSaved(c.beta ?? []);
+        setSel(c.beta ?? []);
+      })
+      .catch((e) => toast(String(e), "error"));
+  }, []);
+  const dirty = saved !== null && JSON.stringify([...sel].sort()) !== JSON.stringify([...saved].sort());
+  const toggle = (id: string, on: boolean) => setSel((s) => (on ? [...new Set([...s, id])] : s.filter((x) => x !== id)));
+  async function save() {
+    setBusy(true);
+    try {
+      const c = await adminApi.setBeta(sel);
+      setSaved(c.beta);
+      setSel(c.beta);
+      toast(t("Gespeichert – alle Anvil-Studio-Installationen zeigen die Plaketten innerhalb weniger Minuten."), "success");
+    } catch (e) {
+      toast(String(e), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (saved === null) return <div className="skeleton" style={{ height: 300 }} />;
+  return (
+    <div className="panel beta-admin">
+      <div className="row">
+        <div className="grow">
+          <div className="callout-title">{t("Beta-Plaketten")}</div>
+          <div className="muted small">{t("Markierte Funktionen tragen überall im Studio eine „Beta“-Plakette – bei allen Nutzern, sobald du speicherst.")}</div>
+        </div>
+        <button className="btn small" onClick={() => setSel(ALL_FEATURES)}>
+          {t("Alle markieren")}
+        </button>
+        <button className="btn small" onClick={() => setSel([])}>
+          {t("Keine")}
+        </button>
+        <button className="btn small primary" disabled={!dirty || busy} onClick={save}>
+          {busy ? t("Speichert …") : t("Für alle speichern")}
+        </button>
+      </div>
+      {FEATURE_GROUPS.map((g) => (
+        <section key={g.title} className="beta-admin-group">
+          <div className="beta-admin-title">{g.title}</div>
+          <div className="beta-admin-grid">
+            {g.items.map((f) => (
+              <label key={f.id} className={sel.includes(f.id) ? "beta-admin-item on" : "beta-admin-item"}>
+                <input type="checkbox" checked={sel.includes(f.id)} onChange={(e) => toggle(f.id, e.target.checked)} />
+                <span className="grow">{f.label}</span>
+                {sel.includes(f.id) && <span className="beta-badge">{t("Beta")}</span>}
+              </label>
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

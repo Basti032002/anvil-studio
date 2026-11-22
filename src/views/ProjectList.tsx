@@ -77,7 +77,7 @@ export default function ProjectList({ projects, java, javaProgress, onInstallJav
           <button className="btn" onClick={onImport}>
             <FolderIcon size={15} />{" "}{t("Importieren")}
           </button>
-          <button className="btn primary" onClick={onNew}>
+          <button className="btn primary" onClick={onNew} data-tour="new-project">
             <PlusIcon size={15} />{" "}{t("Neues Projekt")}
           </button>
         </div>
@@ -108,7 +108,7 @@ export default function ProjectList({ projects, java, javaProgress, onInstallJav
           <h2>{t("Deine Werkbank ist noch leer")}</h2>
           <p className="muted">{t("Lege deine erste Mod an. Anvil Studio lädt die NeoForge-Vorlage und richtet alles ein.")}</p>
           <div className="row center">
-            <button className="btn primary" onClick={onNew}>
+            <button className="btn primary" onClick={onNew} data-tour="new-project">
               <PlusIcon size={15} />{" "}{t("Erste Mod erstellen")}
             </button>
             <button className="btn" onClick={onImport}>

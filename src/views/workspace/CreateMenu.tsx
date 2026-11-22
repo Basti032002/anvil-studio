@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+import { BetaBadge, type FeatureId } from "../../features";
 import { useEffect, useState } from "react";
 import { DimTemplate, MobModel } from "../../api";
 import {
@@ -54,6 +55,29 @@ const GROUPS: { id: CreateGroup; label: string; icon: React.ReactNode }[] = [
   { id: "world", label: t("Welten"), icon: <GlobeIcon size={15} /> },
   { id: "logic", label: t("Logik"), icon: <BlueprintIcon size={15} /> },
 ];
+
+function featureOfChoice(c: CreateChoice): FeatureId {
+  switch (c.kind) {
+    case "block":
+      return ["generator", "solar", "battery", "cable", "electric"].includes(c.variant) ? "energy" : c.variant === "machine" ? "machines" : c.variant === "ore" ? "ores" : c.variant === "storage" ? "storage" : c.variant === "workbench" ? "workbench" : "blocks";
+    case "item":
+      return ["sword", "pickaxe", "axe", "shovel", "hoe", "toolset"].includes(c.variant) ? "tools" : c.variant === "armor" || c.variant === "armorset" ? "armor" : "items";
+    case "mob":
+      return "mobs";
+    case "dimension":
+      return "dimensions";
+    case "structure":
+      return "structures";
+    case "blueprint":
+      return "blueprints";
+    case "gui":
+      return "guis";
+    case "event":
+      return "events";
+    case "brew":
+      return "brewing";
+  }
+}
 
 function cards(group: CreateGroup): { title: string; cards: Card[] }[] {
   switch (group) {
@@ -228,9 +252,12 @@ export default function CreateMenu({ group = "all", onPick, onClose }: { group?:
                 <div className="create-sec">{sec.title}</div>
                 <div className="create-grid">
                   {sec.cards.map((c) => (
-                    <button key={c.title + JSON.stringify(c.choice)} className="create-card" onClick={() => onPick(c.choice)}>
+                    <button key={c.title + JSON.stringify(c.choice)} className="create-card" data-tour={`create-${c.choice.kind}-${"variant" in c.choice ? c.choice.variant : ""}`} onClick={() => onPick(c.choice)}>
                       <span className="create-card-icon">{c.icon}</span>
-                      <span className="create-card-title">{c.title}</span>
+                      <span className="create-card-title">
+                        {c.title}
+                        <BetaBadge feature={featureOfChoice(c.choice)} />
+                      </span>
                       <span className="create-card-desc">{c.desc}</span>
                     </button>
                   ))}

@@ -51,8 +51,9 @@ export const adminApi = {
   updateNotes: (repo: string, id: number, body: string) => invoke<void>("admin_update_notes", { repo, id, body }),
   deleteRelease: (repo: string, id: number, tag: string) => invoke<void>("admin_delete_release", { repo, id, tag }),
   rerun: (runId: number) => invoke<void>("admin_rerun", { runId }),
-  workshopConfig: () => invoke<{ enabled: boolean; url: string }>("admin_workshop_config"),
-  setWorkshopConfig: (enabled: boolean, url: string) => invoke<{ enabled: boolean; url: string }>("admin_set_workshop_config", { enabled, url }),
+  workshopConfig: () => invoke<{ enabled: boolean; url: string; beta?: string[] }>("admin_workshop_config"),
+  setWorkshopConfig: (enabled: boolean, url: string) => invoke<{ enabled: boolean; url: string; beta: string[] }>("admin_set_workshop_config", { enabled, url }),
+  setBeta: (beta: string[]) => invoke<{ enabled: boolean; url: string; beta: string[] }>("admin_set_beta", { beta }),
 };
 
 // ---- Sitzung (global) -------------------------------------------------------

@@ -1,4 +1,5 @@
 import LocalizationTab from "./workspace/LocalizationTab";
+import { BetaBadge, type FeatureId } from "../features";
 import { UndoButtons } from "../components/UndoButtons";
 import VariablesTab from "./workspace/VariablesTab";
 import TagsTab from "./workspace/TagsTab";
@@ -43,6 +44,8 @@ function save(key: string, value: string) {
     /* egal */
   }
 }
+
+const TAB_FEATURE: Partial<Record<string, FeatureId>> = { textures: "textures", vars: "variables", tags: "tags", code: "code", loc: "loc", mods: "mods", settings: "modsettings", export: "export" };
 
 export default function Workspace({ project, javaReady, autoRun, onBack, onChanged }: Props) {
   const settings = useSettings();
@@ -209,7 +212,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
           <UndoButtons />
         </div>
 
-        <div className="run-group">
+        <div className="run-group" data-tour="run">
           <label htmlFor="runcfg" className="sr-only">
             {t("Startkonfiguration")}
           </label>
@@ -241,6 +244,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
                 data-tip={t("Texturen, Namen und Rezepte neu laden · ohne Neustart")}
               >
                 <RefreshIcon size={16} />
+                <BetaBadge feature="hotreload" />
               </button>
               <button
                 className="icon-btn"
@@ -290,19 +294,22 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
           x === "|" ? (
             <span key={`sep${i}`} className="view-tab-sep" aria-hidden="true" />
           ) : (
-            <button key={x[0]} className={mainTab === x[0] ? "view-tab active" : "view-tab"} onClick={() => setMainTab(x[0])}>
+            <button key={x[0]} className={mainTab === x[0] ? "view-tab active" : "view-tab"} onClick={() => setMainTab(x[0])} data-tour={`tab-${x[0]}`}>
               {x[2]}
               {x[1]}
+              <BetaBadge feature={TAB_FEATURE[x[0]]} />
             </button>
           ),
         )}
         <span className="grow" />
         <button
+          data-tour="tab-console"
           className={["view-tab", "console-tab", mainTab === "console" ? "active" : "", busy ? "running" : problems.length > 0 ? "problems" : ""].join(" ")}
           onClick={() => setMainTab("console")}
         >
           <TerminalIcon size={14} />
           {t("Konsole")}
+          <BetaBadge feature="console" />
           {busy && <span className="console-tab-state"><span className="pulse-dot" />{t("läuft")}</span>}
           {!busy && problems.length > 0 && <span className="count">{problems.length}</span>}
         </button>

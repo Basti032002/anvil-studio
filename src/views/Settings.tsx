@@ -35,7 +35,7 @@ export default function Settings({ onOpenAdmin }: { onOpenAdmin: () => void }) {
     <div className="settings">
       <nav className="settings-nav" aria-label={t("Einstellungsbereiche")}>
         <div className="eyebrow">{t("Einstellungen")}</div>
-        {SECTIONS.map((x) => (
+        {SECTIONS.filter((x) => x.id !== "workshop" || s.workshopEnabled).map((x) => (
           <button key={x.id} className={section === x.id ? "settings-link active" : "settings-link"} onClick={() => setSection(x.id)}>
             {x.label}
           </button>
@@ -57,6 +57,11 @@ export default function Settings({ onOpenAdmin }: { onOpenAdmin: () => void }) {
                     </option>
                   ))}
                 </select>
+              </Row>
+              <Row title={t("Einführung")} desc={t("Die Tour durch Anvil Studio noch einmal ansehen.")}>
+                <button className="btn" onClick={() => window.dispatchEvent(new Event("anvil:tour-start"))}>
+                  {t("Tour starten")}
+                </button>
               </Row>
               <Row title={t("Standard-Editor")} desc={t("Womit „In … öffnen“ im Arbeitsbereich dein Projekt öffnet.")}>
                 <Segmented

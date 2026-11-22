@@ -59,9 +59,9 @@ darkQuery.addEventListener("change", () => {
 });
 
 // Zentrale Workshop-Einstellung hat sich geändert (kommt vom Hintergrund-Abgleich)
-listen<{ enabled: boolean; url: string }>("workshop-config", (e) => {
+listen<{ enabled: boolean; url: string; beta?: string[] }>("workshop-config", (e) => {
   const s = settingsStore.get();
-  if (s) settingsStore.set({ ...s, workshopEnabled: e.payload.enabled, workshopUrl: e.payload.url });
+  if (s) settingsStore.set({ ...s, workshopEnabled: e.payload.enabled, workshopUrl: e.payload.url, betaFeatures: e.payload.beta ?? [] });
   import("./workshop").then((m) => m.refreshWorkshop()).catch(() => {});
 }).catch(() => {});
 
