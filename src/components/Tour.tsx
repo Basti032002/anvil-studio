@@ -1,5 +1,20 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { t } from "../i18n";
+import { getSettings, updateSettings, useSettings } from "../state";
+
+/** Läuft die Tour gerade? Andere Fenster (z. B. Patch Notes) warten so lange. */
+let active = false;
+const idleWaiters: (() => void)[] = [];
+export function whenTourIdle(cb: () => void) {
+  const s = getSettings();
+  // Tour läuft – oder startet gleich (allererster Start)
+  if (active || (s && !s.tourDone)) idleWaiters.push(cb);
+  else cb();
+}
+function setActive(v: boolean) {
+  active = v;
+  if (!v) idleWaiters.splice(0).forEach((f) => f());
+}
 
 /**
  * Willkommens-Tour beim ersten Start: führt durch das ganze Studio.
@@ -7,7 +22,6 @@ import { t } from "../i18n";
  * Neu starten: window.dispatchEvent(new Event("anvil:tour-start"))
  */
 
-const DONE_KEY = "anvil.tourDone";
 
 type Step = {
   title: string;
@@ -21,6 +35,10 @@ type Step = {
   tab?: string;
   /** Mitmach-Schritt: geht weiter, sobald das erfüllt ist */
   waitFor?: () => boolean;
+  /** „Weiter“ erst, wenn das erfüllt ist */
+  need?: () => boolean;
+  /** Zusätzlich anklickbar (ohne Hervorhebung) */
+  allow?: string[];
   /** Was der Nutzer jetzt tun soll */
   todo?: string;
 };
@@ -57,6 +75,8 @@ function steps(): Step[] {
       closest: ".field",
       title: t("Name deiner Mod"),
       body: t("So heißt deine Mod im Spiel. Die Mod-ID daneben wird automatisch daraus gebildet – das ist der technische Name, den du später nicht mehr ändern solltest."),
+      todo: t("Gib deiner Mod einen Namen."),
+      need: () => !!(document.querySelector("#name") as HTMLInputElement | null)?.value.trim(),
     },
     {
       target: "#mcver",
@@ -68,7 +88,8 @@ function steps(): Step[] {
       target: '[data-tour="np-create"]',
       title: t("Projekt erstellen"),
       body: t("Autor und Beschreibung sind freiwillig. Beim ersten Projekt kann das Anlegen einen Moment dauern, weil die Mod-Vorlage heruntergeladen wird."),
-      todo: t("Gib einen Namen ein und klicke auf „Projekt erstellen“."),
+      todo: t("Klicke auf „Projekt erstellen“."),
+      allow: ["#name"],
       waitFor: () => has(".view-tabs"),
     },
     {
@@ -189,13 +210,17 @@ function steps(): Step[] {
 type Rect = { x: number; y: number; w: number; h: number };
 
 export function Tour() {
-  const [idx, setIdx] = useState<number | null>(() => {
-    try {
-      return localStorage.getItem(DONE_KEY) ? null : 0;
-    } catch {
-      return null;
-    }
-  });
+  const settings = useSettings();
+  const [idx, setIdx] = useState<number | null>(null);
+  const [confirmEnd, setConfirmEnd] = useState(false);
+  // Nur beim allerersten Start von selbst (gespeichert in den Einstellungen, übersteht Updates)
+  const checked = useRef(false);
+  useEffect(() => {
+    if (!settings || checked.current) return;
+    checked.current = true;
+    if (!settings.tourDone) setIdx(0);
+  }, [settings]);
+  useEffect(() => setActive(idx !== null), [idx]);
   const [rect, setRect] = useState<Rect | null>(null);
   const [, tick] = useState(0);
   const bubble = useRef<HTMLDivElement>(null);
@@ -240,6 +265,42 @@ export function Tour() {
     return () => window.clearInterval(h);
   }, [idx]);
 
+  // Während der Tour geht nur, was die Tour gerade zeigt – alles andere ist gesperrt
+  useEffect(() => {
+    if (!step) return;
+    const allowed = (n: EventTarget | null) => {
+      if (!(n instanceof Node)) return false;
+      if (bubble.current?.contains(n)) return true;
+      const sels = [...(step.target ? [step.target] : []), ...(step.allow ?? [])];
+      return sels.some((sel) => {
+        const el = document.querySelector(sel);
+        const box = el && step.closest && sel === step.target ? el.closest(step.closest) : el;
+        return !!box && (box.contains(n) || (el?.contains(n) ?? false));
+      });
+    };
+    const stopPointer = (e: Event) => {
+      if (allowed(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const stopKey = (e: KeyboardEvent) => {
+      // Tippen im erlaubten Feld geht, Tab und Enter in der Sprechblase auch – sonst nichts (auch keine Tastenkürzel)
+      const inAllowed = allowed(document.activeElement);
+      const isButton = (document.activeElement as HTMLElement | null)?.tagName === "BUTTON";
+      const shortcut = e.ctrlKey || e.metaKey || e.altKey || e.key === "Escape" || /^F\d+$/.test(e.key) || (e.key === "Enter" && !isButton);
+      if (inAllowed && !shortcut) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const evs = ["pointerdown", "mousedown", "mouseup", "click", "dblclick", "auxclick", "contextmenu"];
+    evs.forEach((ev) => window.addEventListener(ev, stopPointer, true));
+    window.addEventListener("keydown", stopKey, true);
+    return () => {
+      evs.forEach((ev) => window.removeEventListener(ev, stopPointer, true));
+      window.removeEventListener("keydown", stopKey, true);
+    };
+  }, [idx]);
+
   useLayoutEffect(() => {
     if (bubble.current) {
       const b = bubble.current.getBoundingClientRect();
@@ -250,13 +311,13 @@ export function Tour() {
   if (!step || idx === null) return null;
 
   const finish = () => {
-    try {
-      localStorage.setItem(DONE_KEY, "1");
-    } catch {}
+    updateSettings({ tourDone: true }).catch(() => {});
+    setConfirmEnd(false);
     setIdx(null);
   };
   const last = idx === list.length - 1;
-  const blocked = !!step.waitFor && !step.waitFor();
+  const blocked = (!!step.waitFor && !step.waitFor()) || (!!step.need && !step.need());
+  const canBack = idx > 0 && !list[idx - 1].waitFor;
   const missing = !!step.target && !rect;
 
   // Sprechblase neben das Ziel setzen, im Fenster halten
@@ -289,11 +350,22 @@ export function Tour() {
             {idx + 1} / {list.length}
           </span>
           <span className="grow" />
-          {!last && (
-            <button className="tour-skip" onClick={finish}>
-              {idx === 0 ? t("Später") : t("Tour beenden")}
-            </button>
-          )}
+          {!last &&
+            (confirmEnd ? (
+              <span className="tour-confirm">
+                {t("Wirklich beenden?")}
+                <button className="tour-skip strong" onClick={finish}>
+                  {t("Ja")}
+                </button>
+                <button className="tour-skip" onClick={() => setConfirmEnd(false)}>
+                  {t("Nein")}
+                </button>
+              </span>
+            ) : (
+              <button className="tour-skip" onClick={() => setConfirmEnd(true)}>
+                {idx === 0 ? t("Überspringen") : t("Tour beenden")}
+              </button>
+            ))}
         </div>
         <div className="tour-title">{step.title}</div>
         <div className="tour-body">{step.body}</div>
@@ -308,7 +380,7 @@ export function Tour() {
           <span style={{ width: `${((idx + 1) / list.length) * 100}%` }} />
         </div>
         <div className="tour-actions">
-          {idx > 0 && !last && (
+          {canBack && !last && (
             <button className="btn small" onClick={() => setIdx(idx - 1)}>
               {t("Zurück")}
             </button>
@@ -318,8 +390,12 @@ export function Tour() {
             <button className="btn small primary" onClick={finish}>
               {t("Los geht’s")}
             </button>
-          ) : blocked ? (
+          ) : blocked && step.waitFor ? (
             <span className="muted small">{t("Mach den Schritt – dann geht es weiter.")}</span>
+          ) : blocked ? (
+            <button className="btn small primary" disabled>
+              {t("Weiter")}
+            </button>
           ) : (
             <button className="btn small primary" onClick={() => setIdx(idx + 1)}>
               {idx === 0 ? t("Tour starten") : t("Weiter")}

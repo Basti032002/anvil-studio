@@ -39,6 +39,14 @@ pub struct Settings {
     pub start_page: String,
     /// Arbeitsspeicher beim Spielen aus dem Workshop (MB)
     pub play_memory_mb: u32,
+    /// Willkommens-Tour erledigt. Fehlt das Feld in einer vorhandenen Datei
+    /// (Installation von vor der Tour), gilt sie als erledigt – nur der allererste Start zeigt sie.
+    #[serde(default = "yes")]
+    pub tour_done: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl Default for Settings {
@@ -60,6 +68,7 @@ impl Default for Settings {
             beta_features: Vec::new(),
             start_page: "projects".into(),
             play_memory_mb: 4096,
+            tour_done: false,
         }
     }
 }

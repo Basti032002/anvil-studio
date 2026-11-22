@@ -89,6 +89,8 @@ export type Settings = {
   workshopEnabled: boolean;
   /** Funktionen mit „Beta“-Plakette (zentral im Entwicklerbereich festgelegt) */
   betaFeatures: string[];
+  /** Willkommens-Tour erledigt (nur der allererste Start zeigt sie) */
+  tourDone: boolean;
   startPage: "workshop" | "projects";
   playMemoryMb: number;
 };

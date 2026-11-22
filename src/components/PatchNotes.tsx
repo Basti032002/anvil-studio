@@ -1,4 +1,5 @@
 import { t, LANG } from "../i18n";
+import { whenTourIdle } from "./Tour";
 import { Fragment, useEffect, useState } from "react";
 import { PatchNotes, settingsApi } from "../api";
 import { CloseIcon, SparkIcon } from "../icons";
@@ -46,11 +47,14 @@ function Markdown({ text }: { text: string }) {
 export default function PatchNotesDialog() {
   const [notes, setNotes] = useState<PatchNotes | null>(null);
   useEffect(() => {
+    // Erst nach der Willkommens-Tour zeigen
     const id = window.setTimeout(() => {
-      settingsApi
-        .patchNotesPending()
-        .then((n) => n && setNotes(n))
-        .catch(() => {});
+      whenTourIdle(() =>
+        settingsApi
+          .patchNotesPending()
+          .then((n) => n && setNotes(n))
+          .catch(() => {}),
+      );
     }, 1200);
     return () => window.clearTimeout(id);
   }, []);
