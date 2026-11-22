@@ -1,4 +1,13 @@
 {
   "enabled": false,
-  "url": "https://workshop.forge-host.net"
+  "url": "https://workshop.forge-host.net",
+  "beta": [
+    "blueprints",
+    "dimensions",
+    "energy",
+    "guis",
+    "hotreload",
+    "models",
+    "nodes"
+  ]
 }
