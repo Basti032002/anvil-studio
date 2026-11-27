@@ -7,6 +7,7 @@ mod energy;
 mod textures;
 mod content;
 mod dimension;
+mod plugins;
 mod portal;
 mod export;
 mod fsx;
@@ -38,6 +39,7 @@ pub fn run() {
                 eprintln!("Migration fehlgeschlagen: {e}");
             }
             report::install_panic_hook(app.handle());
+            plugins::reload(app.handle());
             workshop::start_remote_poll(app.handle().clone());
             Ok(())
         })
@@ -61,6 +63,20 @@ pub fn run() {
             report::report_pending_crash,
             report::report_dismiss_crash,
             report::report_send,
+            plugins::plugins_list,
+            plugins::plugins_inspect,
+            plugins::plugins_install,
+            plugins::plugins_remove,
+            plugins::plugins_toggle,
+            plugins::plugins_scaffold,
+            plugins::plugin_read,
+            plugins::plugin_icon,
+            plugins::plugin_http,
+            plugins::plugin_secret_get,
+            plugins::plugin_secret_set,
+            plugins::plugin_write_file,
+            plugins::plugin_latest_jar,
+            plugins::plugin_read_picked,
             account::studio_account_register,
             account::studio_account_resend,
             account::studio_account_verify,

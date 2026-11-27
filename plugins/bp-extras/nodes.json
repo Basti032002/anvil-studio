@@ -1,0 +1,298 @@
+[
+  {
+    "kind": "particle_ring",
+    "cat": "world",
+    "label": "Partikel-Ring",
+    "desc": "Partikel im Kreis um die Position des Ereignisses",
+    "props": [
+      {
+        "key": "particle",
+        "label": "Partikel",
+        "type": "select",
+        "def": "FLAME",
+        "options": [
+          [
+            "FLAME",
+            "Flamme"
+          ],
+          [
+            "SOUL_FIRE_FLAME",
+            "Seelenflamme"
+          ],
+          [
+            "HAPPY_VILLAGER",
+            "Grüne Funken"
+          ],
+          [
+            "END_ROD",
+            "Endstab-Funken"
+          ],
+          [
+            "HEART",
+            "Herzen"
+          ],
+          [
+            "CLOUD",
+            "Wolke"
+          ],
+          [
+            "ENCHANT",
+            "Verzauberung"
+          ],
+          [
+            "PORTAL",
+            "Portal"
+          ],
+          [
+            "NOTE",
+            "Noten"
+          ],
+          [
+            "WITCH",
+            "Hexe"
+          ],
+          [
+            "CRIT",
+            "Kritischer Treffer"
+          ],
+          [
+            "TOTEM_OF_UNDYING",
+            "Totem"
+          ]
+        ]
+      },
+      {
+        "key": "radius",
+        "label": "Radius",
+        "type": "number",
+        "def": "2",
+        "pin": "num"
+      },
+      {
+        "key": "count",
+        "label": "Anzahl",
+        "type": "number",
+        "def": "24",
+        "pin": "num"
+      },
+      {
+        "key": "height",
+        "label": "Höhe",
+        "type": "number",
+        "def": "0.2",
+        "pin": "num"
+      }
+    ],
+    "java": "int n = Math.max(1, {{int:count}});\ndouble r = {{num:radius}};\nfor (int i = 0; i < n; i++) {\n    double a = Math.PI * 2 * i / n;\n    level.sendParticles(net.minecraft.core.particles.ParticleTypes.{{ident:particle}}, x + Math.cos(a) * r, y + {{num:height}}, z + Math.sin(a) * r, 1, 0, 0, 0, 0);\n}"
+  },
+  {
+    "kind": "particle_spiral",
+    "cat": "world",
+    "label": "Partikel-Spirale",
+    "desc": "Eine Spirale nach oben",
+    "props": [
+      {
+        "key": "particle",
+        "label": "Partikel",
+        "type": "select",
+        "def": "END_ROD",
+        "options": [
+          [
+            "FLAME",
+            "Flamme"
+          ],
+          [
+            "SOUL_FIRE_FLAME",
+            "Seelenflamme"
+          ],
+          [
+            "HAPPY_VILLAGER",
+            "Grüne Funken"
+          ],
+          [
+            "END_ROD",
+            "Endstab-Funken"
+          ],
+          [
+            "HEART",
+            "Herzen"
+          ],
+          [
+            "CLOUD",
+            "Wolke"
+          ],
+          [
+            "ENCHANT",
+            "Verzauberung"
+          ],
+          [
+            "PORTAL",
+            "Portal"
+          ],
+          [
+            "NOTE",
+            "Noten"
+          ],
+          [
+            "WITCH",
+            "Hexe"
+          ],
+          [
+            "CRIT",
+            "Kritischer Treffer"
+          ],
+          [
+            "TOTEM_OF_UNDYING",
+            "Totem"
+          ]
+        ]
+      },
+      {
+        "key": "radius",
+        "label": "Radius",
+        "type": "number",
+        "def": "1",
+        "pin": "num"
+      },
+      {
+        "key": "height",
+        "label": "Höhe",
+        "type": "number",
+        "def": "3",
+        "pin": "num"
+      }
+    ],
+    "java": "for (int i = 0; i < 60; i++) {\n    double a = i * 0.35;\n    level.sendParticles(net.minecraft.core.particles.ParticleTypes.{{ident:particle}}, x + Math.cos(a) * {{num:radius}}, y + {{num:height}} * i / 60.0, z + Math.sin(a) * {{num:radius}}, 1, 0, 0, 0, 0);\n}"
+  },
+  {
+    "kind": "launch",
+    "cat": "player",
+    "label": "In die Luft schleudern",
+    "desc": "Wirft das Ziel nach oben",
+    "props": [
+      {
+        "key": "power",
+        "label": "Stärke",
+        "type": "number",
+        "def": "1.2",
+        "pin": "num"
+      }
+    ],
+    "java": "if (target != null) {\n    target.setDeltaMovement(target.getDeltaMovement().add(0, {{num:power}}, 0));\n    target.hurtMarked = true;\n}"
+  },
+  {
+    "kind": "safe_explosion",
+    "cat": "world",
+    "label": "Explosion ohne Schaden an Blöcken",
+    "desc": "Knall, Rückstoß und Schaden – aber keine zerstörten Blöcke",
+    "props": [
+      {
+        "key": "power",
+        "label": "Stärke",
+        "type": "number",
+        "def": "3",
+        "pin": "num"
+      }
+    ],
+    "java": "level.explode(null, x, y, z, (float) {{num:power}}, net.minecraft.world.level.Level.ExplosionInteraction.NONE);"
+  },
+  {
+    "kind": "repair_hand",
+    "cat": "player",
+    "label": "Item in der Hand reparieren",
+    "desc": "Setzt die Haltbarkeit zurück",
+    "props": [],
+    "java": "if (player != null && player.getMainHandItem().isDamageableItem()) player.getMainHandItem().setDamageValue(0);"
+  },
+  {
+    "kind": "random_teleport",
+    "cat": "player",
+    "label": "Zufällig teleportieren",
+    "desc": "Teleportiert das Ziel an eine zufällige Stelle im Umkreis – auf den Boden",
+    "props": [
+      {
+        "key": "radius",
+        "label": "Umkreis",
+        "type": "number",
+        "def": "32",
+        "pin": "num"
+      }
+    ],
+    "java": "if (target != null) {\n    double r = {{num:radius}};\n    double nx = x + (level.getRandom().nextDouble() * 2 - 1) * r, nz = z + (level.getRandom().nextDouble() * 2 - 1) * r;\n    int ny = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, (int) Math.floor(nx), (int) Math.floor(nz));\n    target.teleportTo(nx, ny, nz);\n}"
+  },
+  {
+    "kind": "heal_area",
+    "cat": "player",
+    "label": "Spieler im Umkreis heilen",
+    "desc": "",
+    "props": [
+      {
+        "key": "radius",
+        "label": "Umkreis",
+        "type": "number",
+        "def": "8",
+        "pin": "num"
+      },
+      {
+        "key": "amount",
+        "label": "Herzen",
+        "type": "number",
+        "def": "2",
+        "pin": "num"
+      }
+    ],
+    "java": "double r = {{num:radius}};\nfor (net.minecraft.world.entity.player.Player pl : level.getEntitiesOfClass(net.minecraft.world.entity.player.Player.class, new net.minecraft.world.phys.AABB(x - r, y - r, z - r, x + r, y + r, z + r))) pl.heal((float) ({{num:amount}} * 2));"
+  },
+  {
+    "kind": "moon_phase",
+    "cat": "world",
+    "label": "Mondphase",
+    "desc": "0 = Vollmond … 4 = Neumond",
+    "props": [],
+    "value": "num",
+    "expr": "(double) ((level.getDayTime() / 24000L) % 8L)"
+  },
+  {
+    "kind": "players_online",
+    "cat": "world",
+    "label": "Spieler online",
+    "desc": "",
+    "props": [],
+    "value": "num",
+    "expr": "(double) level.getServer().getPlayerCount()"
+  },
+  {
+    "kind": "in_water",
+    "cat": "player",
+    "label": "Ist im Wasser?",
+    "desc": "",
+    "props": [],
+    "value": "bool",
+    "expr": "target != null && target.isInWater()"
+  },
+  {
+    "kind": "biome_is",
+    "cat": "world",
+    "label": "Ist im Biom?",
+    "desc": "z. B. minecraft:desert",
+    "props": [
+      {
+        "key": "biome",
+        "label": "Biom-ID",
+        "type": "text",
+        "def": "minecraft:desert"
+      }
+    ],
+    "value": "bool",
+    "expr": "level.getBiome(BlockPos.containing(x, y, z)).unwrapKey().map(k -> k.location().toString()).orElse(\"\").equals({{text:biome}})"
+  },
+  {
+    "kind": "distance_center",
+    "cat": "world",
+    "label": "Entfernung zur Weltmitte",
+    "desc": "in Blöcken, ohne Höhe",
+    "props": [],
+    "value": "num",
+    "expr": "Math.sqrt(x * x + z * z)"
+  }
+]

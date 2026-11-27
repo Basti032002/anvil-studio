@@ -77,18 +77,25 @@ fn newest_crash(run: &Path, since: u64) -> Option<PathBuf> {
 
 /// Hat Minecraft seit `since` einen Absturzbericht geschrieben?
 #[tauri::command]
-pub fn report_mc_crashed(app: AppHandle, project_id: String, since: u64) -> bool {
-    crate::projects::get(&app, &project_id).ok().and_then(|p| newest_crash(&PathBuf::from(&p.path).join("run"), since)).is_some()
+pub async fn report_mc_crashed(app: AppHandle, project_id: String, since: u64) -> bool {
+    tauri::async_runtime::spawn_blocking(move || crate::projects::get(&app, &project_id).ok().and_then(|p| newest_crash(&PathBuf::from(&p.path).join("run"), since)).is_some()).await.unwrap_or(false)
 }
 
 /// Was mitgeschickt würde – der Nutzer sieht es vor dem Senden
 #[tauri::command]
-pub fn report_collect(app: AppHandle, project_id: Option<String>, minecraft: bool, since: Option<u64>) -> Collected {
+pub async fn report_collect(app: AppHandle, project_id: Option<String>, minecraft: bool, since: Option<u64>) -> Collected {
+    // läuft im Hintergrund, damit das Formular sofort bedienbar ist
+    tauri::async_runtime::spawn_blocking(move || collect(app, project_id, minecraft, since)).await.unwrap_or(Collected { system: vec![], logs: vec![] })
+}
+
+fn collect(app: AppHandle, project_id: Option<String>, minecraft: bool, since: Option<u64>) -> Collected {
     let mut system = vec![
         ("Anvil Studio".to_string(), app.package_info().version.to_string()),
         ("Betriebssystem".into(), format!("{} {}", std::env::consts::OS, std::env::consts::ARCH)),
     ];
-    if let Ok(v) = std::process::Command::new("cmd").args(["/C", "ver"]).output() {
+    let mut ver = std::process::Command::new("cmd");
+    ver.args(["/C", "ver"]);
+    if let Ok(v) = crate::util::hide_window_std(&mut ver).output() {
         let s = String::from_utf8_lossy(&v.stdout).trim().to_string();
         if !s.is_empty() {
             system.push(("Windows".into(), s));

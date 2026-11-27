@@ -85,6 +85,20 @@ type SetFn<T> = (v: T | ((prev: T) => T)) => void;
  * - load(v)     frisch geladene Daten; Verlauf bleibt, wenn sie zum letzten Stand passen
  * - replace(v)  Stand ersetzen ohne neuen Schritt (z. B. nach dem Speichern)
  */
+/** Setzer der gerade offenen Editoren (für Plugins) */
+const external = new Map<string, Set<(v: unknown) => void>>();
+/** Aktueller Wert eines Verlaufs (z. B. Projektinhalt), falls geladen */
+export function getPresent(key: string): unknown {
+  return store.get(key)?.present ?? undefined;
+}
+/** Wert von außen setzen (rückgängig machbar). false = kein Editor offen */
+export function setExternal(key: string, v: unknown): boolean {
+  const set = external.get(key);
+  if (!set || !set.size) return false;
+  set.forEach((f) => f(v));
+  return true;
+}
+
 export function useUndoable<T>(key: string, initial: T): [T, SetFn<T>, { load: (v: T) => void; replace: (v: T) => void }] {
   const [value, setValue] = useState<T>(initial);
   const ref = useRef<T>(initial);
@@ -124,6 +138,16 @@ export function useUndoable<T>(key: string, initial: T): [T, SetFn<T>, { load: (
     notifyUndo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const k = key;
+    const f = (v: unknown) => set(v as T);
+    if (!external.has(k)) external.set(k, new Set());
+    external.get(k)!.add(f);
+    return () => {
+      external.get(k)?.delete(f);
+    };
+  }, [key, set]);
 
   const load = useCallback((v: T) => {
     const h = store.get(keyRef.current);

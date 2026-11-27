@@ -14,10 +14,12 @@ import ExportTab from "./workspace/ExportTab";
 import ConsoleView from "./workspace/ConsoleView";
 
 const CodeTab = lazy(() => import("./workspace/CodeTab"));
-type MainTab = "content" | "textures" | "code" | "vars" | "tags" | "loc" | "mods" | "settings" | "export" | "console";
-import { RefreshIcon, UndoIcon, ChevronIcon, CodeIcon, CubeIcon, GearIcon, DownloadIcon, FolderIcon, HammerIcon, PackageIcon, PlayIcon, StopIcon, TerminalIcon, TranslateIcon, VariableIcon, TagIcon, ImageIcon } from "../icons";
+type MainTab = "content" | "textures" | "code" | "vars" | "tags" | "loc" | "mods" | "plugins" | "settings" | "export" | "console";
+import { RefreshIcon, UndoIcon, ChevronIcon, CodeIcon, CubeIcon, GearIcon, DownloadIcon, FolderIcon, HammerIcon, PackageIcon, PlayIcon, StopIcon, TerminalIcon, TranslateIcon, VariableIcon, TagIcon, ImageIcon, PuzzleIcon } from "../icons";
 import { toast, useSettings } from "../state";
 import { markNotRunning, markStarted, pushLog, useLastExit, useLogs, useRunning } from "../store";
+import { pluginEditors, runExportSteps, usePlugins } from "../plugins";
+import PluginsTab from "./workspace/PluginsTab";
 
 type Props = { project: Project; javaReady: boolean; autoRun?: boolean; onBack: () => void; onChanged?: () => void };
 
@@ -53,6 +55,8 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
   const running = useRunning(project.id);
   const lastExit = useLastExit(project.id);
   const [mainTab, setMainTab] = useState<MainTab>(() => (autoRun ? "console" : (load(`anvil.tab.${project.id}`, "content") as MainTab)));
+  const pluginList = usePlugins();
+  const hasPluginEditors = pluginList.length >= 0 && pluginEditors.length > 0;
   // andere Bereiche können einen Tab öffnen (z. B. „In Localization öffnen“)
   useEffect(() => {
     const on = (e: Event) => setMainTab((e as CustomEvent<MainTab>).detail);
@@ -96,6 +100,8 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
       return;
     }
     if (!lastExit.success) toast(t("{v0} ist fehlgeschlagen.", { v0: TASK_LABELS[lastExit.task as Task] ?? lastExit.task }), "error");
+    // Plugins: Schritte nach dem Bauen (z. B. Hochladen)
+    if (lastExit.success && lastExit.task === "build") runExportSteps(project);
     refreshInfo().then(async () => {
       if (exportPending && lastExit.task === "build") {
         setExportPending(false);
@@ -287,6 +293,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
             "|",
             ["loc", t("Sprachen"), <TranslateIcon size={14} />],
             ["mods", t("Mods"), <PackageIcon size={14} />],
+            ...(hasPluginEditors ? [["plugins", t("Plugins"), <PuzzleIcon size={14} />] as [MainTab, string, React.ReactNode]] : []),
             ["settings", t("Mod-Einstellungen"), <GearIcon size={14} />],
             ["export", t("Export"), <DownloadIcon size={14} />],
           ] as ([MainTab, string, React.ReactNode] | "|")[]
@@ -343,6 +350,11 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
       {mainTab === "mods" && (
         <div className="ws-view">
           <ModsTab project={project} />
+        </div>
+      )}
+      {mainTab === "plugins" && (
+        <div className="ws-view">
+          <PluginsTab project={project} />
         </div>
       )}
       {mainTab === "settings" && (

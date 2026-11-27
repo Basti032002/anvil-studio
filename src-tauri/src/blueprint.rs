@@ -3,6 +3,7 @@
 //! Befehle – deren Syntax ist über die Versionen 1.21.x stabil.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashSet};
 
@@ -319,7 +320,7 @@ impl<'a> Gen<'a> {
     }
 
     fn node(&self, n: &BpNode, depth: usize, in_lambda: bool, stack: &mut HashSet<String>) -> String {
-        if depth > 48 || stack.contains(&n.id) || EVENT_KINDS.contains(&n.kind.as_str()) || n.kind.starts_with("val_") {
+        if depth > 48 || stack.contains(&n.id) || EVENT_KINDS.contains(&n.kind.as_str()) || n.kind.starts_with("val_") || crate::plugins::is_value_node(&n.kind) {
             return String::new(); // Schleife oder zu tief
         }
         stack.insert(n.id.clone());
@@ -895,6 +896,38 @@ impl<'a> Gen<'a> {
                 };
                 format!("{ind}anvilRun(level, null, x, y, z, \"difficulty {d}\");\n") + &next(stack)
             }
+            // ---- Knoten aus Plugins (<plugin>:<kind>) ----
+            k if k.contains(':') => {
+                let Some(def) = crate::plugins::node_def(k) else { return next(stack) };
+                let tpl = def["java"].as_str().unwrap_or("").to_string();
+                let filled = plugin_defaults(n, &def);
+                let n = &filled;
+                let p = &n.props;
+                let mut used_next = false;
+                let modid = self.api.modid.clone();
+                let body = crate::plugins::expand(&tpl, |ty, key| match ty {
+                    "num" => Some(self.num_in(n, key, 0.0)),
+                    "int" => Some(self.int_in(n, key, 0.0)),
+                    "text" => Some(self.text_in(n, key)),
+                    "bool" => Some(self.bool_in_d(n, key, 0)),
+                    "ident" | "id" => crate::plugins::literal(ty, prop(p, key)),
+                    "modid" => Some(modid.clone()),
+                    "out" => {
+                        if key == "next" {
+                            used_next = true;
+                        }
+                        Some(self.follow(&n.id, key, depth + 1, in_lambda, stack))
+                    }
+                    _ => None,
+                });
+                match body {
+                    Some(b) => {
+                        let rest = if used_next { String::new() } else { self.follow(&n.id, "next", depth, in_lambda, stack) };
+                        format!("{ind}{{\n{ind}    {}\n{ind}}}\n", b.trim().replace('\n', &format!("\n{ind}    "))) + &rest
+                    }
+                    None => next(stack),
+                }
+            }
             _ => next(stack),
         };
         stack.remove(&n.id);
@@ -909,7 +942,7 @@ impl<'a> Gen<'a> {
     fn pin_d(&self, n: &BpNode, key: &str, ty: &str, depth: usize) -> Option<String> {
         let l = self.bp.links.iter().find(|l| l.to == n.id && l.pin == key)?;
         let src = self.nodes.get(l.from.as_str())?;
-        if depth > 40 || !src.kind.starts_with("val_") {
+        if depth > 40 || !(src.kind.starts_with("val_") || crate::plugins::is_value_node(&src.kind)) {
             return None;
         }
         let (code, t) = self.value(src, depth + 1);
@@ -1027,6 +1060,31 @@ impl<'a> Gen<'a> {
             "val_blk_redstone" => (format!("level.getBestNeighborSignal({pos})"), "num"),
             "val_blk_lit" => (format!("anvilBlkIsLit(level, {pos})"), "bool"),
             "val_sneaking" => ("(player != null && player.isShiftKeyDown())".into(), "bool"),
+            k if k.contains(':') => {
+                let Some(def) = crate::plugins::node_def(k) else { return ("0".into(), "num") };
+                let filled = plugin_defaults(n, &def);
+                let n = &filled;
+                let p = &n.props;
+                let ty: &'static str = match def["value"].as_str() {
+                    Some("bool") => "bool",
+                    Some("text") => "text",
+                    _ => "num",
+                };
+                let modid = self.api.modid.clone();
+                let e = crate::plugins::expand(def["expr"].as_str().unwrap_or("0"), |t, key| match t {
+                    "num" => Some(self.num_in_d(n, key, 0.0, d)),
+                    "int" => Some(format!("(int) Math.round({})", self.num_in_d(n, key, 0.0, d))),
+                    "text" => Some(self.pin_d(n, key, "text", d).unwrap_or_else(|| text_expr(self.api, prop(p, key)))),
+                    "bool" => Some(self.bool_in_d(n, key, d)),
+                    "ident" | "id" => crate::plugins::literal(t, prop(p, key)),
+                    "modid" => Some(modid.clone()),
+                    _ => None,
+                });
+                match e {
+                    Some(e) => (format!("({e})"), ty),
+                    None => (if ty == "bool" { "false" } else if ty == "text" { "\"\"" } else { "0" }.into(), ty),
+                }
+            }
             _ => ("0".into(), "num"),
         }
     }
@@ -1132,6 +1190,24 @@ impl<'a> Gen<'a> {
             _ => format!("level.getRandom().nextFloat() < {:.3}f", num(p, "value", 50.0, 0.0, 100.0) / 100.0),
         }
     }
+}
+
+/// Fehlende Eigenschaften eines Plugin-Knotens mit den Vorgaben aus dem Plugin füllen
+fn plugin_defaults(n: &BpNode, def: &Value) -> BpNode {
+    let mut out = n.clone();
+    for pd in def["props"].as_array().cloned().unwrap_or_default() {
+        if let Some(k) = pd["key"].as_str() {
+            if !out.props.contains_key(k) {
+                let v = match &pd["def"] {
+                    Value::String(s) => s.clone(),
+                    Value::Null => String::new(),
+                    v => v.to_string(),
+                };
+                out.props.insert(k.to_string(), v);
+            }
+        }
+    }
+    out
 }
 
 /// Wert umwandeln: num (double) | bool | text (String)
@@ -1599,6 +1675,17 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
         methods.push_str(&format!("\n    private static void anvilFn_{name}({BODY_PARAMS}) {{\n{body}    }}\n"));
     }
     methods.push_str(&extra.into_inner());
+    // Hilfsfunktionen aus Plugins (je Plugin-Knoten einmal)
+    {
+        let mut seen = HashSet::new();
+        for n in active.iter().flat_map(|b| b.nodes.iter()).filter(|n| n.kind.contains(':')) {
+            if seen.insert(n.kind.clone()) {
+                if let Some(m) = crate::plugins::node_def(&n.kind).and_then(|d| d["methods"].as_str().map(String::from)) {
+                    methods.push_str(&format!("\n    // Plugin: {}\n    {}\n", n.kind, m.trim().replace('\n', "\n    ")));
+                }
+            }
+        }
+    }
     // Block-Ereignisse (Tick, Rechtsklick, Redstone) – aufgerufen von Blöcken mit Fähigkeiten
     {
         let mut cases = String::new();

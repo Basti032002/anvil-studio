@@ -8,6 +8,7 @@ import { useSettings } from "./state";
 export type FeatureId =
   // Bereiche (Tabs)
   | "textures"
+  | "plugins"
   | "variables"
   | "tags"
   | "code"
@@ -45,6 +46,7 @@ export const FEATURE_GROUPS: { title: string; items: { id: FeatureId; label: str
     title: t("Bereiche"),
     items: [
       { id: "textures", label: t("Texturen") },
+      { id: "plugins", label: t("Plugins") },
       { id: "variables", label: t("Variablen") },
       { id: "tags", label: t("Tags") },
       { id: "code", label: t("Code") },

@@ -43,7 +43,7 @@ fn read_props(file: &Path) -> std::collections::HashMap<String, String> {
     m
 }
 
-fn toml_file(p: &Project) -> Option<PathBuf> {
+pub fn toml_file(p: &Project) -> Option<PathBuf> {
     [
         "src/main/templates/META-INF/neoforge.mods.toml",
         "src/main/resources/META-INF/neoforge.mods.toml",

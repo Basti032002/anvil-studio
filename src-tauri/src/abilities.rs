@@ -22,7 +22,7 @@ pub struct Ability {
 const JAVA_KINDS: &[&str] = &["energy", "inventory", "tick", "gui", "facing", "active", "redstone", "connect", "recipes"];
 
 pub fn is_custom(b: &BlockDef) -> bool {
-    b.kind == "normal" && b.abilities.iter().any(|a| JAVA_KINDS.contains(&a.kind.as_str()))
+    b.kind == "normal" && b.abilities.iter().any(|a| JAVA_KINDS.contains(&a.kind.as_str()) || a.kind.contains(':'))
 }
 
 pub fn get<'a>(b: &'a BlockDef, kind: &str) -> Option<&'a Ability> {
@@ -271,6 +271,41 @@ pub fn shared_java(blocks: &[&BlockDef], api: &crate::energy::EnergyApi, be_ctor
         }
     }
     let cfg = cfg.trim_end_matches(", ");
+    // Fähigkeiten aus Plugins: je Block ein Abschnitt für Tick und Rechtsklick
+    let (mut p_tick, mut p_use, mut p_methods) = (String::new(), String::new(), String::new());
+    let mut seen = std::collections::HashSet::new();
+    for b in blocks {
+        let (mut t, mut u) = (String::new(), String::new());
+        for a in b.abilities.iter().filter(|a| a.kind.contains(':')) {
+            let Some(def) = crate::plugins::ability_def(&a.kind) else { continue };
+            let defaults: BTreeMap<String, String> = def["props"].as_array().map(|ps| ps.iter().filter_map(|x| Some((x["key"].as_str()?.to_string(), x["def"].as_str().map(String::from).unwrap_or_else(|| x["def"].to_string())))).collect()).unwrap_or_default();
+            let fill = |ty: &str, key: &str| -> Option<String> {
+                if ty == "modid" || ty == "block" {
+                    return Some(if ty == "block" { format!("\"{}\"", b.id) } else { String::new() });
+                }
+                let v = a.props.get(key).cloned().or_else(|| defaults.get(key).cloned()).unwrap_or_default();
+                crate::plugins::literal(ty, &v)
+            };
+            let every = def["every"].as_u64().unwrap_or(1).clamp(1, 72000);
+            if let Some(code) = def["tick"].as_str().and_then(|tp| crate::plugins::expand(tp, fill)) {
+                t.push_str(&format!("            if (be.ticks % {every} == 0) {{ // {}\n                {}\n            }}\n", a.kind, code.trim().replace('\n', "\n                ")));
+            }
+            if let Some(code) = def["use"].as_str().and_then(|tp| crate::plugins::expand(tp, fill)) {
+                u.push_str(&format!("            {{ // {}\n                {}\n            }}\n", a.kind, code.trim().replace('\n', "\n                ")));
+            }
+            if seen.insert(a.kind.clone()) {
+                if let Some(m) = def["methods"].as_str() {
+                    p_methods.push_str(&format!("\n    // Plugin-Fähigkeit: {}\n    {}\n", a.kind, m.trim().replace('\n', "\n    ")));
+                }
+            }
+        }
+        if !t.is_empty() {
+            p_tick.push_str(&format!("            case \"{}\" -> {{\n{t}            }}\n", b.id));
+        }
+        if !u.is_empty() {
+            p_use.push_str(&format!("            case \"{}\" -> {{\n{u}            }}\n", b.id));
+        }
+    }
     let cap = if api.handler { "net.neoforged.neoforge.capabilities.Capabilities.Energy.BLOCK" } else { "net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK" };
     let saves = crate::energy::save_load_n(
         api,
@@ -302,6 +337,21 @@ pub fn shared_java(blocks: &[&BlockDef], api: &crate::energy::EnergyApi, be_ctor
     static final AnvilAbRecipe[] ANVIL_AB_RECIPES = {{
 {recipes}    }};
 
+    /** Fähigkeiten aus Plugins: Tick */
+    static void anvilAbPluginTick(String block, ServerLevel level, BlockPos pos, BlockState state, AnvilAbilityBlockEntity be) {{
+        switch (block) {{
+{p_tick}            default -> {{}}
+        }}
+    }}
+
+    /** Fähigkeiten aus Plugins: Rechtsklick (true = erledigt) */
+    static boolean anvilAbPluginUse(String block, ServerLevel level, BlockPos pos, BlockState state, Player player) {{
+        switch (block) {{
+{p_use}            default -> {{}}
+        }}
+        return false;
+    }}
+{p_methods}
     static AnvilAb anvilAb(net.minecraft.world.level.block.Block block) {{
         return ANVIL_AB.getOrDefault(anvilBlockKey(block), new AnvilAb(0, 0, 0, "bbbbbb", false, 0, 0, "", 0, false, false, "", ""));
     }}
@@ -367,6 +417,7 @@ pub fn shared_java(blocks: &[&BlockDef], api: &crate::energy::EnergyApi, be_ctor
         if (level.isClientSide() || !(level instanceof ServerLevel sl) || !(level.getBlockEntity(pos) instanceof AnvilAbilityBlockEntity be)) return InteractionResult.SUCCESS;
         AnvilAb cfg = be.cfg;
         if (anvilBlockHook("use", anvilBlockKey(state.getBlock()), sl, pos, player)) return InteractionResult.SUCCESS;
+        if (anvilAbPluginUse(anvilBlockKey(state.getBlock()), sl, pos, state, player)) return InteractionResult.SUCCESS;
 {gui_open}        if (cfg.slots() > 0) {{
             player.openMenu(be);
             return InteractionResult.SUCCESS;
@@ -573,6 +624,7 @@ pub fn shared_java(blocks: &[&BlockDef], api: &crate::energy::EnergyApi, be_ctor
                 anvilBlockHook("redstone", key, sl, pos, null);
             }}
             if (cfg.tick() > 0 && be.ticks % cfg.tick() == 0) anvilBlockHook("tick", key, sl, pos, null);
+            anvilAbPluginTick(key, sl, pos, state, be);
         }}
 
 {saves}    }}

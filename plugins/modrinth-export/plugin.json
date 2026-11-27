@@ -1,0 +1,16 @@
+{
+  "id": "modrinth-export",
+  "name": "Modrinth-Export",
+  "version": "1.0.0",
+  "author": "Anvil Studio",
+  "description": "Lädt die fertige Mod-Datei mit Versionsnummer und Änderungen als neue Version zu Modrinth hoch – direkt nach dem Bauen oder über die Befehlspalette.",
+  "anvilStudio": ">=0.5.0-dev.38",
+  "permissions": ["content.read", "export.jar", "network:api.modrinth.com", "secrets"],
+  "contributes": {
+    "commands": [
+      { "id": "setup", "label": "Modrinth: Projekt verbinden", "desc": "Projekt und Zugangsschlüssel einstellen", "script": "scripts/setup.js" },
+      { "id": "upload", "label": "Zu Modrinth hochladen", "desc": "Die zuletzt gebaute Mod-Datei als neue Version veröffentlichen", "script": "scripts/upload.js" }
+    ],
+    "export": [{ "id": "ask", "label": "Nach dem Bauen fragen, ob hochgeladen werden soll", "when": "after", "script": "scripts/after.js" }]
+  }
+}

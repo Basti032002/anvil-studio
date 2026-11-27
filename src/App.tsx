@@ -6,6 +6,8 @@ import McStartup from "./components/McStartup";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ReportDialog from "./components/ReportDialog";
 import { openReport, reportApi } from "./report";
+import PluginManager, { installPluginFile, openPluginManager } from "./components/PluginManager";
+import { pluginCommands, refreshPlugins, runPluginCommand, usePlugins } from "./plugins";
 import { whenTourIdle } from "./components/Tour";
 import { studioAccount, useStudioAccount } from "./studioAccount";
 import { t, takeReturnNav } from "./i18n";
@@ -17,7 +19,7 @@ import { restoreSession, useAccount } from "./admin";
 import { api, importProject, JavaStatus, pickFolder, Project } from "./api";
 import { ActivityBar, NavKey, StatusBar, TitleBar, Toasts } from "./components/Chrome";
 import CommandPalette, { Command } from "./components/CommandPalette";
-import { WorkshopIcon, CubeIcon, GearIcon, GridIcon, HammerIcon, PlayIcon, PlusIcon, RefreshIcon, RocketIcon, ShieldIcon, AlertIcon, StopIcon } from "./icons";
+import { WorkshopIcon, CubeIcon, GearIcon, GridIcon, HammerIcon, PlayIcon, PlusIcon, RefreshIcon, RocketIcon, ShieldIcon, AlertIcon, PuzzleIcon, StopIcon } from "./icons";
 import { checkForUpdate, toast, useSettings, useUpdate } from "./state";
 import Admin from "./views/Admin";
 import NewProject from "./views/NewProject";
@@ -93,6 +95,10 @@ function Studio() {
     return () => window.removeEventListener("anvil:nav", on);
   });
   useEffect(() => installUndoKeys(), []);
+  useEffect(() => {
+    refreshPlugins();
+  }, []);
+  const pluginList = usePlugins();
   // Letztes Mal abgestürzt? Nach Tour und Start-Fenstern nachfragen
   useEffect(() => {
     whenTourIdle(() =>
@@ -216,6 +222,15 @@ function Studio() {
       { id: "ws-stop", label: t("Stoppen"), group: t("Arbeitsbereich"), icon: <StopIcon size={13} />, shortcut: t("Umschalt F5"), disabled: !inWs, run: () => workspaceCommand("stop") },
       { id: "ws-build", label: t("Bauen"), group: t("Arbeitsbereich"), icon: <HammerIcon size={15} />, shortcut: t("Strg B"), disabled: !inWs, run: () => workspaceCommand("build") },
       { id: "report", label: t("Problem melden"), group: t("Anvil Studio"), icon: <AlertIcon size={15} />, run: () => openReport({ kind: "manual", projectId: current?.id }) },
+      { id: "plugins", label: t("Plugins verwalten"), group: t("Anvil Studio"), icon: <PuzzleIcon size={15} />, run: () => openPluginManager() },
+      { id: "plugin-install", label: t("Plugin-Datei installieren …"), group: t("Anvil Studio"), icon: <PuzzleIcon size={15} />, run: () => installPluginFile() },
+      ...pluginCommands().map((c) => ({
+        id: `plugin-${c.plugin.id}-${c.id}`,
+        label: c.label,
+        group: t("Plugin: {p}", { p: c.plugin.manifest.name }),
+        icon: <PuzzleIcon size={15} />,
+        run: () => runPluginCommand(c.plugin, c.script, current ?? null),
+      })),
       { id: "tour", label: t("Einführung starten"), group: t("Anvil Studio"), icon: <RocketIcon size={15} />, run: () => window.dispatchEvent(new Event("anvil:tour-start")) },
       { id: "upd", label: t("Nach Updates suchen"), group: t("Anvil Studio"), icon: <RefreshIcon size={15} />, run: () => checkForUpdate(true) },
       ...(admin
@@ -236,7 +251,8 @@ function Studio() {
         run: () => openWorkspace(p.id, true),
       })),
     ];
-  }, [nav, current, projects, admin]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nav, current, projects, admin, pluginList]);
 
   return (
     <div className="shell">
@@ -312,6 +328,7 @@ function Studio() {
       <Toasts />
       <DialogHost />
       <McStartup />
+      <PluginManager />
       <PatchNotesDialog />
       <ContextMenuHost editLabels={EDIT_LABELS} />
       <Tour />

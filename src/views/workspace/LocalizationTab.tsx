@@ -100,7 +100,15 @@ export default function LocalizationTab({ project }: { project: Project }) {
   if (!content) return <div className="content-loading muted">{t("Lade Texte …")}</div>;
 
   const tr = content.translations ?? {};
-  const value = (code: string, e: LangEntry) => (code === "de_de" ? (tr.de_de?.[e.key] ?? (e.deSet ? e.de : "")) : code === "en_us" ? (tr.en_us?.[e.key] ?? e.en) : (tr[code]?.[e.key] ?? e.legacy[code] ?? ""));
+  /** Englischer Grundname direkt aus dem Inhalt (ohne Verzögerung, damit Tippen flüssig bleibt) */
+  const baseEn = (e: LangEntry): string | undefined => {
+    if (e.kind === "tab") return content.tabName ?? e.en;
+    const [type, id] = e.owner.split(":");
+    if (e.shape) return undefined;
+    const list = type === "block" ? content.blocks : type === "item" ? content.items : type === "mob" ? content.mobs : null;
+    return list?.find((x) => x.id === id)?.nameEn;
+  };
+  const value = (code: string, e: LangEntry) => (code === "en_us" ? (tr.en_us?.[e.key] ?? baseEn(e) ?? e.en) : (tr[code]?.[e.key] ?? e.legacy[code] ?? ""));
   const done = (code: string) => entries.filter((e) => value(code, e).trim()).length;
   const pct = (code: string) => (entries.length ? Math.round((done(code) / entries.length) * 100) : 100);
 
@@ -109,16 +117,15 @@ export default function LocalizationTab({ project }: { project: Project }) {
       if (!c) return c;
       const all = { ...(c.translations ?? {}) };
       const m = { ...(all[code] ?? {}) };
-      if (v.trim()) m[key] = v;
+      if (v.length) m[key] = v;
       else delete m[key];
       all[code] = m;
       return { ...c, translations: all };
     });
   }
 
-  /** Deutsch/Englisch: Grundnamen direkt am Inhalt ändern, abgeleitete Texte überschreiben */
-  function setBase(code: "de_de" | "en_us", e: LangEntry, v: string) {
-    const field = code === "de_de" ? "nameDe" : "nameEn";
+  /** Englisch: Grundnamen direkt am Inhalt ändern, abgeleitete Texte überschreiben */
+  function setEn(e: LangEntry, v: string) {
     const [type, id] = e.owner.split(":");
     if (e.kind === "tab") {
       setContent((c) => (c ? { ...c, tabName: v } : c));
@@ -128,12 +135,12 @@ export default function LocalizationTab({ project }: { project: Project }) {
       setContent((c) => {
         if (!c) return c;
         const key = type === "block" ? "blocks" : type === "item" ? "items" : "mobs";
-        const list = (c[key] as { id: string }[]).map((x) => (x.id === id ? { ...x, [field]: v } : x));
+        const list = (c[key] as { id: string }[]).map((x) => (x.id === id ? { ...x, nameEn: v } : x));
         return { ...c, [key]: list };
       });
       return;
     }
-    setTr(code, e.key, v);
+    setTr("en_us", e.key, v);
   }
 
   async function save() {
@@ -170,11 +177,6 @@ export default function LocalizationTab({ project }: { project: Project }) {
         delete n[short];
         return { ...x, names: n };
       };
-      if (code === "de_de") {
-        // Deutsch: auch die deutschen Namen an den Inhalten löschen
-        const noDe = <T extends { nameDe: string }>(x: T): T => ({ ...strip(x as T & { names?: Record<string, string> }), nameDe: "" });
-        return { ...c, languages: (c.languages ?? []).filter((x) => x !== code), translations: all, blocks: c.blocks.map(noDe), items: c.items.map(noDe), mobs: c.mobs.map(noDe), dimensions: c.dimensions.map((d) => ({ ...d, nameDe: "" })) };
-      }
       return { ...c, languages: (c.languages ?? []).filter((x) => x !== code), translations: all, blocks: c.blocks.map(strip), items: c.items.map(strip), mobs: c.mobs.map(strip) };
     });
   }
@@ -183,7 +185,7 @@ export default function LocalizationTab({ project }: { project: Project }) {
     const dest = await pickSaveFile(t("Übersetzungen exportieren"), `${project.modId}-sprachen.json`, "json", "JSON");
     if (!dest) return;
     const data: Record<string, Record<string, string>> = {};
-    for (const code of ["de_de", "en_us", ...langs]) data[code] = Object.fromEntries(entries.map((e) => [e.key, value(code, e)]).filter(([, v]) => v));
+    for (const code of ["en_us", ...langs]) data[code] = Object.fromEntries(entries.map((e) => [e.key, value(code, e)]).filter(([, v]) => v));
     contentApi
       .langExport(dest, data)
       .then(() => toast(t("Exportiert."), "success"))
@@ -235,7 +237,7 @@ export default function LocalizationTab({ project }: { project: Project }) {
       <header className="loc-head">
         <div className="grow">
           <h1>{t("Sprachen")}</h1>
-          <p className="muted">{t("Alle Texte deiner Mod an einem Ort. Englisch ist immer dabei, weitere Sprachen wie Deutsch fügst du hinzu.")}</p>
+          <p className="muted">{t("Alle Texte deiner Mod an einem Ort. Englisch ist die Grundsprache – jede weitere Sprache, auch Deutsch, fügst du selbst hinzu und übersetzt sie hier.")}</p>
         </div>
         <button className="btn small" onClick={importJson}>
           <ImportIcon size={14} /> {t("Importieren")}
@@ -327,7 +329,7 @@ export default function LocalizationTab({ project }: { project: Project }) {
                     <div className="mono tiny muted loc-key">{e.key}</div>
                   </td>
                   <td>
-                    <input className="input" value={value("en_us", e)} aria-label={t("Englisch")} onChange={(ev) => setBase("en_us", e, ev.target.value)} />
+                    <input className="input" value={value("en_us", e)} aria-label={t("Englisch")} onChange={(ev) => setEn(e, ev.target.value)} />
                   </td>
                   {active && (
                     <td>
@@ -336,7 +338,7 @@ export default function LocalizationTab({ project }: { project: Project }) {
                         value={value(active, e)}
                         placeholder={t("Fehlt – übersetzen")}
                         aria-label={langName(active)}
-                        onChange={(ev) => (active === "de_de" ? setBase("de_de", e, ev.target.value) : setTr(active, e.key, ev.target.value))}
+                        onChange={(ev) => setTr(active, e.key, ev.target.value)}
                       />
                     </td>
                   )}

@@ -1,0 +1,17 @@
+{
+  "id": "bp-extras",
+  "name": "Mehr Blueprint-Knoten",
+  "version": "1.0.0",
+  "author": "Anvil Studio",
+  "description": "Partikel-Ring und -Spirale, Explosion ohne Blockschaden, Schleudern, zufälliges Teleportieren, Heilen im Umkreis, Mondphase, Biom-Abfrage – und die Fähigkeit „Partikel-Aura“ für Blöcke.",
+  "anvilStudio": ">=0.5.0-dev.38",
+  "permissions": [],
+  "contributes": {
+    "nodes": [
+      "nodes.json"
+    ],
+    "abilities": [
+      "abilities.json"
+    ]
+  }
+}

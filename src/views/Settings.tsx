@@ -1,4 +1,5 @@
 import { t, LANG, LANGUAGES, Lang, setLanguage } from "../i18n";
+import { openPluginManager } from "../components/PluginManager";
 import { useState } from "react";
 import { pickFolder, UpdateCheck } from "../api";
 import { Segmented, Toggle } from "../components/Chrome";
@@ -60,6 +61,11 @@ export default function Settings({ onOpenAdmin }: { onOpenAdmin: () => void }) {
                     </option>
                   ))}
                 </select>
+              </Row>
+              <Row title={t("Plugins")} desc={t("Erweiterungen installieren, ein- und ausschalten oder ein eigenes Plugin anlegen.")}>
+                <button className="btn" onClick={() => openPluginManager()}>
+                  {t("Plugins verwalten")}
+                </button>
               </Row>
               <Row title={t("Einführung")} desc={t("Die Tour durch Anvil Studio noch einmal ansehen.")}>
                 <button className="btn" onClick={() => window.dispatchEvent(new Event("anvil:tour-start"))}>

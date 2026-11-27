@@ -1,0 +1,75 @@
+[
+  {
+    "kind": "particle_aura",
+    "group": "Aussehen",
+    "label": "Partikel-Aura",
+    "desc": "Partikel steigen vom Block auf",
+    "color": "#ff7eb6",
+    "every": 10,
+    "props": [
+      {
+        "key": "particle",
+        "label": "Partikel",
+        "type": "select",
+        "def": "ENCHANT",
+        "options": [
+          [
+            "FLAME",
+            "Flamme"
+          ],
+          [
+            "SOUL_FIRE_FLAME",
+            "Seelenflamme"
+          ],
+          [
+            "HAPPY_VILLAGER",
+            "Grüne Funken"
+          ],
+          [
+            "END_ROD",
+            "Endstab-Funken"
+          ],
+          [
+            "HEART",
+            "Herzen"
+          ],
+          [
+            "CLOUD",
+            "Wolke"
+          ],
+          [
+            "ENCHANT",
+            "Verzauberung"
+          ],
+          [
+            "PORTAL",
+            "Portal"
+          ],
+          [
+            "NOTE",
+            "Noten"
+          ],
+          [
+            "WITCH",
+            "Hexe"
+          ],
+          [
+            "CRIT",
+            "Kritischer Treffer"
+          ],
+          [
+            "TOTEM_OF_UNDYING",
+            "Totem"
+          ]
+        ]
+      },
+      {
+        "key": "count",
+        "label": "Anzahl pro halbe Sekunde",
+        "type": "number",
+        "def": "4"
+      }
+    ],
+    "tick": "level.sendParticles(net.minecraft.core.particles.ParticleTypes.{{ident:particle}}, pos.getX() + 0.5, pos.getY() + 1.1, pos.getZ() + 0.5, {{int:count}}, 0.3, 0.2, 0.3, 0.01);"
+  }
+]

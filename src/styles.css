@@ -2264,3 +2264,32 @@ button.cx-stat { cursor: pointer; }
 .item-ability.on > svg { color: var(--accent); }
 .item-ability-check { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; background: var(--hover); color: var(--muted); font-weight: 700; }
 .item-ability.on .item-ability-check { background: var(--accent); color: #0b0c0f; }
+
+/* ---- Plugins ---- */
+.plugin-chip { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px; border-radius: 4px; font-size: 10px; font-weight: 700; background: color-mix(in srgb, var(--dev) 18%, transparent); color: var(--dev); white-space: nowrap; vertical-align: 1px; }
+.pl-dialog { width: min(1040px, 94vw); height: min(720px, 88vh); padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.pl-dialog.dragging { outline: 2px dashed var(--accent); outline-offset: -6px; }
+.pl-head { display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+.pl-icon { width: 36px; height: 36px; flex: none; border-radius: 9px; display: grid; place-items: center; background: color-mix(in srgb, var(--dev) 15%, transparent); color: var(--dev); }
+.pl-icon.big { width: 44px; height: 44px; border-radius: 11px; }
+.pl-body { flex: 1; min-height: 0; display: flex; }
+.pl-list { flex: 1; min-width: 0; padding: 14px 18px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.pl-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); cursor: pointer; }
+.pl-row:hover { background: var(--hover); }
+.pl-row.active { border-color: var(--accent-line); background: var(--hover); }
+.pl-drop { display: flex; align-items: center; gap: 10px; padding: 14px; border-radius: 12px; border: 1px dashed var(--border-strong); }
+.pl-side { width: 330px; flex: none; border-left: 1px solid var(--border); padding: 16px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.pl-perms { display: flex; flex-direction: column; }
+.pl-perm { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--border); font-size: 12.5px; }
+.pl-perm > svg { flex: none; margin-top: 2px; color: var(--text-2); }
+.pl-perm.warn > svg { color: var(--warn); }
+.pl-perm > span { display: flex; flex-direction: column; gap: 2px; }
+.pl-install { width: 540px; max-height: 86vh; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.callout.warn { display: flex; gap: 8px; align-items: flex-start; border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.pl-textarea { min-height: 110px; resize: vertical; padding: 8px 10px; }
+.pl-editor { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px 1fr; gap: 14px; padding: 0 0 14px; }
+.pl-entries { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+.pl-entry { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.pl-entry.active { border-color: var(--accent-line); background: var(--hover); }
+.pl-form { display: flex; flex-direction: column; gap: 12px; padding: 16px; overflow-y: auto; }
+.pl-form .btn.danger { align-self: flex-start; }

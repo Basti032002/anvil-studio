@@ -31,6 +31,8 @@ export interface NodeSpec {
   value?: ValType;
   /** Braucht der Block diese Fähigkeit? (Hinweis im Editor) */
   needs?: string;
+  /** kommt aus diesem Plugin */
+  plugin?: string;
 }
 
 export const CATS: { id: BpCat; label: string }[] = [

@@ -19,6 +19,7 @@ import {
   MoveIcon,
   PlugIcon,
   PlusIcon,
+  PuzzleIcon,
   RefreshIcon,
   SearchIcon,
   ToggleIcon,
@@ -27,7 +28,8 @@ import {
 import { MachineEditor } from "./StationEditors";
 
 /** Katalog der Block-Fähigkeiten. Muss zu src-tauri/src/abilities.rs passen. */
-export const ABILITIES: { kind: AbilityKind; group: string; label: string; desc: string; icon: React.ReactNode; color: string }[] = [
+export type AbilityInfo = { kind: AbilityKind; group: string; label: string; desc: string; icon: React.ReactNode; color: string; plugin?: string; fields?: import("../../plugins").PluginField[] };
+export const ABILITIES: AbilityInfo[] = [
   { kind: "inventory", group: t("Speichern"), label: t("Inventar"), desc: t("Slots für Items"), icon: <ChestIcon size={15} />, color: "#5aa8ff" },
   { kind: "energy", group: t("Speichern"), label: t("Energiespeicher"), desc: t("Strom speichern (FE) – auch mit anderen Mods"), icon: <BatteryIcon size={15} />, color: "#f0c94c" },
   { kind: "tick", group: t("Verhalten"), label: t("Tick-Logik"), desc: t("Ein Blueprint läuft regelmäßig für jeden Block"), icon: <RefreshIcon size={15} />, color: "#b892ff" },
@@ -92,7 +94,7 @@ export function AbilitiesEditor({
     setOpen((o) => ({ ...o, [kind]: true }));
     if (kind === "ore") return onChange({ ore: { ...block.ore, enabled: true } });
     if (kind === "shapes") return onChange({ shapes: block.shapes.length ? block.shapes : ["stairs", "slab"] });
-    const defaults: Partial<Record<AbilityKind, Record<string, string>>> = {
+    const defaults: Partial<Record<string, Record<string, string>>> = {
       energy: { capacity: "10000", in: "100", out: "100", sides: "bbbbbb", push: "true" },
       inventory: { slots: "9" },
       tick: { ticks: "20" },
@@ -103,6 +105,8 @@ export function AbilitiesEditor({
       redstone: { emit: "false" },
       gui: { gui: content.guis?.[0]?.id ?? "" },
     };
+    const info = abilityInfo(kind);
+    if (info?.fields) defaults[kind] = Object.fromEntries(info.fields.map((f) => [f.key, f.def ?? ""]));
     const extra: Partial<BlockDef> = {};
     if (kind === "connect") Object.assign(extra, { material: block.material === "stone" ? "metal" : block.material });
     onChange({ ...extra, abilities: [...stored, { kind, props: defaults[kind] ?? {} }] });
@@ -137,10 +141,11 @@ export function AbilitiesEditor({
           <section key={a.kind} className="ability-card">
             <div className="ability-head" onClick={() => setOpen((o) => ({ ...o, [a.kind]: !isOpen }))}>
               <span className="ability-icon" style={{ ["--ac" as string]: info.color }}>
-                {info.icon}
+                {info.icon ?? <PuzzleIcon size={15} />}
               </span>
               <span className="grow">
                 <b>{info.label}</b>
+                {info.plugin && <> <PluginChip name={info.plugin} /></>}
                 <span className="muted small"> · {summary(a, block, content)}</span>
               </span>
               <button
@@ -199,6 +204,7 @@ export function AbilitiesEditor({
 
 function summary(a: Ability, b: BlockDef, c: Content): string {
   const p = a.props;
+  if (a.kind.includes(":")) return abilityInfo(a.kind)?.fields?.slice(0, 3).map((f) => `${f.label}: ${p[f.key] ?? f.def ?? ""}`).join(" · ") ?? "";
   switch (a.kind) {
     case "energy":
       return t("{c} FE · rein {i} · raus {o} pro Tick", { c: Number(p.capacity ?? 10000).toLocaleString(), i: p.in ?? "100", o: p.out ?? "100" });
@@ -262,6 +268,30 @@ function AbilityForm({
   onTab: (tab: "mining" | "shapes" | "model") => void;
 }) {
   const p = a.props;
+  if (a.kind.includes(":")) {
+    const info = abilityInfo(a.kind);
+    if (!info) return <div className="muted small">{t("Das Plugin für diese Fähigkeit ist nicht installiert oder ausgeschaltet. Die Einstellungen bleiben erhalten.")}</div>;
+    return (
+      <div className="ability-grid">
+        {(info.fields ?? []).map((f) => (
+          <label key={f.key} className="field">
+            <span className="field-label">{f.label}</span>
+            {f.type === "select" || f.type === "bool" ? (
+              <select className="input" value={p[f.key] ?? f.def ?? ""} onChange={(e) => set({ [f.key]: e.target.value })}>
+                {(f.type === "bool" ? [["true", t("Ja")], ["false", t("Nein")]] : (f.options ?? []).map((o) => (Array.isArray(o) ? o : [o.id, o.label]))).map(([v, l]) => (
+                  <option key={String(v)} value={String(v)}>
+                    {String(l)}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input className="input" type={f.type === "number" ? "number" : "text"} value={p[f.key] ?? f.def ?? ""} onChange={(e) => set({ [f.key]: e.target.value })} />
+            )}
+          </label>
+        ))}
+      </div>
+    );
+  }
   switch (a.kind) {
     case "energy": {
       const sides = (p.sides ?? "bbbbbb").padEnd(6, "b");
@@ -462,11 +492,12 @@ function AbilityMenu({ has, onPick, onClose }: { has: (k: string) => boolean; on
               return (
                 <button key={a.kind} className="ability-menu-item" disabled={done} onClick={() => onPick(a.kind)}>
                   <span className="ability-icon small" style={{ ["--ac" as string]: a.color }}>
-                    {a.icon}
+                    {a.icon ?? <PuzzleIcon size={14} />}
                   </span>
                   <span className="grow">
                     <b>{a.label}</b> <span className="muted small">· {a.desc}</span>
                   </span>
+                  {a.plugin && <PluginChip name={a.plugin} />}
                   {done && <span className="muted small">{t("schon drin")}</span>}
                 </button>
               );
@@ -489,4 +520,13 @@ export function blockBlueprint(project: Project, block: BlockDef, event: string)
     nodes: [{ id: `n${Date.now().toString(36)}`, kind: event, x: 60, y: 80, props: { target: `${project.modId}:${block.id}` } }],
     links: [],
   };
+}
+
+/** Kennzeichen für Bausteine aus Plugins */
+export function PluginChip({ name }: { name: string }) {
+  return (
+    <span className="plugin-chip" title={t("Aus dem Plugin „{p}“", { p: name })}>
+      <PuzzleIcon size={10} /> {name}
+    </span>
+  );
 }

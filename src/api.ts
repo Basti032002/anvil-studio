@@ -249,6 +249,8 @@ export type Content = {
   languages?: string[];
   /** Sprachcode → Schlüssel → Text */
   translations?: Record<string, Record<string, string>>;
+  /** Daten aus Plugin-Editoren: Plugin-ID → { Editor-ID: Einträge } */
+  pluginData?: Record<string, unknown>;
   brewing: BrewDef[];
   events: EventDef[];
   blueprints: Blueprint[];

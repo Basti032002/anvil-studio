@@ -277,7 +277,8 @@ pub async fn mods_update(app: AppHandle, project_id: String) -> Result<u32, Stri
 /// Vor dem Start: aktive Mods nach run/mods kopieren. side = "client" | "server".
 pub fn sync(p: &Project, side: &str) -> Result<usize, String> {
     let mut f = load(p);
-    if f.mods.is_empty() && f.placed.is_empty() {
+    let bundled = crate::plugins::bundled_mods();
+    if f.mods.is_empty() && f.placed.is_empty() && bundled.is_empty() {
         return Ok(0);
     }
     let run_mods = PathBuf::from(&p.path).join("run").join("mods");
@@ -288,7 +289,23 @@ pub fn sync(p: &Project, side: &str) -> Result<usize, String> {
         .filter(|m| m.enabled)
         .filter(|m| if side == "server" { m.server_side != "unsupported" } else { m.client_side != "unsupported" })
         .collect();
-    let wanted_names: Vec<String> = wanted.iter().map(|m| m.file_name.clone()).collect();
+    let mut wanted_names: Vec<String> = wanted.iter().map(|m| m.file_name.clone()).collect();
+    // Mods, die Plugins mitliefern
+    for (name, src, m) in &bundled {
+        let side_ok = match m["side"].as_str() {
+            Some("client") => side == "client",
+            Some("server") => side == "server",
+            _ => true,
+        };
+        if side_ok {
+            let dst = run_mods.join(name);
+            if !dst.exists() {
+                std::fs::create_dir_all(&run_mods).map_err(err)?;
+                std::fs::copy(src, &dst).map_err(err)?;
+            }
+            wanted_names.push(name.clone());
+        }
+    }
     for old in &f.placed {
         if !wanted_names.contains(old) {
             let _ = std::fs::remove_file(run_mods.join(old));

@@ -24,19 +24,12 @@ export function SubTabs({ tabs, value, onChange }: { tabs: [string, string][]; v
   );
 }
 
-/** Name des Inhalts: Englisch immer, Deutsch nur wenn als Sprache hinzugefügt */
-export function NameFields({ en, de, german, onEn, onDe }: { en: string; de: string; german: boolean; onEn: (v: string) => void; onDe: (v: string) => void }) {
+/** Name des Inhalts: immer Englisch – Übersetzungen (auch Deutsch) gibt es im Sprachen-Tab */
+export function NameFields({ en, onEn }: { en: string; de?: string; german?: boolean; onEn: (v: string) => void; onDe?: (v: string) => void }) {
   return (
-    <>
-      <Field label={german ? t("Name (Englisch)") : t("Name")}>
-        <input className="input" value={en} onChange={(e) => onEn(e.target.value)} />
-      </Field>
-      {german && (
-        <Field label={t("Name (Deutsch)")}>
-          <input className="input" value={de} onChange={(e) => onDe(e.target.value)} />
-        </Field>
-      )}
-    </>
+    <Field label={t("Name (Englisch)")} hint={t("Übersetzungen, auch Deutsch, im Tab „Sprachen“")}>
+      <input className="input" value={en} onChange={(e) => onEn(e.target.value)} />
+    </Field>
   );
 }
 

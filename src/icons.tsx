@@ -1,5 +1,6 @@
 // Icons: Phosphor (Bold) – klare, gleichmäßige Linien in der Textfarbe.
 import {
+  PuzzlePiece,
   Bell,
   Star,
   Storefront,
@@ -252,3 +253,4 @@ export const PauseIcon = ({ size = 16 }: P) => <Pause size={size} weight="bold" 
 export const BatteryIcon = ({ size = 16 }: P) => <BatteryCharging size={size} weight="bold" aria-hidden="true" />;
 export const PlugIcon = ({ size = 16 }: P) => <Plug size={size} weight="bold" aria-hidden="true" />;
 export const SolarIcon = ({ size = 16 }: P) => <SolarPanel size={size} weight="bold" aria-hidden="true" />;
+export const PuzzleIcon = ({ size = 16 }: P) => <PuzzlePiece size={size} weight="bold" aria-hidden="true" />;

@@ -27,6 +27,7 @@ import {
   InfoIcon,
   LightningIcon,
   PlusIcon,
+  PuzzleIcon,
   RepeatIcon,
   SearchIcon,
   TrashIcon,
@@ -41,6 +42,7 @@ import { ItemField } from "./ContentForms";
 import { EFFECTS, SOUNDS } from "./LogicEditors";
 import { BpCat, CATS, ENTITIES, isEvent, isValue, makeNode, NODES, nodeId, nodeSpec, NodeSpec, PARTICLES, PropSpec, visibleProps, varKeyFor, GAME_VALUES, VAL_COLOR, ValType } from "./blueprints";
 import { varKindLabel, varScopeLabel } from "./variables";
+import { PluginChip } from "./Abilities";
 import { KNOWN_TAGS } from "./TagsTab";
 
 type View = { x: number; y: number; zoom: number };
@@ -636,7 +638,10 @@ export default function BlueprintEditor({
     }
     for (const n of bp.nodes) {
       const spec = nodeSpec(n.kind);
-      if (!spec) continue;
+      if (!spec) {
+        if (n.kind.includes(":")) out.push({ level: "error", text: t("Ein Knoten aus dem Plugin „{p}“ fehlt – Plugin installieren oder einschalten.", { p: n.kind.split(":")[0] }) });
+        continue;
+      }
       if (isValue(n.kind)) {
         if (!bp.links.some((l) => l.from === n.id && isData(l))) out.push({ level: "info", text: t("„{n}“ ist mit nichts verbunden.", { n: spec.label }), node: n.id });
       } else if (!reach.has(n.id)) out.push({ level: "warn", text: t("„{n}“ hängt an keinem Ereignis und wird nie ausgeführt.", { n: spec.label }), node: n.id });
@@ -899,6 +904,7 @@ export default function BlueprintEditor({
                     {!isEvent(n.kind) && !value && <span className="bp-pin in" data-pin={`in:${n.id}`} />}
                     <span className="bp-node-icon">{KIND_ICON[n.kind] ?? CAT_ICON[spec.cat]}</span>
                     <span className="bp-node-title">{spec.label}</span>
+                    {spec.plugin && <PuzzleIcon size={11} />}
                     {spec.outs.length === 1 && <OutPin node={n.id} out={spec.outs[0].id} onDown={onPinDown} />}
                     {value && <span className="bp-pin dout" data-pin={`dout:${n.id}`} style={{ borderColor: VAL_COLOR[vt] }} onPointerDown={(e) => onDataOutDown(e, n.id)} />}
                   </div>
@@ -1077,6 +1083,7 @@ function BpLibrary({ onAdd, onClose }: { onAdd: (kind: string) => void; onClose:
                   >
                     {n.value ? <span className="bp-lib-val" style={{ borderColor: VAL_COLOR[n.value] }} /> : <span className={`bp-dot cat-${n.cat}`} />}
                     <span className="grow">{n.label}</span>
+                    {n.plugin && <PluginChip name={n.plugin} />}
                   </button>
                 ))}
             </div>

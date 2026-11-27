@@ -16,7 +16,7 @@ use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
-pub const CONTENT_SCHEMA: u32 = 4;
+pub const CONTENT_SCHEMA: u32 = 5;
 /// Bei Änderungen an den Vorlagen hochzählen → Projekte werden neu erzeugt.
 pub const GENERATOR_VERSION: u32 = 3;
 
@@ -401,6 +401,8 @@ pub struct Content {
     pub generated_tags: std::collections::BTreeMap<String, Vec<String>>,
     /// Übersetzungen aus dem Localization-Tab: Sprachcode → Sprachschlüssel → Text (überschreibt Erzeugtes)
     pub translations: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>,
+    /// Daten aus Plugin-Editoren: Plugin-ID → { Editor-ID: [Einträge] }
+    pub plugin_data: std::collections::BTreeMap<String, Value>,
     /// Brau-Rezepte: Trank + Zutat → Trank
     pub brewing: Vec<BrewDef>,
     /// Ereignisse ohne Code: Auslöser → Aktionen
@@ -469,6 +471,7 @@ impl Default for Content {
             tags: vec![],
             generated_tags: Default::default(),
             translations: Default::default(),
+            plugin_data: Default::default(),
             brewing: vec![],
             events: vec![],
             blueprints: vec![],
@@ -616,7 +619,50 @@ pub fn load(p: &Project) -> Result<(Content, bool), String> {
     if old < 4 && !c.languages.iter().any(|l| l == "de_de") && german_names(&c) {
         c.languages.insert(0, "de_de".into());
     }
+    // Ab Version 5 ist Englisch die einzige Grundsprache: eingetragene deutsche Namen werden zu normalen
+    // Übersetzungen, abgeleitete Texte („-Treppe“, „-Spawn-Ei“) werden nicht mehr automatisch übersetzt
+    if old < 5 && german_names(&c) {
+        let entries = lang_entries(p, &c);
+        let de = c.translations.entry("de_de".into()).or_default();
+        for e in entries.iter().filter(|e| e.de_set && e.shape.is_empty() && !e.de.trim().is_empty()) {
+            de.entry(e.key.clone()).or_insert_with(|| e.de.trim().to_string());
+        }
+        if !c.languages.iter().any(|l| l == "de_de") {
+            c.languages.insert(0, "de_de".into());
+        }
+        c.blocks.iter_mut().for_each(|b| b.name_de.clear());
+        c.items.iter_mut().for_each(|i| i.name_de.clear());
+        c.mobs.iter_mut().for_each(|m| m.name_de.clear());
+        c.dimensions.iter_mut().for_each(|d| d.name_de.clear());
+    }
     Ok((c, migrated))
+}
+
+/// Mods, die aktive Plugins mitliefern, als Abhängigkeit in neoforge.mods.toml eintragen
+fn plugin_mod_deps(p: &Project, modid: &str) {
+    let Some(file) = crate::modsettings::toml_file(p) else { return };
+    let Ok(text) = std::fs::read_to_string(&file) else { return };
+    const START: &str = "# >>> anvil-plugins (automatisch, nicht bearbeiten)";
+    const END: &str = "# <<< anvil-plugins";
+    let mut base = text.clone();
+    if let (Some(a), Some(b)) = (text.find(START), text.find(END)) {
+        if b > a {
+            base = format!("{}{}", &text[..a], text[b + END.len()..].trim_start_matches(['\r', '\n']));
+        }
+    }
+    let mut block = String::new();
+    for (_, _, m) in crate::plugins::bundled_mods() {
+        let Some(id) = m["id"].as_str().filter(|s| s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')) else { continue };
+        if m["required"].as_bool() == Some(false) {
+            continue;
+        }
+        let range = m["versionRange"].as_str().filter(|s| s.chars().all(|c| c.is_ascii_alphanumeric() || "[](),.-".contains(c))).unwrap_or("[0,)");
+        block.push_str(&format!("[[dependencies.{modid}]]\nmodId=\"{id}\"\ntype=\"required\"\nversionRange=\"{range}\"\nordering=\"NONE\"\nside=\"BOTH\"\n"));
+    }
+    let next = if block.is_empty() { base.clone() } else { format!("{}\n{START}\n{block}{END}\n", base.trim_end()) };
+    if next != text {
+        let _ = std::fs::write(&file, next);
+    }
 }
 
 /// Gibt es irgendwo deutsche Namen?
@@ -3598,13 +3644,34 @@ fn generate_inner(p: &Project, c: &mut Content) -> Result<String, String> {
         }
     }
 
+    // Dateien aus Plugin-Editoren (alte, nicht mehr erzeugte Dateien werden entfernt)
+    {
+        let res = PathBuf::from(&p.path).join("src/main/resources");
+        let track = PathBuf::from(&p.path).join(".anvil/plugin-files.json");
+        let before: Vec<String> = read_json(&track).and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default();
+        let files = crate::plugins::editor_files(&c.plugin_data, modid);
+        let now: Vec<String> = files.iter().map(|(f, _)| f.clone()).collect();
+        for old in before.iter().filter(|f| !now.contains(f)) {
+            remove_if_exists(res.join(old));
+        }
+        for (rel, text) in &files {
+            let f = res.join(rel);
+            if let Some(parent) = f.parent() {
+                std::fs::create_dir_all(parent).map_err(err)?;
+            }
+            std::fs::write(&f, text).map_err(err)?;
+        }
+        if !now.is_empty() || !before.is_empty() {
+            write_json(&track, &json!(now))?;
+        }
+        plugin_mod_deps(p, modid);
+    }
+
     // Sprachdateien: erzeugte Namen + Übersetzungen aus dem Localization-Tab
     let entries = lang_entries(p, c);
     let ours: std::collections::HashSet<&str> = entries.iter().map(|e| e.key.as_str()).collect();
     let mut files: std::collections::BTreeMap<String, Vec<(String, String)>> = Default::default();
-    if c.languages.iter().any(|l| l == "de_de") {
-        files.insert("de_de".into(), entries.iter().map(|e| (e.key.clone(), e.de.clone())).collect());
-    }
+    // Deutsch ist eine normale Zusatzsprache: nur was im Sprachen-Tab übersetzt wurde
     files.insert("en_us".into(), entries.iter().map(|e| (e.key.clone(), e.en.clone())).collect());
     for e in &entries {
         for (code, text) in &e.legacy {
@@ -3639,7 +3706,10 @@ fn generate_inner(p: &Project, c: &mut Content) -> Result<String, String> {
     for (code, set) in &files {
         let path = assets.join(format!("lang/{code}.json"));
         if !set.is_empty() || path.exists() {
-            merge_lang(&path, set, &removed_keys)?;
+            // eigene Schlüssel ohne Text in dieser Sprache entfernen (z. B. alte automatische Übersetzungen)
+            let mut rm = removed_keys.clone();
+            rm.extend(ours.iter().filter(|k| !set.iter().any(|(x, _)| x == *k)).map(|k| k.to_string()));
+            merge_lang(&path, set, &rm)?;
         }
     }
 
@@ -4820,6 +4890,49 @@ mod tests {
                     pin("g", "or", "b"),
                 ];
                 c.blueprints.push(Blueprint { name: "Block-Logik".into(), enabled: true, nodes, links, ..Default::default() });
+            }
+            // Plugin „Mehr Blueprint-Knoten“ aus dem Repo (plugins/bp-extras)
+            {
+                crate::plugins::set_for_test(&[std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/bp-extras")]);
+                use crate::abilities::Ability;
+                c.blocks.push(BlockDef { id: "ab_aura".into(), abilities: vec![Ability { kind: "bp-extras:particle_aura".into(), props: [("particle".to_string(), "HEART".to_string())].into() }], ..Default::default() });
+                let nodes = vec![
+                    node("e", "ev_join", &[]),
+                    node("ring", "bp-extras:particle_ring", &[("particle", "FLAME"), ("radius", "3")]),
+                    node("sp", "bp-extras:particle_spiral", &[]),
+                    node("l", "bp-extras:launch", &[("power", "1")]),
+                    node("x", "bp-extras:safe_explosion", &[]),
+                    node("rh", "bp-extras:repair_hand", &[]),
+                    node("rt", "bp-extras:random_teleport", &[]),
+                    node("ha", "bp-extras:heal_area", &[]),
+                    node("if", "if", &[]),
+                    node("w", "bp-extras:in_water", &[]),
+                    node("bi", "bp-extras:biome_is", &[]),
+                    node("or", "val_or", &[]),
+                    node("mp", "bp-extras:moon_phase", &[]),
+                    node("po", "bp-extras:players_online", &[]),
+                    node("dc", "bp-extras:distance_center", &[]),
+                    node("add", "val_math", &[("op", "add")]),
+                ];
+                let pin = |a: &str, b: &str, key: &str| BpLink { from: a.into(), out: "value".into(), to: b.into(), pin: key.into() };
+                let links = vec![
+                    link("e", "next", "ring"),
+                    link("ring", "next", "sp"),
+                    link("sp", "next", "l"),
+                    link("l", "next", "x"),
+                    link("x", "next", "rh"),
+                    link("rh", "next", "rt"),
+                    link("rt", "next", "if"),
+                    pin("w", "or", "a"),
+                    pin("bi", "or", "b"),
+                    pin("or", "if", "ifcond"),
+                    link("if", "true", "ha"),
+                    pin("mp", "add", "a"),
+                    pin("po", "add", "b"),
+                    pin("add", "ring", "count"),
+                    pin("dc", "rt", "radius"),
+                ];
+                c.blueprints.push(Blueprint { name: "Plugin-Knoten".into(), enabled: true, nodes, links, ..Default::default() });
             }
             // Tags: eigene + Minecraft-Tags ergänzen (auch doppelt zu Anvils eigenen Einträgen)
             for (registry, id, values) in [

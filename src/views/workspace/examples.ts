@@ -35,7 +35,7 @@ function graph() {
 
 export function buildExample(id: ExampleId, modId: string, uid: (base: string) => string): { block: BlockDef; blueprint?: Blueprint } {
   const metal: Partial<BlockDef> = { material: "metal", hardness: 3, resistance: 6, tool: "pickaxe", tier: "stone" };
-  const mk = (base: string, en: string, de: string, extra: Partial<BlockDef>) => ({ ...newBlock(uid(base)), ...metal, nameEn: en, nameDe: de, ...extra });
+  const mk = (base: string, en: string, _de: string, extra: Partial<BlockDef>) => ({ ...newBlock(uid(base)), ...metal, nameEn: en, ...extra });
   const bp = (b: BlockDef, label: string, g: ReturnType<typeof graph>): Blueprint => ({ name: `${b.nameDe || b.nameEn} · ${label}`, enabled: true, owner: b.id, nodes: g.nodes, links: g.links, comments: [] });
   const target = (b: BlockDef) => ({ target: `${modId}:${b.id}` });
   switch (id) {
@@ -114,9 +114,9 @@ export function buildExample(id: ExampleId, modId: string, uid: (base: string) =
         }),
       };
     case "chest":
-      return { block: { ...newBlock(uid("truhe")), nameEn: "Storage Chest", nameDe: "Lager-Truhe", material: "wood", hardness: 2.5, resistance: 2.5, tool: "axe", abilities: [ab("inventory", { slots: "27" }), ab("facing")] } };
+      return { block: { ...newBlock(uid("truhe")), nameEn: "Storage Chest", nameDe: "", material: "wood", hardness: 2.5, resistance: 2.5, tool: "axe", abilities: [ab("inventory", { slots: "27" }), ab("facing")] } };
     case "lamp": {
-      const b: BlockDef = { ...newBlock(uid("lampe")), nameEn: "Lamp", nameDe: "Lampe", material: "glass", hardness: 0.3, resistance: 0.3, tool: "none", abilities: [ab("active"), ab("light", { level: "15", when: "active" }), ab("redstone")] };
+      const b: BlockDef = { ...newBlock(uid("lampe")), nameEn: "Lamp", nameDe: "", material: "glass", hardness: 0.3, resistance: 0.3, tool: "none", abilities: [ab("active"), ab("light", { level: "15", when: "active" }), ab("redstone")] };
       const g = graph();
       const ev = g.node("ev_block_redstone", 0, 0, target(b));
       const rs = g.node("val_blk_redstone", 0, 180);
