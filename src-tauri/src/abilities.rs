@@ -295,7 +295,7 @@ pub fn shared_java(blocks: &[&BlockDef], api: &crate::energy::EnergyApi, be_ctor
             }
             if seen.insert(a.kind.clone()) {
                 if let Some(m) = def["methods"].as_str() {
-                    p_methods.push_str(&format!("\n    // Plugin-Fähigkeit: {}\n    {}\n", a.kind, m.trim().replace('\n', "\n    ")));
+                    p_methods.push_str(&format!("\n    // plugin ability: {}\n    {}\n", a.kind, m.trim().replace('\n', "\n    ")));
                 }
             }
         }

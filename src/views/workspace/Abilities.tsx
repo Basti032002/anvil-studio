@@ -204,7 +204,17 @@ export function AbilitiesEditor({
 
 function summary(a: Ability, b: BlockDef, c: Content): string {
   const p = a.props;
-  if (a.kind.includes(":")) return abilityInfo(a.kind)?.fields?.slice(0, 3).map((f) => `${f.label}: ${p[f.key] ?? f.def ?? ""}`).join(" · ") ?? "";
+  if (a.kind.includes(":"))
+    return (
+      abilityInfo(a.kind)
+        ?.fields?.slice(0, 3)
+        .map((f) => {
+          const v = p[f.key] ?? f.def ?? "";
+          const o = (f.options ?? []).map((x) => (Array.isArray(x) ? x : [x.id, x.label])).find(([id]) => String(id) === v);
+          return `${f.label}: ${o ? o[1] : v}`;
+        })
+        .join(" · ") ?? ""
+    );
   switch (a.kind) {
     case "energy":
       return t("{c} FE · rein {i} · raus {o} pro Tick", { c: Number(p.capacity ?? 10000).toLocaleString(), i: p.in ?? "100", o: p.out ?? "100" });
