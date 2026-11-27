@@ -6,7 +6,7 @@ import { toast } from "../state";
 import { mcApi, McDeviceCode, McProfile, setProfile } from "../workshop";
 
 /** Anmeldung mit dem Minecraft-Konto (Microsoft-Gerätecode). */
-export default function McLoginDialog({ reason, onDone, onClose }: { reason?: string; onDone: (p: McProfile) => void; onClose: () => void }) {
+export default function McLoginDialog({ reason, onDone, onClose, later }: { reason?: string; onDone: (p: McProfile) => void; onClose: () => void; later?: boolean }) {
   const [code, setCode] = useState<McDeviceCode | null>(null);
   const [state, setState] = useState<"loading" | "waiting" | "expired" | "denied" | "error" | "unavailable">("loading");
   const [error, setError] = useState("");
@@ -122,6 +122,14 @@ export default function McLoginDialog({ reason, onDone, onClose }: { reason?: st
           </div>
         )}
         {state === "unavailable" && <div className="callout warn">{t("Diese Version von Anvil Studio wurde ohne Microsoft-Anmeldung gebaut. Sie kommt mit einem der nächsten Updates.")}</div>}
+        {later && (
+          <div className="row mc-later">
+            <span className="grow" />
+            <button className="btn small" onClick={onClose}>
+              {t("Später")}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

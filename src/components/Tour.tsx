@@ -4,16 +4,45 @@ import { getSettings, updateSettings, useSettings } from "../state";
 
 /** Läuft die Tour gerade? Andere Fenster (z. B. Patch Notes) warten so lange. */
 let active = false;
+let holds = 0;
 const idleWaiters: (() => void)[] = [];
-export function whenTourIdle(cb: () => void) {
+const tourWaiters: (() => void)[] = [];
+const tourPending = () => {
   const s = getSettings();
   // Tour läuft – oder startet gleich (allererster Start)
-  if (active || (s && !s.tourDone)) idleWaiters.push(cb);
+  return active || (!!s && !s.tourDone);
+};
+/** Wenn Tour und alle Start-Fenster (z. B. Minecraft-Anmeldung) fertig sind – für die Patch Notes */
+export function whenTourIdle(cb: () => void) {
+  // Einstellungen noch nicht geladen → noch unklar, ob die Tour kommt
+  if (!getSettings()) return void window.setTimeout(() => whenTourIdle(cb), 200);
+  if (tourPending() || holds > 0) idleWaiters.push(cb);
   else cb();
 }
+/** Nur auf die Tour warten (Start-Fenster, die selbst zurückhalten) */
+export function whenTourDone(cb: () => void) {
+  if (!getSettings()) return void window.setTimeout(() => whenTourDone(cb), 200);
+  if (tourPending()) tourWaiters.push(cb);
+  else cb();
+}
+/** Start-Fenster offen halten: andere warten, bis release() kommt */
+export function holdStartup(): () => void {
+  holds++;
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    holds--;
+    if (!active && holds === 0) idleWaiters.splice(0).forEach((f) => f());
+  };
+}
 function setActive(v: boolean) {
+  const was = active;
   active = v;
-  if (!v) idleWaiters.splice(0).forEach((f) => f());
+  // Nur beim Ende einer laufenden Tour weitermachen (nicht beim ersten Zeichnen)
+  if (v || !was) return;
+  tourWaiters.splice(0).forEach((f) => f());
+  if (holds === 0) idleWaiters.splice(0).forEach((f) => f());
 }
 
 /**

@@ -20,6 +20,13 @@ services:
       IMPRINT_NAME: ""
       IMPRINT_ADDRESS: ""   # Zeilen mit | trennen, z. B. "Musterstr. 1|12345 Musterstadt"
       IMPRINT_EMAIL: ""
+      # Mailversand für Anvil-Studio-Konten (Bestätigungscode, Passwort zurücksetzen).
+      # Zugangsdaten am besten in docker-compose.override.yml oder einer .env eintragen.
+      SMTP_HOST: ""
+      SMTP_PORT: "587"
+      SMTP_USER: ""
+      SMTP_PASS: ""
+      SMTP_FROM: ""          # z. B. "Anvil Studio <noreply@forge-host.net>"
     logging:                # Logs (mit IP-Adressen) nur kurz aufheben
       driver: json-file
       options:

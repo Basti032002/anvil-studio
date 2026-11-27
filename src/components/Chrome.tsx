@@ -24,7 +24,7 @@ import {
 import { dismissToast, useAppVersion, useToasts, useUpdate } from "../state";
 import { useAllRunning } from "../store";
 
-export function TitleBar({ subtitle, onSearch }: { subtitle?: string; onSearch: () => void }) {
+export function TitleBar({ subtitle, onSearch }: { subtitle?: string; onSearch?: () => void }) {
   const win = getCurrentWindow();
   const [maximized, setMaximized] = useState(false);
 
@@ -50,11 +50,15 @@ export function TitleBar({ subtitle, onSearch }: { subtitle?: string; onSearch: 
           </span>
         )}
       </div>
-      <button className="command-center" data-tour="search" onClick={onSearch} aria-label={t("Befehlspalette öffnen")}>
-        <SearchIcon size={13} />
-        <span>{t("Befehl oder Projekt suchen")}</span>
-        <kbd>{t("Strg K")}</kbd>
-      </button>
+      {onSearch ? (
+        <button className="command-center" data-tour="search" onClick={onSearch} aria-label={t("Befehlspalette öffnen")}>
+          <SearchIcon size={13} />
+          <span>{t("Befehl oder Projekt suchen")}</span>
+          <kbd>{t("Strg K")}</kbd>
+        </button>
+      ) : (
+        <span className="grow" data-tauri-drag-region />
+      )}
       <div className="window-controls">
         <button aria-label={t("Minimieren")} onClick={() => win.minimize()}>
           <MinimizeIcon />

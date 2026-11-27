@@ -77,6 +77,7 @@ html[data-lang=en] [data-l=de],html[data-lang=de] [data-l=en]{display:none}
 <div data-l="en">
 <p>Anvil Studio signs users in with their Microsoft account using the official device code flow. The app never sees the account password.</p>
 <ul>
+<li>To use Anvil Studio you create an account with email and password. The server stores the email address, an optional display name, the password only as a salted scrypt hash, the time of registration and last sign-in, and a session (valid for 180 days). The email address is used only for the confirmation code and password resets. You can delete the account at any time in Anvil Studio (Settings → Account).</li>
 <li>The Microsoft, Xbox Live and Minecraft tokens stay on the user's PC. The refresh token is stored in the Windows Credential Manager.</li>
 <li>The Minecraft access token is used to launch the game and, once per sign-in, sent to this workshop server only to verify the Minecraft name and UUID with Mojang. The server does not store it.</li>
 <li>The workshop server stores: Minecraft name and UUID, a workshop session (valid for 30 days), uploaded projects with their files, images and descriptions, reports and anonymous daily download counts.</li>
@@ -87,6 +88,7 @@ html[data-lang=en] [data-l=de],html[data-lang=de] [data-l=en]{display:none}
 <div data-l="de">
 <p>Anvil Studio meldet Nutzer über den offiziellen Microsoft-Gerätecode-Ablauf mit ihrem Microsoft-Konto an. Das Passwort sieht die App nie.</p>
 <ul>
+<li>Für Anvil Studio legst du ein Konto mit E-Mail und Passwort an. Der Server speichert die E-Mail-Adresse, einen freiwilligen Anzeigenamen, das Passwort nur als gesalzenen scrypt-Hash, Zeitpunkt der Registrierung und letzten Anmeldung sowie eine Sitzung (180 Tage gültig). Die E-Mail-Adresse wird nur für den Bestätigungscode und zum Zurücksetzen des Passworts genutzt. Das Konto lässt sich jederzeit in Anvil Studio löschen (Einstellungen → Konto).</li>
 <li>Die Microsoft-, Xbox-Live- und Minecraft-Tokens bleiben auf dem PC des Nutzers, das Refresh-Token in der Windows-Anmeldeinformationsverwaltung.</li>
 <li>Das Minecraft-Token dient zum Starten des Spiels und wird pro Anmeldung einmal an diesen Workshop-Server geschickt, nur um Minecraft-Name und UUID bei Mojang zu prüfen. Der Server speichert es nicht.</li>
 <li>Der Workshop-Server speichert: Minecraft-Name und UUID, eine Workshop-Sitzung (30 Tage gültig), hochgeladene Projekte mit Dateien, Bildern und Beschreibungen, Meldungen sowie anonyme tägliche Download-Zahlen.</li>

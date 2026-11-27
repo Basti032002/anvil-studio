@@ -1,6 +1,9 @@
 import { Tooltips } from "./components/Tooltips";
 import { installUndoKeys } from "./undo";
 import { Tour } from "./components/Tour";
+import AuthGate from "./components/AuthGate";
+import McStartup from "./components/McStartup";
+import { studioAccount, useStudioAccount } from "./studioAccount";
 import { t, takeReturnNav } from "./i18n";
 import { ContextMenuHost, DialogHost } from "./components/Overlay";
 import PatchNotesDialog from "./components/PatchNotes";
@@ -28,7 +31,30 @@ export function workspaceCommand(cmd: "run" | "stop" | "build") {
 
 const EDIT_LABELS = { cut: t("Ausschneiden"), copy: t("Kopieren"), paste: t("Einfügen"), selectAll: t("Alles markieren") };
 
+/** Ohne Anvil-Studio-Konto kein Zugang: erst anmelden/registrieren, dann das Studio */
 export default function App() {
+  const status = useStudioAccount();
+  const [error, setError] = useState("");
+  useEffect(() => {
+    studioAccount.refresh().catch((e) => setError(String(e)));
+  }, []);
+  const known = !!status || !!error;
+  const gate = known && !status?.account;
+  // Start-Bildschirm aus index.html weg, sobald klar ist, ob die Anmeldung kommt
+  useEffect(() => {
+    if (!gate) return;
+    const splash = document.getElementById("splash");
+    if (splash) {
+      splash.classList.add("hide");
+      setTimeout(() => splash.remove(), 500);
+    }
+  }, [gate]);
+  if (!known) return null;
+  if (gate) return <AuthGate offlineError={error || undefined} />;
+  return <Studio />;
+}
+
+function Studio() {
   const [returnNav] = useState(() => takeReturnNav());
   const [nav, setNavRaw] = useState<NavKey>(() => (returnNav === "settings" ? "settings" : "projects"));
   const navigated = useRef(false);
@@ -264,6 +290,7 @@ export default function App() {
       <CommandPalette open={palette} onClose={() => setPalette(false)} commands={commands} />
       <Toasts />
       <DialogHost />
+      <McStartup />
       <PatchNotesDialog />
       <ContextMenuHost editLabels={EDIT_LABELS} />
       <Tour />

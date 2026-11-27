@@ -1,3 +1,4 @@
+mod account;
 mod admin;
 mod blueprint;
 mod gui;
@@ -51,6 +52,15 @@ pub fn run() {
             admin::admin_workshop_config,
             admin::admin_set_workshop_config,
             admin::admin_set_beta,
+            account::studio_account_status,
+            account::studio_account_register,
+            account::studio_account_resend,
+            account::studio_account_verify,
+            account::studio_account_login,
+            account::studio_account_forgot,
+            account::studio_account_reset,
+            account::studio_account_logout,
+            account::studio_account_delete,
             content::structures_imported,
             content::structure_import,
             content::lang_export,

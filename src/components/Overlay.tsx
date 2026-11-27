@@ -31,7 +31,7 @@ type DialogState = {
   icon?: React.ReactNode;
   danger?: boolean;
   actions: DialogAction<string>[];
-  input?: { value: string; label?: string };
+  input?: { value: string; label?: string; secret?: boolean };
   resolve: (v: string | null) => void;
 } | null;
 
@@ -48,13 +48,13 @@ export function showDialog<V extends string>(opts: { title: string; message?: Re
 }
 
 /** Abfrage eines Textes (ersetzt prompt()). */
-export async function promptDialog(title: string, label: string, initial: string, okLabel: string, cancelLabel: string): Promise<string | null> {
+export async function promptDialog(title: string, label: string, initial: string, okLabel: string, cancelLabel: string, secret = false): Promise<string | null> {
   inputValue = initial;
   const r = await new Promise<string | null>((resolve) => {
     dialogStore.get()?.resolve(null);
     dialogStore.set({
       title,
-      input: { value: initial, label },
+      input: { value: initial, label, secret },
       actions: [
         { label: cancelLabel, value: "cancel", kind: "ghost" },
         { label: okLabel, value: "ok", kind: "primary" },
@@ -106,6 +106,7 @@ export function DialogHost() {
           <label className="field">
             {d.input.label && <span className="field-label">{d.input.label}</span>}
             <input
+              type={d.input.secret ? "password" : "text"}
               className="input mono"
               autoFocus
               defaultValue={d.input.value}

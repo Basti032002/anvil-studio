@@ -7,6 +7,9 @@ import { logout, useAccount } from "../admin";
 import { GitHubLogin, openGithub } from "./Admin";
 import McLoginDialog from "../components/McLogin";
 import { mcLogout, useWorkshop } from "../workshop";
+import { studioAccount, useStudioAccount } from "../studioAccount";
+import { promptDialog } from "../components/Overlay";
+import { toast } from "../state";
 import { checkForUpdate, installUpdate, updateSettings, useAppVersion, useSettings, useUpdate } from "../state";
 
 type Section = "updates" | "account" | "workshop" | "general" | "appearance" | "about";
@@ -339,11 +342,69 @@ function WorkshopSection() {
   );
 }
 
+/** Anvil-Studio-Konto und Minecraft-Konto */
+function StudioAccountPanel() {
+  const st = useStudioAccount();
+  const ws = useWorkshop();
+  const [login, setLogin] = useState(false);
+  const acc = st?.account;
+  async function remove() {
+    const pw = await promptDialog(t("Konto löschen"), t("Zum Löschen dein Passwort eingeben. Das Konto wird sofort und endgültig gelöscht – deine Projekte auf diesem PC bleiben erhalten."), "", t("Endgültig löschen"), t("Abbrechen"), true);
+    if (!pw) return;
+    try {
+      await studioAccount.remove(pw);
+    } catch (e) {
+      toast(String(e), "error");
+    }
+  }
+  return (
+    <>
+      <div className="about">
+        <span className="avatar studio-avatar">{(acc?.name || acc?.email || "?").slice(0, 1).toUpperCase()}</span>
+        <div className="grow">
+          <div className="update-title">{acc?.name || acc?.email}</div>
+          <div className="muted small">
+            {acc?.email}
+            {st?.offline ? ` · ${t("offline – gespeicherte Anmeldung")}` : ""}
+          </div>
+        </div>
+        <button className="btn ghost" onClick={() => studioAccount.logout()}>
+          <LogoutIcon size={14} /> {t("Abmelden")}
+        </button>
+      </div>
+      <div className="setting-list" style={{ marginTop: 16, marginBottom: 28 }}>
+        <Row
+          title={t("Minecraft-Konto")}
+          desc={ws.profile ? t("Angemeldet als {name}. Wird zum Spielen und Testen deiner Mods benutzt.", { name: ws.profile.name }) : t("Zum Starten von Minecraft beim Testen. Anmeldung über Microsoft.")}
+        >
+          {ws.profile ? (
+            <button className="btn ghost" onClick={() => mcLogout()}>
+              <LogoutIcon size={14} /> {t("Abmelden")}
+            </button>
+          ) : (
+            <button className="btn" onClick={() => setLogin(true)}>
+              {t("Anmelden")}
+            </button>
+          )}
+        </Row>
+        <Row title={t("Konto löschen")} desc={t("Löscht dein Anvil-Studio-Konto auf dem Server. Deine Projekte auf diesem PC bleiben erhalten.")}>
+          <button className="btn danger" onClick={remove}>
+            {t("Konto löschen")}
+          </button>
+        </Row>
+      </div>
+      {login && <McLoginDialog onDone={() => setLogin(false)} onClose={() => setLogin(false)} />}
+    </>
+  );
+}
+
 function AccountSection({ onOpenAdmin }: { onOpenAdmin: () => void }) {
   const account = useAccount();
   return (
     <>
       <h2>{t("Konto")}</h2>
+      <StudioAccountPanel />
+      <h2>{t("GitHub (Dev-Versionen)")}</h2>
       {!account ? (
         <div className="panel account-login">
           <div>

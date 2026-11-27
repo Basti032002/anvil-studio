@@ -2083,3 +2083,25 @@ button.cx-stat { cursor: pointer; }
 .tour-actions { display: flex; align-items: center; gap: 8px; }
 .tour-confirm { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
 .tour-skip.strong { color: var(--danger, #f26d6d); font-weight: 650; }
+
+/* Anmeldung vor dem Studio */
+.auth { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); background: var(--bg); }
+.auth-side { display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: 0 9vw; background: radial-gradient(900px 600px at 20% 30%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%), var(--panel); border-right: 1px solid var(--border); }
+.auth-logo { width: 76px; height: 76px; border-radius: 20px; display: grid; place-items: center; background: var(--accent); color: #0b0c0f; box-shadow: 0 20px 50px color-mix(in srgb, var(--accent) 30%, transparent); }
+.auth-brand { font-size: 30px; font-weight: 750; letter-spacing: -0.01em; }
+.auth-tag { color: var(--muted); font-size: 15px; max-width: 360px; line-height: 1.5; }
+.auth-card { align-self: center; justify-self: center; width: min(400px, 86%); display: flex; flex-direction: column; gap: 14px; }
+.auth-title { font-size: 22px; font-weight: 700; }
+.auth-field { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; font-weight: 600; }
+.auth-field .input { height: 40px; font-size: 14px; }
+.auth-code { letter-spacing: 0.5em; text-align: center; font-size: 22px !important; height: 50px !important; }
+.auth-check { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; line-height: 1.45; }
+.auth-check input { margin-top: 2px; accent-color: var(--accent); }
+.auth-submit { height: 42px; justify-content: center; font-size: 14px; }
+.auth-links { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.auth-splash { flex: 1; display: grid; place-items: center; }
+@media (max-width: 900px) { .auth { grid-template-columns: 1fr; } .auth-side { display: none; } }
+.mc-later { gap: 10px; padding-top: 10px; margin-top: 4px; border-top: 1px solid var(--border); }
+.studio-avatar { display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-weight: 750; font-size: 18px; }
+.auth a, .auth-links a { color: var(--accent); }
+.mc-intro { display: flex; flex-direction: column; gap: 14px; }

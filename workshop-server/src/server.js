@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { openDb, getSettings, saveSettings } from "./db.js";
+import { registerAccountRoutes } from "./accounts.js";
 
 const PORT = Number(process.env.PORT || 8787);
 const DATA_DIR = process.env.DATA_DIR || "./data";
@@ -35,9 +36,12 @@ export function buildServer() {
   app.setErrorHandler((err, _req, reply) => {
     const code = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
     if (code === 500) app.log.error(err);
-    reply.code(code).send({ error: code === 500 ? "Interner Fehler im Workshop-Server." : err.message });
+    reply.code(code).send({ error: code === 500 ? "Interner Fehler im Workshop-Server." : err.message, ...(err.needVerify ? { needVerify: true } : {}) });
   });
   const fail = (code, msg) => Object.assign(new Error(msg), { statusCode: code });
+
+  // ---- Anvil-Studio-Konten (E-Mail + Passwort) ----
+  registerAccountRoutes(app, db, fail);
 
   // ---- Anmeldung ----
   const isAdmin = (u) => !!u && (ADMINS.includes(u.uuid) || ADMIN_NAMES.includes(u.name.toLowerCase()));
