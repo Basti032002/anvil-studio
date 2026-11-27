@@ -158,7 +158,11 @@ export type BlockDef = {
   names: Record<string, string>;
   model: Cuboid[];
   rotate: boolean;
+  /** Fähigkeiten (Energiespeicher, Inventar, Tick-Logik …) */
+  abilities?: Ability[];
 };
+export type AbilityKind = "energy" | "inventory" | "tick" | "gui" | "facing" | "active" | "light" | "redstone" | "connect" | "recipes" | "ore" | "shapes";
+export type Ability = { kind: AbilityKind; props: Record<string, string> };
 export type WorkbenchRecipe = { shaped: boolean; grid: string[]; result: string; count: number };
 export type MachineRecipe = { input: string; inputCount: number; output: string; outputCount: number; time: number };
 export type Cuboid = { from: [number, number, number]; to: [number, number, number]; tex: string };
@@ -405,12 +409,26 @@ export interface BpLink {
   from: string;
   out: string;
   to: string;
+  /** Werte-Verbindung: Eingang am Ziel (leer = Ablauf) */
+  pin?: string;
+}
+export interface BpComment {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text: string;
+  color: string;
 }
 export interface Blueprint {
   name: string;
   enabled: boolean;
   nodes: BpNode[];
   links: BpLink[];
+  comments?: BpComment[];
+  /** gehört zu Block/Item (nur Anzeige) */
+  owner?: string;
 }
 
 // ---- Dimensionen -----------------------------------------------------------

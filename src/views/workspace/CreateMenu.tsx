@@ -4,31 +4,21 @@ import { useEffect, useState } from "react";
 import { DimTemplate, MobModel } from "../../api";
 import {
   BlueprintIcon,
-  ChestIcon,
-  GearIcon,
-  HammerIcon,
-  ChestplateIcon,
   CloseIcon,
   CubeIcon,
   FlaskIcon,
   GlobeIcon,
   BoxIcon,
-  FoodIcon,
   GemIcon,
-  LampIcon,
-  LayersIcon,
-  LightningIcon,
   PawIcon,
   SearchIcon,
-  PickaxeIcon,
-  ShovelIcon,
   SkullIcon,
   SparkIcon,
-  SwordIcon, GuiIcon, BatteryIcon, PlugIcon, SolarIcon } from "../../icons";
+  GuiIcon } from "../../icons";
 import { MOB_MODELS } from "./contentDefaults";
-import { TEMPLATES } from "./blueprints";
+import { EXAMPLES, ExampleId } from "./examples";
 
-export type CreateGroup = "all" | "block" | "item" | "mob" | "world" | "logic";
+export type CreateGroup = "all" | "block" | "item" | "mob" | "world" | "logic" | "examples";
 export type CreateChoice =
   | { kind: "block"; variant: "normal" | "ore" | "lamp" | "storage" | "shapes" | "workbench" | "machine" | "electric" | "generator" | "solar" | "battery" | "cable" }
   | { kind: "item"; variant: "basic" | "food" | "sword" | "pickaxe" | "axe" | "shovel" | "hoe" | "toolset" | "armor" | "armorset" }
@@ -38,7 +28,8 @@ export type CreateChoice =
   | { kind: "brew" }
   | { kind: "dimension"; preset: DimTemplate }
   | { kind: "structure" }
-  | { kind: "gui"; preset: "machine" | "panel" | "empty" };
+  | { kind: "gui"; preset: "machine" | "panel" | "empty" }
+  | { kind: "example"; id: ExampleId };
 
 interface Card {
   choice: CreateChoice;
@@ -54,6 +45,7 @@ const GROUPS: { id: CreateGroup; label: string; icon: React.ReactNode }[] = [
   { id: "mob", label: t("Kreaturen"), icon: <PawIcon size={15} /> },
   { id: "world", label: t("Welten"), icon: <GlobeIcon size={15} /> },
   { id: "logic", label: t("Logik"), icon: <BlueprintIcon size={15} /> },
+  { id: "examples", label: t("Beispiele"), icon: <SparkIcon size={15} /> },
 ];
 
 function featureOfChoice(c: CreateChoice): FeatureId {
@@ -76,6 +68,8 @@ function featureOfChoice(c: CreateChoice): FeatureId {
       return "events";
     case "brew":
       return "brewing";
+    case "example":
+      return "blocks";
   }
 }
 
@@ -90,58 +84,14 @@ function cards(group: CreateGroup): { title: string; cards: Card[] }[] {
       return [
         {
           title: t("Blöcke"),
-          cards: [
-            { choice: { kind: "block", variant: "normal" }, icon: <CubeIcon size={20} />, title: t("Block"), desc: t("Einfacher Baublock mit eigener Textur") },
-            { choice: { kind: "block", variant: "ore" }, icon: <GemIcon size={20} />, title: t("Erz"), desc: t("Wird in der Welt erzeugt und lässt Items fallen") },
-            { choice: { kind: "block", variant: "shapes" }, icon: <LayersIcon size={20} />, title: t("Block mit Formen"), desc: t("Mit Treppe, Stufe und Mauer") },
-          ],
-        },
-        {
-          title: t("Mit Funktion"),
-          cards: [
-            { choice: { kind: "block", variant: "lamp" }, icon: <LampIcon size={20} />, title: t("Lampe"), desc: t("Leuchtet mit Redstone-Signal") },
-            { choice: { kind: "block", variant: "storage" }, icon: <ChestIcon size={20} />, title: t("Lager-Truhe"), desc: t("Block mit Inventar zum Öffnen") },
-            { choice: { kind: "block", variant: "workbench" }, icon: <HammerIcon size={20} />, title: t("Werkbank"), desc: t("Eigenes 3×3-Raster mit Rezepten, die nur hier gehen") },
-            { choice: { kind: "block", variant: "machine" }, icon: <GearIcon size={20} />, title: t("Maschine"), desc: t("Verarbeitet Items über Zeit, mit Fortschrittsbalken") },
-          ],
-        },
-        {
-          title: t("Strom (FE/RF)"),
-          cards: [
-            { choice: { kind: "block", variant: "generator" }, icon: <LightningIcon size={20} />, title: t("Generator"), desc: t("Verbrennt Kohle & Co. und erzeugt Strom") },
-            { choice: { kind: "block", variant: "solar" }, icon: <SolarIcon size={20} />, title: t("Solarpanel"), desc: t("Erzeugt tagsüber Strom aus Sonnenlicht") },
-            { choice: { kind: "block", variant: "battery" }, icon: <BatteryIcon size={20} />, title: t("Akku / Batteriezelle"), desc: t("Speichert Strom und gibt ihn vorne ab") },
-            { choice: { kind: "block", variant: "cable" }, icon: <PlugIcon size={20} />, title: t("Kabel"), desc: t("Leitet Strom zu Maschinen weiter") },
-            { choice: { kind: "block", variant: "electric" }, icon: <GearIcon size={20} />, title: t("Elektrische Maschine"), desc: t("Verarbeitet Items mit Strom statt Kohle") },
-          ],
+          cards: [{ choice: { kind: "block", variant: "normal" }, icon: <CubeIcon size={20} />, title: t("Block"), desc: t("Leerer Block. Mit Fähigkeiten wird er zu Erz, Lampe, Truhe, Generator, Kabel …") }],
         },
       ];
     case "item":
       return [
         {
           title: t("Items"),
-          cards: [
-            { choice: { kind: "item", variant: "basic" }, icon: <GemIcon size={20} />, title: t("Item"), desc: t("Material, Zutat oder Sammelobjekt") },
-            { choice: { kind: "item", variant: "food" }, icon: <FoodIcon size={20} />, title: t("Nahrung"), desc: t("Essbar, mit Sättigung") },
-          ],
-        },
-        {
-          title: t("Waffen & Werkzeuge"),
-          cards: [
-            { choice: { kind: "item", variant: "sword" }, icon: <SwordIcon size={20} />, title: t("Schwert"), desc: t("Nahkampfwaffe") },
-            { choice: { kind: "item", variant: "axe" }, icon: <PickaxeIcon size={20} />, title: t("Axt"), desc: t("Holz fällen und kämpfen") },
-            { choice: { kind: "item", variant: "pickaxe" }, icon: <PickaxeIcon size={20} />, title: t("Spitzhacke"), desc: t("Stein und Erze abbauen") },
-            { choice: { kind: "item", variant: "shovel" }, icon: <ShovelIcon size={20} />, title: t("Schaufel"), desc: t("Erde, Sand und Kies") },
-            { choice: { kind: "item", variant: "hoe" }, icon: <ShovelIcon size={20} />, title: t("Hacke"), desc: t("Ackerboden anlegen") },
-            { choice: { kind: "item", variant: "toolset" }, icon: <SparkIcon size={20} />, title: t("Werkzeug-Set"), desc: t("Alle fünf auf einmal, gleiches Material") },
-          ],
-        },
-        {
-          title: t("Rüstung"),
-          cards: [
-            { choice: { kind: "item", variant: "armor" }, icon: <ChestplateIcon size={20} />, title: t("Rüstungsteil"), desc: t("Helm, Brustpanzer, Hose oder Stiefel") },
-            { choice: { kind: "item", variant: "armorset" }, icon: <ChestplateIcon size={20} />, title: t("Rüstungs-Set"), desc: t("Alle vier Teile auf einmal") },
-          ],
+          cards: [{ choice: { kind: "item", variant: "basic" }, icon: <GemIcon size={20} />, title: t("Item"), desc: t("Leeres Item. Mit Fähigkeiten wird es Werkzeug, Waffe, Rüstung oder Essen.") }],
         },
       ];
     case "mob":
@@ -179,23 +129,19 @@ function cards(group: CreateGroup): { title: string; cards: Card[] }[] {
     case "logic":
       return [
         {
-          title: t("Blueprint (Knoten-Editor)"),
-          cards: TEMPLATES.map((tp) => ({ choice: { kind: "blueprint", template: tp.id } as CreateChoice, icon: <BlueprintIcon size={20} />, title: tp.label, desc: tp.desc })),
-        },
-        {
-          title: t("Oberfläche (GUI-Editor)"),
+          title: t("Logik"),
           cards: [
-            { choice: { kind: "gui", preset: "machine" }, icon: <GuiIcon size={20} />, title: t("Maschinen-Oberfläche"), desc: t("Slots, Fortschrittspfeil und Inventar – für Maschinen-Blöcke") },
-            { choice: { kind: "gui", preset: "panel" }, icon: <GuiIcon size={20} />, title: t("Bedienfeld"), desc: t("Knöpfe, Schalter und Anzeigen – per Blueprint öffnen") },
-            { choice: { kind: "gui", preset: "empty" }, icon: <GuiIcon size={20} />, title: t("Leere Oberfläche"), desc: t("Alles selbst gestalten") },
-          ],
-        },
-        {
-          title: t("Einfach"),
-          cards: [
-            { choice: { kind: "event" }, icon: <LightningIcon size={20} />, title: t("Ereignis"), desc: t("Auslöser und Aktionen als Liste") },
+            { choice: { kind: "blueprint", template: "empty" }, icon: <BlueprintIcon size={20} />, title: t("Blueprint"), desc: t("Logik ohne Code: Ereignis → Bedingung → Aktion, Werte verbinden") },
+            { choice: { kind: "gui", preset: "empty" }, icon: <GuiIcon size={20} />, title: t("Oberfläche"), desc: t("Eigenes Fenster mit Slots, Balken und Knöpfen") },
             { choice: { kind: "brew" }, icon: <FlaskIcon size={20} />, title: t("Brau-Rezept"), desc: t("Trank + Zutat → neuer Trank") },
           ],
+        },
+      ];
+    case "examples":
+      return [
+        {
+          title: t("Beispiele zum Anschauen und Weiterbauen"),
+          cards: EXAMPLES.map((e) => ({ choice: { kind: "example", id: e.id } as CreateChoice, icon: <SparkIcon size={20} />, title: e.label, desc: e.desc })),
         },
       ];
   }
@@ -220,13 +166,13 @@ export default function CreateMenu({ group = "all", onPick, onClose }: { group?:
         <div className="create-head">
           <div>
             <div className="panel-title-lg">{t("Was möchtest du erstellen?")}</div>
-            <div className="muted small">{t("Wähle eine Vorlage – alles lässt sich danach anpassen.")}</div>
+            <div className="muted small">{t("Wähle einen Grundbaustein. Was er kann, gibst du ihm danach mit Fähigkeiten und Blueprints.")}</div>
           </div>
           <div className="search create-search">
             <SearchIcon size={13} />
             <input
               autoFocus
-              placeholder={t("Suchen: Schwert, Erz, Dimension …")}
+              placeholder={t("Suchen: Block, Blueprint, Dimension …")}
               aria-label={t("Vorlagen suchen")}
               value={q}
               onChange={(e) => setQ(e.target.value)}

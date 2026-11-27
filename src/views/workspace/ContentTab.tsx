@@ -28,6 +28,8 @@ import DimensionEditor, { newDimension } from "./DimensionEditor";
 import StructureEditor, { newStructure } from "./StructureEditor";
 import GuiEditor, { newGui } from "./GuiEditor";
 import CreateMenu, { CreateChoice, CreateGroup } from "./CreateMenu";
+import { AbilitiesEditor, blockBlueprint } from "./Abilities";
+import { buildExample } from "./examples";
 import { TEMPLATES } from "./blueprints";
 import { BrewEditor, brewLabel, EventEditor, eventLabel, NamesField, newBrew, newEvent } from "./LogicEditors";
 import { armorPreset, toolPreset, eggDataUrl, newMob, normalizeMob, newBlock, newItem, normalizeBlock, normalizeItem, SLOT_DE, SLOT_EN, variantIds } from "./contentDefaults";
@@ -351,6 +353,12 @@ export default function ContentTab({ project }: { project: Project }) {
       for (let n = 2; used.has(id); n++) id = `neue_struktur_${n}`;
       setContent({ ...content, structures: [...list, newStructure(id)] });
       setSel({ kind: "structure", index: list.length });
+    } else if (choice.kind === "example") {
+      const { block, blueprint } = buildExample(choice.id, project.modId, uid);
+      setContent({ ...content, blocks: [...content.blocks, block], blueprints: blueprint ? [...content.blueprints, blueprint] : content.blueprints });
+      setSel({ kind: "block", index: content.blocks.length });
+      setBlockTab("function");
+      toast(blueprint ? t("Beispiel eingefügt: ein Block mit Fähigkeiten und ein Blueprint.") : t("Beispiel eingefügt: ein Block mit Fähigkeiten."), "success");
     } else if (choice.kind === "event") {
       setContent({ ...content, events: [...content.events, newEvent(content.blocks[0]?.id ?? "")] });
       setSel({ kind: "event", index: content.events.length });
@@ -894,7 +902,7 @@ export default function ContentTab({ project }: { project: Project }) {
                     ? [
                         ["general", t("Allgemein")],
                         ["mining", t("Abbau & Erz")],
-                        ["function", t("Funktion")],
+                        ["function", block.kind === "normal" ? t("Fähigkeiten") : t("Funktion")],
                         ["model", t("3D-Form")],
                         ["shapes", t("Formen")],
                         ["recipe", t("Rezept")],
@@ -959,10 +967,6 @@ export default function ContentTab({ project }: { project: Project }) {
                         <option value={1}>{t("1 (nicht stapelbar)")}</option>
                       </select>
                     </Field>
-                    <div className="span-2 toggle-row" style={{ flexDirection: "row" }}>
-                      <Toggle label={t("Essbar")} checked={item.food} onChange={(v) => updItem({ food: v })} />
-                      <span>{t("Essbar")}</span>
-                    </div>
                     {item.food && (
                       <>
                         <Field label={t("Hunger · {v0} Keulen", { v0: item.nutrition / 2 })}>
@@ -1017,7 +1021,26 @@ export default function ContentTab({ project }: { project: Project }) {
                   <BlockExtras project={project} block={block} own={own} texture={textures[block.id]} onChange={updBlock} part="ore" />
                 </>
               )}
-              {block && (blockTab === "function" || blockTab === "model" || blockTab === "shapes") && (
+              {block && blockTab === "function" && block.kind === "normal" && (
+                <AbilitiesEditor
+                  project={project}
+                  content={content}
+                  block={block}
+                  own={own}
+                  onChange={updBlock}
+                  onTab={(tab) => setBlockTab(tab)}
+                  onOpenBlueprint={(i) => setSel({ kind: "blueprint", index: i })}
+                  onBlueprint={(ev) => {
+                    const bp = blockBlueprint(project, block, ev);
+                    const abilities = block.abilities ?? [];
+                    const need = ev === "ev_block_tick" ? "tick" : ev === "ev_block_redstone" ? "redstone" : "";
+                    const blocks = need && !abilities.some((a) => a.kind === need) ? content.blocks.map((b) => (b === block ? { ...b, abilities: [...abilities, { kind: need as "tick", props: need === "tick" ? { ticks: "20" } : {} }] } : b)) : content.blocks;
+                    setContent({ ...content, blocks, blueprints: [...content.blueprints, bp] });
+                    setSel({ kind: "blueprint", index: content.blueprints.length });
+                  }}
+                />
+              )}
+              {block && ((blockTab === "function" && block.kind !== "normal") || blockTab === "model" || blockTab === "shapes") && (
                 <BlockExtras project={project} block={block} own={own} texture={textures[block.id]} onChange={updBlock} part={blockTab} guis={content.guis ?? []} />
               )}
               {item && itemTabEff === "function" && (
@@ -1094,7 +1117,7 @@ export default function ContentTab({ project }: { project: Project }) {
                   />
                 </div>
               )}
-              {savedIds.includes(current.id) && block?.kind === "lamp" && (
+              {savedIds.includes(current.id) && (block?.kind === "lamp" || (block?.abilities ?? []).some((a) => a.kind === "active")) && (
                 <div className="texture-sub">
                   <div className="texture-sub-head">
                     <LampIcon size={16} />
@@ -1103,8 +1126,8 @@ export default function ContentTab({ project }: { project: Project }) {
                   <PixelEditor
                     projectId={project.id}
                     kind="block"
-                    id={`${block.id}_on`}
-                    onSaved={(dataUrl) => setTextures((t) => ({ ...t, [`${block.id}_on`]: dataUrl }))}
+                    id={`${block!.id}_on`}
+                    onSaved={(dataUrl) => setTextures((t) => ({ ...t, [`${block!.id}_on`]: dataUrl }))}
                   />
                 </div>
               )}

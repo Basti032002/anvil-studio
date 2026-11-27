@@ -123,7 +123,7 @@ export function WorkbenchRecipes({ project, block, own, onChange }: { project: P
 }
 
 /** Maschine: Eingabe → Ausgabe über eine Dauer, wahlweise mit Brennstoff */
-export function MachineEditor({ project, block, own, onChange, guis = [] }: { project: Project; block: BlockDef; own: OwnEntry[]; onChange: (patch: Partial<BlockDef>) => void; guis?: GuiDef[] }) {
+export function MachineEditor({ project, block, own, onChange, guis = [], recipesOnly }: { project: Project; block: BlockDef; own: OwnEntry[]; onChange: (patch: Partial<BlockDef>) => void; guis?: GuiDef[]; recipesOnly?: boolean }) {
   const machine = block.machine ?? { fuel: true, recipes: [] };
   const recipes = machine.recipes;
   const [pick, setPick] = useState<{ r: number; field: "input" | "output" } | null>(null);
@@ -134,6 +134,8 @@ export function MachineEditor({ project, block, own, onChange, guis = [] }: { pr
 
   return (
     <div className="station">
+      {!recipesOnly && (
+      <>
       <label className="field">
         <span className="field-label">{t("Oberfläche")}</span>
         <select className="input" value={machine.gui ?? ""} onChange={(e) => setMachine({ gui: e.target.value })}>
@@ -165,6 +167,8 @@ export function MachineEditor({ project, block, own, onChange, guis = [] }: { pr
           <Toggle label={t("Braucht Brennstoff (Kohle, Holz …)")} checked={machine.fuel} onChange={(v) => setMachine({ fuel: v })} />
           {!machine.fuel && <div className="muted small">{t("Ohne Brennstoff arbeitet die Maschine von selbst, sobald etwas Passendes in der Eingabe liegt.")}</div>}
         </>
+      )}
+      </>
       )}
       {recipes.map((r, i) => (
         <div key={i} className="station-recipe">

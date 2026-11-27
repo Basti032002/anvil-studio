@@ -330,7 +330,7 @@ impl<'a> Gen<'a> {
         let code = match n.kind.as_str() {
             // ---- Ablauf ----
             "if" => {
-                let cond = self.pin(n, "cond", "bool").unwrap_or_else(|| self.full_condition(p));
+                let cond = self.pin(n, "ifcond", "bool").unwrap_or_else(|| self.full_condition(p));
                 let t = self.follow(&n.id, "true", depth + 1, in_lambda, stack);
                 let f = self.follow(&n.id, "false", depth + 1, in_lambda, stack);
                 let mut c = format!("{ind}if ({cond}) {{\n{t}{ind}}}");

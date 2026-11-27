@@ -7,7 +7,7 @@ import { Segmented, Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
 import McIcon from "../../components/McIcon";
 import { WorkbenchRecipes, MachineEditor, EnergyEditor } from "./StationEditors";
-import { BoxIcon, ChestIcon, GearIcon, HammerIcon, ChestplateIcon, CloseIcon, CubeIcon, GemIcon, GlobeIcon, LampIcon, LayersIcon, PickaxeIcon, PlusIcon, SwordIcon, LightningIcon, BatteryIcon, PlugIcon } from "../../icons";
+import { FoodIcon, ChestIcon, GearIcon, HammerIcon, ChestplateIcon, CloseIcon, CubeIcon, GemIcon, GlobeIcon, LampIcon, LayersIcon, PickaxeIcon, PlusIcon, SwordIcon, LightningIcon, BatteryIcon, PlugIcon } from "../../icons";
 import { armorPreset, ArmorTier, SHAPES, shapeIcon, SLOT_LABEL, Tier, TOOL_LABEL, toolPreset } from "./contentDefaults";
 
 /** Unterreiter in einem Editor */
@@ -159,7 +159,7 @@ export function BlockExtras({
         <div className="kind-switch">
           {(
             [
-              { k: "normal", label: t("Normaler Block"), icon: <CubeIcon size={16} /> },
+              { k: "normal", label: t("Block mit Fähigkeiten"), icon: <CubeIcon size={16} /> },
               { k: "lamp", label: t("Redstone-Lampe"), icon: <LampIcon size={16} /> },
               { k: "storage", label: t("Lager-Truhe"), icon: <ChestIcon size={16} /> },
               { k: "workbench", label: t("Werkbank"), icon: <HammerIcon size={16} /> },
@@ -168,7 +168,7 @@ export function BlockExtras({
               { k: "battery", label: t("Akku"), icon: <BatteryIcon size={16} /> },
               { k: "cable", label: t("Kabel"), icon: <PlugIcon size={16} /> },
             ] as const
-          ).map((x) => (
+          ).filter((x) => x.k === "normal" || x.k === block.kind).map((x) => (
             <button
               key={x.k}
               type="button"
@@ -181,6 +181,7 @@ export function BlockExtras({
             </button>
           ))}
         </div>
+        {block.kind !== "normal" && <div className="callout small">{t("Diese Vorlage stammt aus einer älteren Version und funktioniert weiter. Neue Blöcke baust du mit Fähigkeiten – wechsle oben auf „Block mit Fähigkeiten“, um neu anzufangen.")}</div>}
         {block.kind === "lamp" && <div className="muted small">{t("Leuchtet, sobald Redstone-Strom anliegt. Die Leuchtkraft oben gilt im eingeschalteten Zustand (0 = 15). Nach dem Speichern kannst du rechts eine eigene Textur für „an“ malen.")}</div>}
         {block.kind === "workbench" && <WorkbenchRecipes project={project} block={block} own={own} onChange={onChange} />}
         {block.kind === "machine" && <MachineEditor project={project} block={block} own={own} onChange={onChange} guis={guis} />}
@@ -331,31 +332,38 @@ export function BlockExtras({
 // ---- Item: Art, Werkzeug, Rüstung -------------------------------------------
 
 export function ItemKindSwitch({ item, onChange }: { item: ItemDef; onChange: (patch: Partial<ItemDef>) => void }) {
+  const chips = [
+    { k: "food", label: t("Essbar"), icon: <FoodIcon size={15} />, on: item.food && item.kind === "basic", desc: t("Hunger und Sättigung") },
+    { k: "tool", label: t("Werkzeug / Waffe"), icon: <PickaxeIcon size={15} />, on: item.kind === "tool", desc: t("Schaden, Abbau, Haltbarkeit") },
+    { k: "armor", label: t("Rüstung"), icon: <ChestplateIcon size={15} />, on: item.kind === "armor", desc: t("Schutz, Rüstungs-Set") },
+  ] as const;
   return (
-    <div className="kind-switch span-2">
-      {(
-        [
-          { k: "basic", label: t("Item"), icon: <BoxIcon size={16} /> },
-          { k: "tool", label: t("Werkzeug / Waffe"), icon: <PickaxeIcon size={16} /> },
-          { k: "armor", label: t("Rüstung"), icon: <ChestplateIcon size={16} /> },
-        ] as const
-      ).map((x) => (
-        <button
-          key={x.k}
-          type="button"
-          className={item.kind === x.k ? "kind-card active" : "kind-card"}
-          aria-pressed={item.kind === x.k}
-          onClick={() => {
-            if (item.kind === x.k) return;
-            if (x.k === "tool") onChange({ kind: "tool", ...toolPreset(item.toolType ?? "sword", (item.toolTier as Tier) ?? "iron") });
-            else if (x.k === "armor") onChange({ kind: "armor", ...armorPreset("iron", item.armorSlot ?? "helmet"), armorMaterial: item.armorMaterial || item.id.replace(/_(helmet|chestplate|leggings|boots)$/, "") });
-            else onChange({ kind: "basic", stackSize: 64 });
-          }}
-        >
-          {x.icon}
-          <span>{x.label}</span>
-        </button>
-      ))}
+    <div className="span-2 item-abilities">
+      <span className="field-label">{t("Fähigkeiten")}</span>
+      <div className="item-ability-row">
+        {chips.map((x) => (
+          <button
+            key={x.k}
+            type="button"
+            className={x.on ? "item-ability on" : "item-ability"}
+            aria-pressed={x.on}
+            onClick={() => {
+              if (x.k === "food") onChange(x.on ? { food: false } : { kind: "basic", food: true, stackSize: 64 });
+              else if (x.on) onChange({ kind: "basic", stackSize: 64 });
+              else if (x.k === "tool") onChange({ kind: "tool", food: false, ...toolPreset(item.toolType ?? "sword", (item.toolTier as Tier) ?? "iron") });
+              else onChange({ kind: "armor", food: false, ...armorPreset("iron", item.armorSlot ?? "helmet"), armorMaterial: item.armorMaterial || item.id.replace(/_(helmet|chestplate|leggings|boots)$/, "") });
+            }}
+          >
+            {x.icon}
+            <span className="grow">
+              <b>{x.label}</b>
+              <span className="muted small">{x.desc}</span>
+            </span>
+            <span className="item-ability-check">{x.on ? "✓" : "+"}</span>
+          </button>
+        ))}
+      </div>
+      <span className="muted small">{t("Werkzeug und Rüstung schließen sich gegenseitig aus. Eigene Wirkungen (Rechtsklick, Treffer …) baust du mit Blueprints.")}</span>
     </div>
   );
 }

@@ -3,8 +3,10 @@ import { Blueprint, BpNode } from "../../api";
 
 // Katalog der Blueprint-Knoten. Muss zu src-tauri/src/blueprint.rs passen.
 
-export type BpCat = "event" | "flow" | "vars" | "world" | "player" | "other";
-export type PropType = "text" | "number" | "select" | "item" | "block" | "entity" | "effect" | "sound" | "particle" | "who" | "var" | "dim" | "fn" | "varvalue" | "varop" | "varcmp" | "game" | "scope" | "tag" | "gui";
+export type BpCat = "event" | "flow" | "values" | "vars" | "block" | "world" | "player" | "other";
+/** Werte-Typen für Werte-Verbindungen */
+export type ValType = "num" | "bool" | "text" | "any";
+export type PropType = "pinonly" | "text" | "number" | "select" | "item" | "block" | "entity" | "effect" | "sound" | "particle" | "who" | "var" | "dim" | "fn" | "varvalue" | "varop" | "varcmp" | "game" | "scope" | "tag" | "gui";
 export interface PropSpec {
   key: string;
   label: string;
@@ -15,6 +17,8 @@ export interface PropSpec {
   when?: { key: string; values: string[] };
   /** und zusätzlich diese Bedingung */
   when2?: { key: string; values: string[] };
+  /** kann mit einem Wert verbunden werden */
+  pin?: ValType;
 }
 export interface NodeSpec {
   kind: string;
@@ -23,12 +27,18 @@ export interface NodeSpec {
   desc: string;
   outs: { id: string; label: string }[];
   props: PropSpec[];
+  /** Werte-Knoten: liefert einen Wert dieses Typs (kein Ablauf) */
+  value?: ValType;
+  /** Braucht der Block diese Fähigkeit? (Hinweis im Editor) */
+  needs?: string;
 }
 
 export const CATS: { id: BpCat; label: string }[] = [
   { id: "event", label: t("Ereignisse") },
   { id: "flow", label: t("Logik & Schleifen") },
+  { id: "values", label: t("Werte & Rechnen") },
   { id: "vars", label: t("Variablen") },
+  { id: "block", label: t("Block & Strom") },
   { id: "world", label: t("Welt") },
   { id: "player", label: t("Spieler & Kreaturen") },
   { id: "other", label: t("Sonstiges") },
@@ -229,6 +239,7 @@ export const NODES: NodeSpec[] = [
       { id: "next", label: t("Danach") },
     ],
     props: [
+      { key: "ifcond", label: t("Bedingung (verbunden)"), type: "pinonly", def: "", pin: "bool" },
       ...condProps(""),
       sel("join", t("Verknüpfen"), "none", [["none", t("Nur diese Bedingung")], ["and", t("UND zweite Bedingung")], ["or", t("ODER zweite Bedingung")]]),
       ...condProps("b_", { key: "join", values: ["and", "or"] }),
@@ -295,7 +306,7 @@ export const NODES: NodeSpec[] = [
       { ...scopeP },
       { key: "op", label: t("Rechnung"), type: "varop", def: "set" },
       sel("src", t("Wert kommt von"), "value", [["value", t("Fester Wert")], ["var", t("Andere Variable")], ["game", t("Aus dem Spiel")]]),
-      { key: "value", label: t("Wert"), type: "varvalue", def: "1", when: { key: "src", values: ["value"] } },
+      { key: "value", label: t("Wert"), type: "varvalue", def: "1", when: { key: "src", values: ["value"] }, pin: "any" },
       { key: "var2", label: t("Andere Variable"), type: "var", def: "", when: { key: "src", values: ["var"] } },
       { key: "game", label: t("Spielwert"), type: "game", def: "health", when: { key: "src", values: ["game"] } },
     ],
@@ -379,7 +390,7 @@ export const NODES: NodeSpec[] = [
   },
 
   // ---- Spieler & Kreaturen ----
-  { kind: "message", cat: "player", label: t("Nachricht im Chat"), desc: t("{player} = Name des Spielers"), outs: NEXT, props: [textP("text", t("Text"), t("Hallo {player}!")), sel("to", t("An"), "player", [["player", t("Spieler")], ["all", t("Alle")]])] },
+  { kind: "message", cat: "player", label: t("Nachricht im Chat"), desc: t("{player} = Name des Spielers"), outs: NEXT, props: [{ ...textP("text", t("Text"), t("Hallo {player}!")), pin: "text" }, sel("to", t("An"), "player", [["player", t("Spieler")], ["all", t("Alle")]])] },
   {
     kind: "title",
     cat: "player",
@@ -402,7 +413,7 @@ export const NODES: NodeSpec[] = [
       sel("to", t("An"), "player", [["player", t("Spieler")], ["all", t("Alle")]]),
     ],
   },
-  { kind: "actionbar", cat: "player", label: t("Text über der Leiste"), desc: t("{player} = Name des Spielers"), outs: NEXT, props: [textP("text", t("Text"), t("Psst …"))] },
+  { kind: "actionbar", cat: "player", label: t("Text über der Leiste"), desc: t("{player} = Name des Spielers"), outs: NEXT, props: [{ ...textP("text", t("Text"), t("Psst …")), pin: "text" }] },
   { kind: "give", cat: "player", label: t("Item geben"), desc: "", outs: NEXT, props: [{ key: "item", label: t("Item"), type: "item", def: "minecraft:diamond" }, numP("count", t("Anzahl"), "1")] },
   { kind: "effect", cat: "player", label: t("Trankeffekt geben"), desc: "", outs: NEXT, props: [{ key: "effect", label: t("Effekt"), type: "effect", def: "speed" }, numP("seconds", t("Sekunden"), "10"), numP("level", t("Effektstufe"), "1"), who] },
   { kind: "remove_item", cat: "player", label: t("Item wegnehmen"), desc: t("Aus dem Inventar entfernen"), outs: NEXT, props: [{ key: "item", label: t("Item"), type: "item", def: "minecraft:dirt" }, numP("count", t("Anzahl"), "1")] },
@@ -499,12 +510,103 @@ export const NODES: NodeSpec[] = [
   { kind: "xp_orb", cat: "world", label: t("Erfahrungskugel erzeugen"), desc: "", outs: NEXT, props: [numP("amount", t("Erfahrung"), "10")] },
   { kind: "open_gui", cat: "other", label: t("Oberfläche öffnen"), desc: t("Zeigt dem Spieler eine Oberfläche aus dem GUI-Editor"), outs: NEXT, props: [{ key: "gui", label: t("Oberfläche"), type: "gui", def: "" }] },
   { kind: "close_gui", cat: "other", label: t("Oberfläche schließen"), desc: "", outs: NEXT, props: [] },
-  { kind: "log", cat: "other", label: t("In Konsole schreiben"), desc: t("Zum Testen, erscheint im Konsolen-Tab"), outs: NEXT, props: [textP("text", t("Text"), "Wert: {var:punkte}")] },
+  { kind: "log", cat: "other", label: t("In Konsole schreiben"), desc: t("Zum Testen, erscheint im Konsolen-Tab"), outs: NEXT, props: [{ ...textP("text", t("Text"), "Wert: {var:punkte}"), pin: "text" }] },
   { kind: "command", cat: "other", label: t("Befehl ausführen"), desc: t("@s = Spieler, {var:name} setzt Variablen ein"), outs: NEXT, props: [textP("command", t("Befehl"), "say Hallo"), who] },
+
+  // ---- Block-Ereignisse (für Blöcke mit Fähigkeiten) ----
+  { kind: "ev_block_tick", cat: "event", label: t("Block-Tick"), desc: t("Läuft regelmäßig für jeden gesetzten Block – Takt in der Fähigkeit „Tick-Logik“"), outs: NEXT, props: [{ key: "target", label: t("Block (leer = jeder mit Fähigkeiten)"), type: "block", def: "" }], needs: "tick" },
+  { kind: "ev_block_use", cat: "event", label: t("Block wird benutzt"), desc: t("Rechtsklick auf den Block – ersetzt das normale Öffnen"), outs: NEXT, props: [{ key: "target", label: t("Block (leer = jeder mit Fähigkeiten)"), type: "block", def: "" }] },
+  { kind: "ev_block_redstone", cat: "event", label: t("Redstone geändert"), desc: t("Der Block bekommt Redstone-Strom oder verliert ihn"), outs: NEXT, props: [{ key: "target", label: t("Block (leer = jeder mit Fähigkeiten)"), type: "block", def: "" }] },
+
+  // ---- Block & Strom (dieser Block = Block des Ereignisses) ----
+  { kind: "blk_energy_gen", cat: "block", label: t("Strom erzeugen"), desc: t("Legt Strom in den Speicher dieses Blocks"), outs: NEXT, props: [{ ...numP("amount", t("Menge (FE)"), "20"), pin: "num" }], needs: "energy" },
+  {
+    kind: "blk_energy_use",
+    cat: "block",
+    label: t("Strom verbrauchen"),
+    desc: t("Nimmt Strom aus dem Speicher – nur wenn genug da ist"),
+    outs: [
+      { id: "ok", label: t("Genug Strom") },
+      { id: "fail", label: t("Zu wenig") },
+      { id: "next", label: t("Danach") },
+    ],
+    props: [{ ...numP("amount", t("Menge (FE)"), "20"), pin: "num" }],
+    needs: "energy",
+  },
+  { kind: "blk_energy_push", cat: "block", label: t("Strom an Nachbarn abgeben"), desc: t("Gibt Strom an Kabel, Akkus und Maschinen ab"), outs: NEXT, props: [{ ...numP("amount", t("Höchstens (FE)"), "100"), pin: "num" }, sel("side", t("Wohin"), "all", [["all", t("Alle Seiten")], ["front", t("Nur vorne")]])], needs: "energy" },
+  { kind: "blk_lit", cat: "block", label: t("An/Aus setzen"), desc: t("Schaltet den Zustand „an“ – mit eigener Textur und Licht"), outs: NEXT, props: [{ ...sel("value", t("Zustand"), "true", [["true", t("An")], ["false", t("Aus")]]), pin: "bool" }], needs: "active" },
+  { kind: "blk_signal", cat: "block", label: t("Redstone-Signal senden"), desc: t("0 = aus, 15 = volle Stärke"), outs: NEXT, props: [{ ...numP("power", t("Stärke (0–15)"), "15"), pin: "num" }], needs: "redstone" },
+  { kind: "blk_var_set", cat: "block", label: t("Block-Variable setzen"), desc: t("Wird im Block gespeichert, z. B. Brennzeit"), outs: NEXT, props: [textP("name", t("Name"), "brennzeit"), sel("op", t("Rechnung"), "set", [["set", t("Setzen auf")], ["add", t("Erhöhen um")], ["sub", t("Verringern um")]]), { ...numP("value", t("Wert"), "1"), pin: "num" }] },
+  {
+    kind: "blk_slot_take",
+    cat: "block",
+    label: t("Item aus Slot nehmen"),
+    desc: t("Nur wenn genug drin ist"),
+    outs: [
+      { id: "ok", label: t("Genommen") },
+      { id: "fail", label: t("Nicht genug") },
+      { id: "next", label: t("Danach") },
+    ],
+    props: [{ ...numP("slot", t("Slot"), "1"), pin: "num" }, { ...numP("count", t("Anzahl"), "1"), pin: "num" }],
+    needs: "inventory",
+  },
+  { kind: "blk_slot_put", cat: "block", label: t("Item in Slot legen"), desc: t("Passt es nicht, passiert nichts"), outs: NEXT, props: [{ ...numP("slot", t("Slot"), "3"), pin: "num" }, { key: "item", label: t("Item"), type: "item", def: "minecraft:diamond" }, { ...numP("count", t("Anzahl"), "1"), pin: "num" }], needs: "inventory" },
+
+  // ---- Werte & Rechnen (liefern Werte, kein Ablauf) ----
+  { kind: "val_number", cat: "values", label: t("Zahl"), desc: "", outs: [], props: [numP("value", t("Wert"), "10")], value: "num" },
+  { kind: "val_text", cat: "values", label: t("Text"), desc: t("{player} und {var:name} gehen auch"), outs: [], props: [textP("value", t("Text"), "Hallo")], value: "text" },
+  { kind: "val_bool", cat: "values", label: t("Ja/Nein"), desc: "", outs: [], props: [sel("value", t("Wert"), "true", [["true", t("Ja")], ["false", t("Nein")]])], value: "bool" },
+  {
+    kind: "val_math",
+    cat: "values",
+    label: t("Rechnen"),
+    desc: "",
+    outs: [],
+    props: [
+      { ...numP("a", "A", "0"), pin: "num" },
+      sel("op", t("Rechnung"), "add", [["add", "A + B"], ["sub", "A − B"], ["mul", "A × B"], ["div", "A ÷ B"], ["min", t("kleinerer Wert")], ["max", t("größerer Wert")], ["mod", t("Rest von A ÷ B")], ["pow", "A hoch B"]]),
+      { ...numP("b", "B", "2"), pin: "num" },
+    ],
+    value: "num",
+  },
+  { kind: "val_round", cat: "values", label: t("Runden"), desc: "", outs: [], props: [{ ...numP("in", t("Zahl"), "0"), pin: "num" }, sel("mode", t("Art"), "round", [["round", t("Runden")], ["floor", t("Abrunden")], ["ceil", t("Aufrunden")], ["abs", t("Ohne Minus")]])], value: "num" },
+  { kind: "val_random", cat: "values", label: t("Zufallszahl"), desc: t("Kommazahl zwischen Min und Max"), outs: [], props: [{ ...numP("min", t("Min"), "0"), pin: "num" }, { ...numP("max", t("Max"), "10"), pin: "num" }], value: "num" },
+  {
+    kind: "val_compare",
+    cat: "values",
+    label: t("Vergleichen"),
+    desc: "",
+    outs: [],
+    props: [{ ...numP("a", "A", "0"), pin: "num" }, sel("cmp", t("Vergleich"), "gt", [["gt", "A > B"], ["ge", "A ≥ B"], ["eq", "A = B"], ["ne", "A ≠ B"], ["le", "A ≤ B"], ["lt", "A < B"]]), { ...numP("b", "B", "0"), pin: "num" }],
+    value: "bool",
+  },
+  { kind: "val_and", cat: "values", label: t("UND"), desc: t("Ja, wenn beide Ja sind"), outs: [], props: [{ key: "a", label: "A", type: "pinonly", def: "", pin: "bool" }, { key: "b", label: "B", type: "pinonly", def: "", pin: "bool" }], value: "bool" },
+  { kind: "val_or", cat: "values", label: t("ODER"), desc: t("Ja, wenn eins von beiden Ja ist"), outs: [], props: [{ key: "a", label: "A", type: "pinonly", def: "", pin: "bool" }, { key: "b", label: "B", type: "pinonly", def: "", pin: "bool" }], value: "bool" },
+  { kind: "val_not", cat: "values", label: t("NICHT"), desc: t("Dreht Ja und Nein um"), outs: [], props: [{ key: "in", label: t("Wert"), type: "pinonly", def: "", pin: "bool" }], value: "bool" },
+  { kind: "val_join", cat: "values", label: t("Text verbinden"), desc: "", outs: [], props: [{ ...textP("a", "A", ""), pin: "text" }, { ...textP("b", "B", ""), pin: "text" }], value: "text" },
+  { kind: "val_var", cat: "values", label: t("Variable lesen"), desc: "", outs: [], props: [{ key: "var", label: t("Variable"), type: "var", def: "punkte" }], value: "any" },
+  { kind: "val_game", cat: "values", label: t("Spielwert"), desc: t("Leben, Uhrzeit, Position …"), outs: [], props: [sel("game", t("Wert"), "health", GAME_VALUES.map((g) => [g.id, g.label] as [string, string]))], value: "any" },
+  { kind: "val_sneaking", cat: "values", label: t("Spieler schleicht?"), desc: "", outs: [], props: [], value: "bool" },
+  { kind: "val_blk_energy", cat: "block", label: t("Gespeicherter Strom"), desc: t("FE im Block"), outs: [], props: [], value: "num", needs: "energy" },
+  { kind: "val_blk_capacity", cat: "block", label: t("Strom-Speichergröße"), desc: t("Wie viel FE höchstens hineinpasst"), outs: [], props: [], value: "num", needs: "energy" },
+  { kind: "val_blk_var", cat: "block", label: t("Block-Variable lesen"), desc: "", outs: [], props: [textP("name", t("Name"), "brennzeit")], value: "num" },
+  { kind: "val_blk_slot_count", cat: "block", label: t("Anzahl im Slot"), desc: "", outs: [], props: [{ ...numP("slot", t("Slot"), "1"), pin: "num" }], value: "num", needs: "inventory" },
+  { kind: "val_blk_slot_item", cat: "block", label: t("Item im Slot"), desc: t("ID, z. B. minecraft:coal"), outs: [], props: [{ ...numP("slot", t("Slot"), "1"), pin: "num" }], value: "text", needs: "inventory" },
+  { kind: "val_blk_burn", cat: "block", label: t("Brennwert im Slot"), desc: t("Wie lange das Item brennt (Ticks, 0 = gar nicht)"), outs: [], props: [{ ...numP("slot", t("Slot"), "1"), pin: "num" }], value: "num", needs: "inventory" },
+  { kind: "val_blk_light", cat: "block", label: t("Lichtstärke"), desc: t("Himmelslicht über dem Block, 0–15"), outs: [], props: [], value: "num" },
+  { kind: "val_blk_sky", cat: "block", label: t("Himmel sichtbar?"), desc: "", outs: [], props: [], value: "bool" },
+  { kind: "val_blk_day", cat: "block", label: t("Ist Tag?"), desc: "", outs: [], props: [], value: "bool" },
+  { kind: "val_blk_rain", cat: "block", label: t("Regnet es?"), desc: "", outs: [], props: [], value: "bool" },
+  { kind: "val_blk_redstone", cat: "block", label: t("Redstone-Stärke"), desc: t("Wie stark der Block mit Redstone versorgt wird, 0–15"), outs: [], props: [], value: "num" },
+  { kind: "val_blk_lit", cat: "block", label: t("Ist an?"), desc: t("Zustand An/Aus des Blocks"), outs: [], props: [], value: "bool", needs: "active" },
 ];
 
 export const nodeSpec = (kind: string) => NODES.find((n) => n.kind === kind);
 export const isEvent = (kind: string) => kind.startsWith("ev_");
+export const isValue = (kind: string) => kind.startsWith("val_");
+
+/** Farben der Werte-Typen (Punkte und Linien) */
+export const VAL_COLOR: Record<ValType, string> = { num: "#5aa8ff", bool: "#f26d6d", text: "#ff7eb6", any: "#c3c7ce" };
 
 /** Welche Eigenschaften gerade sichtbar sind (z. B. abhängig von der Bedingung). */
 export function visibleProps(spec: NodeSpec, props: Record<string, string>): PropSpec[] {
@@ -549,8 +651,8 @@ function chain(name: string, kinds: [string, Record<string, string>?][]): Bluepr
     if (props) n.props = { ...n.props, ...props };
     return n;
   });
-  const links = nodes.slice(1).map((n, i) => ({ from: nodes[i].id, out: "next", to: n.id }));
-  return { name, enabled: true, nodes, links };
+  const links = nodes.slice(1).map((n, i) => ({ from: nodes[i].id, out: "next", to: n.id, pin: "" }));
+  return { name, enabled: true, nodes, links, comments: [], owner: "" };
 }
 
 export const TEMPLATES: BpTemplate[] = [
