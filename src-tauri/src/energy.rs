@@ -309,6 +309,11 @@ pub fn save_load(api: &EnergyApi, fields: &[(&str, &str, &str)], items: bool) ->
     }
 }
 
+/// Wie `save_load`, aber mit beliebig vielen Slots (`size`: Java-Ausdruck)
+pub fn save_load_n(api: &EnergyApi, fields: &[(&str, &str, &str)], size: &str) -> String {
+    save_load(api, fields, true).replace("NonNullList.withSize(3, ItemStack.EMPTY)", &format!("NonNullList.withSize({size}, ItemStack.EMPTY)"))
+}
+
 pub struct PowerBlock {
     pub id: String,
     /// battery | generator | cable

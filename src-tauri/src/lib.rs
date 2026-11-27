@@ -1,3 +1,4 @@
+mod abilities;
 mod account;
 mod admin;
 mod blueprint;

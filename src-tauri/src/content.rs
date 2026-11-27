@@ -86,6 +86,8 @@ pub struct BlockDef {
     pub energy: crate::energy::EnergyDef,
     /// Akku/Generator/Kabel: eigene Oberfläche
     pub gui: String,
+    /// Fähigkeiten (Energiespeicher, Inventar, Tick-Logik …) – statt fester Vorlagen
+    pub abilities: Vec<crate::abilities::Ability>,
 }
 
 /// Block-Seiten mit Texturen aus der Bibliothek
@@ -231,6 +233,7 @@ impl Default for BlockDef {
             faces: Faces::default(),
             energy: Default::default(),
             gui: String::new(),
+            abilities: vec![],
         }
     }
 }
@@ -754,7 +757,11 @@ fn block_props(b: &BlockDef, deepslate: bool) -> String {
         java_float(hardness.max(0.0)),
         java_float(b.resistance.max(0.0))
     );
-    if b.kind == "lamp" {
+    if let Some(l) = crate::abilities::light_when_active(b) {
+        props.push_str(&format!(".lightLevel(state -> state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.LIT) && state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.LIT) ? {l} : 0)"));
+    } else if let Some(l) = crate::abilities::light_always(b).filter(|l| *l > 0) {
+        props.push_str(&format!(".lightLevel(state -> {l})"));
+    } else if b.kind == "lamp" {
         let lit = if b.light == 0 { 15 } else { b.light.min(15) };
         props.push_str(&format!(".lightLevel(state -> state.getValue(RedstoneLampBlock.LIT) ? {lit} : 0)"));
     } else if b.light > 0 {
@@ -763,7 +770,7 @@ fn block_props(b: &BlockDef, deepslate: bool) -> String {
     if b.tool != "none" {
         props.push_str(".requiresCorrectToolForDrops()");
     }
-    if b.material == "glass" || is_model(b) {
+    if b.material == "glass" || has_cuboids(b) || crate::abilities::has(b, "connect") {
         props.push_str(".noOcclusion()");
     }
     props
@@ -955,6 +962,11 @@ fn face_textures(b: &BlockDef, own: &str, modid: &str, lib: &[String]) -> [Strin
 
 /// Block mit eigenem 3D-Modell?
 fn is_model(b: &BlockDef) -> bool {
+    b.kind == "normal" && !b.ore.enabled && !b.model.is_empty() && !crate::abilities::is_custom(b)
+}
+
+/// Eigenes Modell aus Quadern (auch bei Blöcken mit Fähigkeiten)
+fn has_cuboids(b: &BlockDef) -> bool {
     b.kind == "normal" && !b.ore.enabled && !b.model.is_empty()
 }
 
@@ -994,6 +1006,11 @@ fn shape_expr(b: &BlockDef, facing: &str) -> String {
     } else {
         format!("Shapes.or({}, {})", boxes[0], boxes[1..].join(", "))
     }
+}
+
+/// Wie `shape_expr`, aber mit vollständigen Klassennamen
+fn shape_expr_q(b: &BlockDef, facing: &str) -> String {
+    shape_expr(b, facing).replace("Block.box(", "net.minecraft.world.level.block.Block.box(").replace("Shapes.or(", "net.minecraft.world.phys.shapes.Shapes.or(")
 }
 
 fn model_class(b: &BlockDef) -> String {
@@ -1176,12 +1193,14 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
     let bp_energy = c.blueprints.iter().filter(|b| b.enabled).flat_map(|b| b.nodes.iter()).any(|n| {
         matches!(n.kind.as_str(), "energy_add" | "energy_take") || n.props.values().any(|v| v == "energy_at_least" || v == "block_energy")
     });
-    let has_energy = !power.is_empty() || electric || bp_energy;
+    let ability: Vec<&BlockDef> = c.blocks.iter().filter(|b| crate::abilities::is_custom(b)).collect();
+    let bp_block_nodes = c.blueprints.iter().filter(|b| b.enabled).flat_map(|b| b.nodes.iter()).any(|n| n.kind.starts_with("blk_") || n.kind.starts_with("val_blk"));
+    let has_energy = !power.is_empty() || electric || bp_energy || !ability.is_empty() || bp_block_nodes;
     if has_energy {
         imports.extend(["net.minecraft.core.BlockPos", "net.minecraft.world.level.Level"]);
         methods.push_str(&crate::energy::helpers(&energy_api));
     }
-    if !storage.is_empty() || !machines.is_empty() || !power.is_empty() {
+    if !storage.is_empty() || !machines.is_empty() || !power.is_empty() || !ability.is_empty() {
         fields.push_str("    public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITIES = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, MODID);\n");
         calls.push_str("        BLOCK_ENTITIES.register(modEventBus);\n");
         imports.extend(["net.minecraft.world.level.block.entity.BlockEntityType"]);
@@ -1324,7 +1343,7 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
     let jq = |x: &str| format!("\"{}\"", java_str(x));
     // ---- Gemeinsame Helfer für eigene Rezepte (Werkbank, Maschine) ----
     let workbenches: Vec<&BlockDef> = c.blocks.iter().filter(|b| b.kind == "workbench").collect();
-    if !workbenches.is_empty() || !machines.is_empty() || !power.is_empty() {
+    if !workbenches.is_empty() || !machines.is_empty() || !power.is_empty() || !ability.is_empty() {
         let get_item = if api.materials_v2 { "getValue" } else { "get" };
         methods.push_str(&format!(r##"
     /** Passt der Stapel zu "ns:id" oder "#ns:tag"? Leer passt nur zu leer. */
@@ -1851,7 +1870,47 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
             "\n    static boolean anvilPowerGui(net.minecraft.server.level.ServerPlayer sp, String key, net.minecraft.world.Container c, net.minecraft.world.inventory.ContainerData data, BlockPos pos, Component title) {\n        return false;\n    }\n".to_string()
         });
     }
-    if !power.is_empty() || electric {
+    // ---- Blöcke mit Fähigkeiten ----
+    if !ability.is_empty() {
+        imports.extend([
+            "com.mojang.serialization.MapCodec",
+            "net.minecraft.core.BlockPos",
+            "net.minecraft.core.NonNullList",
+            "net.minecraft.world.Container",
+            "net.minecraft.world.Containers",
+            "net.minecraft.world.ContainerHelper",
+            "net.minecraft.world.InteractionResult",
+            "net.minecraft.world.entity.player.Player",
+            "net.minecraft.world.level.Level",
+            "net.minecraft.server.level.ServerLevel",
+            "net.minecraft.world.level.block.entity.BlockEntity",
+            "net.minecraft.world.level.block.state.BlockState",
+            "net.minecraft.world.phys.BlockHitResult",
+            "net.minecraft.network.chat.Component",
+            "net.minecraft.world.item.ItemStack",
+        ]);
+        for b in &ability {
+            let shapes: Vec<(&str, String)> = if has_cuboids(b) {
+                if crate::abilities::facing(b) == "horizontal" {
+                    ["north", "east", "south", "west"].iter().map(|f| (*f, shape_expr_q(b, f))).collect()
+                } else {
+                    vec![("north", shape_expr_q(b, "north"))]
+                }
+            } else {
+                vec![]
+            };
+            methods.push_str(&crate::abilities::block_class(b, &shapes, &on_remove_drop));
+        }
+        let burn = if api.materials_v2 { "level.fuelValues().burnDuration(stack)" } else { "stack.getBurnTime(net.minecraft.world.item.crafting.RecipeType.SMELTING)" };
+        let (af, am) = crate::abilities::shared_java(&ability, &energy_api, &be_type("AnvilAbilityBlockEntity", &ability), has_guis_early, burn);
+        fields.push_str(&af);
+        methods.push_str(&am);
+    }
+    if !ability.is_empty() || bp_block_nodes {
+        imports.extend(["net.minecraft.core.BlockPos", "net.minecraft.world.level.Level", "net.minecraft.world.level.block.state.BlockState", "net.minecraft.world.item.ItemStack"]);
+        methods.push_str(&crate::abilities::bp_helpers(!ability.is_empty(), api.props_tools, api.value_io));
+    }
+    if !power.is_empty() || electric || !ability.is_empty() {
         let cap = if energy_api.handler { "net.neoforged.neoforge.capabilities.Capabilities.Energy.BLOCK" } else { "net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK" };
         let mut regs = String::new();
         if !power.is_empty() {
@@ -1859,6 +1918,9 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
         }
         if electric {
             regs.push_str(&format!("        event.registerBlockEntity({cap}, MACHINE_BE.get(), (be, side) -> be.cap(side));\n"));
+        }
+        if !ability.is_empty() {
+            regs.push_str("        anvilAbRegisterCaps(event);\n");
         }
         calls.push_str("        modEventBus.addListener(AnvilContent::anvilRegisterCaps);\n");
         methods.push_str(&format!("\n    private static void anvilRegisterCaps(net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent event) {{\n{regs}    }}\n"));
@@ -1886,6 +1948,9 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
         imports.extend(bi);
         calls.push_str(&bc);
         methods.push_str(&bm);
+    }
+    if !ability.is_empty() && !methods.contains("static boolean anvilBlockHook(") {
+        methods.push_str("\n    static boolean anvilBlockHook(String kind, String block, ServerLevel level, BlockPos pos, Player player) {\n        return false;\n    }\n");
     }
 
     // ---- Brau-Rezepte ----
@@ -2100,6 +2165,7 @@ fn generate_java(p: &Project, c: &Content) -> String {
         let props = if api.lazy_props { format!("() -> {props}") } else { props };
         let set_type = if b.material == "wood" { "OAK" } else if b.material == "metal" { "IRON" } else { "STONE" };
         let (ty, reg) = match v.shape {
+            "block" if crate::abilities::is_custom(b) => (crate::abilities::class_name(b), format!("BLOCKS.registerBlock(\"{}\", {}::new, {props})", v.id, crate::abilities::class_name(b))),
             "block" if is_model(b) => (model_class(b), format!("BLOCKS.registerBlock(\"{}\", {}::new, {props})", v.id, model_class(b))),
             "block" if b.kind == "lamp" => ("RedstoneLampBlock".to_string(), format!("BLOCKS.registerBlock(\"{}\", RedstoneLampBlock::new, {props})", v.id)),
             "block" if b.kind == "workbench" => ("AnvilWorkbenchBlock".to_string(), format!("BLOCKS.registerBlock(\"{}\", AnvilWorkbenchBlock::new, {props})", v.id)),
@@ -3248,6 +3314,31 @@ fn generate_inner(p: &Project, c: &mut Content) -> Result<String, String> {
                 write_json(&mb("_down"), &model("minecraft:block/pressure_plate_down", &["texture"]))?;
                 item_model = m.clone();
             }
+            "block" if crate::abilities::is_custom(b) => {
+                if crate::abilities::has(b, "connect") {
+                    let (core, side, inv) = crate::energy::cable_models(&ft[2]);
+                    write_json(&mb("_core"), &core)?;
+                    write_json(&mb("_side"), &side)?;
+                    write_json(&mb("_inventory"), &inv)?;
+                    item_model = format!("{m}_inventory");
+                } else {
+                    let own_blocks: Vec<String> = c.blocks.iter().map(|x| x.id.clone()).collect();
+                    let base = if has_cuboids(b) { cuboid_model(b, &tex, modid, &own_blocks) } else { cube(&model, &ft) };
+                    write_json(&mb(""), &base)?;
+                    if crate::abilities::has(b, "active") {
+                        // Textur für „an“: <id>_on.png, sonst die normale
+                        let on = if texture_path(p, "block", &format!("{}_on", b.id)).exists() { Some(format!("{modid}:block/{}_on", b.id)) } else { None };
+                        let on_model = match &on {
+                            Some(t) if has_cuboids(b) => cuboid_model(b, t, modid, &own_blocks),
+                            Some(t) => json!({ "parent": "minecraft:block/cube_all", "textures": { "all": t } }),
+                            None => base.clone(),
+                        };
+                        write_json(&mb("_on"), &on_model)?;
+                    }
+                    item_model = m.clone();
+                }
+                write_json(&assets.join(format!("blockstates/{id}.json")), &crate::abilities::blockstate(b, &m))?;
+            }
             "block" if b.kind == "lamp" => {
                 // Leuchtende Textur: <id>_on.png, sonst die normale
                 let on_tex = if texture_path(p, "block", &format!("{}_on", b.id)).exists() { format!("{modid}:block/{}_on", b.id) } else { tex.clone() };
@@ -4361,7 +4452,7 @@ mod tests {
                 y: 0.0,
                 props: props.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
             };
-            let link = |a: &str, o: &str, b: &str| BpLink { from: a.into(), out: o.into(), to: b.into() };
+            let link = |a: &str, o: &str, b: &str| BpLink { from: a.into(), out: o.into(), to: b.into(), ..Default::default() };
             let actions: Vec<(&str, Vec<(&str, &str)>)> = vec![
                 ("message", vec![("text", "Hallo {player} \"!\""), ("to", "all")]),
                 ("message", vec![("text", "Nur du")]),
@@ -4454,7 +4545,7 @@ mod tests {
                     prev = (id, "next".into());
                 }
             }
-            c.blueprints.push(Blueprint { name: "Alles".into(), enabled: true, nodes, links });
+            c.blueprints.push(Blueprint { name: "Alles".into(), enabled: true, nodes, links, ..Default::default() });
             // Logik: UND/ODER/NICHT, Schleifen, Funktion
             let nodes = vec![
                 node("e", "ev_break", &[]),
@@ -4486,7 +4577,7 @@ mod tests {
                 link("if", "false", "st"),
                 link("f", "next", "f1"),
             ];
-            c.blueprints.push(Blueprint { name: "Logik".into(), enabled: true, nodes, links });
+            c.blueprints.push(Blueprint { name: "Logik".into(), enabled: true, nodes, links, ..Default::default() });
             // Variablen aller Arten und Gültigkeiten + neue Aktionen
             use crate::blueprint::VarDef;
             for (name, kind, scope, def) in [
@@ -4644,7 +4735,92 @@ mod tests {
             links.push(link("og", "next", "og2"));
             nodes.push(node("cg", "close_gui", &[]));
             links.push(link("og2", "next", "cg"));
-            c.blueprints.push(Blueprint { name: "Variablen".into(), enabled: true, nodes, links });
+            c.blueprints.push(Blueprint { name: "Variablen".into(), enabled: true, nodes, links, ..Default::default() });
+            // Blöcke mit Fähigkeiten + Blueprint mit Block-Knoten und Werte-Verbindungen
+            {
+                use crate::abilities::Ability;
+                let ab = |kind: &str, props: &[(&str, &str)]| Ability { kind: kind.into(), props: props.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect() };
+                c.blocks.push(BlockDef { id: "ab_solar".into(), abilities: vec![ab("energy", &[("capacity", "20000"), ("in", "0"), ("out", "100")]), ab("tick", &[("ticks", "20")]), ab("active", &[]), ab("light", &[("when", "active"), ("level", "7")]), ab("gui", &[("gui", "generator_gui")])], ..Default::default() });
+                c.blocks.push(BlockDef { id: "ab_generator".into(), abilities: vec![ab("energy", &[("sides", "nobbbb")]), ab("inventory", &[("slots", "1")]), ab("tick", &[]), ab("facing", &[]), ab("active", &[])], ..Default::default() });
+                c.blocks.push(BlockDef { id: "ab_battery".into(), abilities: vec![ab("energy", &[("capacity", "100000"), ("in", "500"), ("out", "500"), ("sides", "oiiiii")]), ab("facing", &[("mode", "all")]), ab("redstone", &[("emit", "true")])], ..Default::default() });
+                c.blocks.push(BlockDef { id: "ab_cable".into(), abilities: vec![ab("energy", &[("capacity", "1000")]), ab("connect", &[("to", "energy")])], ..Default::default() });
+                c.blocks.push(BlockDef { id: "ab_chest".into(), abilities: vec![ab("inventory", &[("slots", "27")])], ..Default::default() });
+                c.blocks.push(BlockDef {
+                    id: "ab_machine".into(),
+                    model: vec![cub([0.0, 0.0, 0.0], [16.0, 12.0, 16.0], "")],
+                    abilities: vec![ab("energy", &[]), ab("recipes", &[("use", "10")]), ab("facing", &[]), ab("active", &[])],
+                    machine: MachineDef { recipes: vec![MachineRecipe { input: "#minecraft:logs".into(), output: "minecraft:charcoal".into(), output_count: 2, ..Default::default() }], ..Default::default() },
+                    ..Default::default()
+                });
+                c.blocks.push(BlockDef { id: "ab_furnace".into(), abilities: vec![ab("recipes", &[("fuel", "true")])], machine: MachineDef { recipes: vec![MachineRecipe { input: "minecraft:cobblestone".into(), output: "minecraft:stone".into(), ..Default::default() }], ..Default::default() }, ..Default::default() });
+                let nodes = vec![
+                    node("t", "ev_block_tick", &[("target", "ab_solar")]),
+                    node("day", "val_blk_day", &[]),
+                    node("sky", "val_blk_sky", &[]),
+                    node("and", "val_and", &[]),
+                    node("if", "if", &[]),
+                    node("light", "val_blk_light", &[]),
+                    node("mul", "val_math", &[("op", "mul"), ("b", "2")]),
+                    node("gen", "blk_energy_gen", &[]),
+                    node("push", "blk_energy_push", &[("amount", "100"), ("side", "front")]),
+                    node("on", "blk_lit", &[("value", "true")]),
+                    node("off", "blk_lit", &[("value", "false")]),
+                    node("u", "ev_block_use", &[("target", "ab_generator")]),
+                    node("burn", "val_blk_burn", &[("slot", "1")]),
+                    node("cmp", "val_compare", &[("cmp", "gt"), ("b", "0")]),
+                    node("if2", "if", &[]),
+                    node("take", "blk_slot_take", &[("slot", "1"), ("count", "1")]),
+                    node("var", "blk_var_set", &[("name", "brennzeit"), ("op", "add")]),
+                    node("use", "blk_energy_use", &[("amount", "5")]),
+                    node("msg", "message", &[]),
+                    node("join", "val_join", &[("a", "Strom: ")]),
+                    node("fe", "val_blk_energy", &[]),
+                    node("r", "ev_block_redstone", &[]),
+                    node("rs", "val_blk_redstone", &[]),
+                    node("sig", "blk_signal", &[]),
+                    node("put", "blk_slot_put", &[("slot", "1"), ("item", "minecraft:coal"), ("count", "2")]),
+                    node("bv", "val_blk_var", &[("name", "brennzeit")]),
+                    node("rnd", "val_random", &[("min", "1"), ("max", "5")]),
+                    node("rd", "val_round", &[("mode", "floor")]),
+                    node("not", "val_not", &[]),
+                    node("or", "val_or", &[]),
+                    node("g", "val_game", &[("game", "time")]),
+                    node("vs", "var_set", &[("var", "punkte"), ("op", "set")]),
+                ];
+                let pin = |a: &str, b: &str, key: &str| BpLink { from: a.into(), out: "value".into(), to: b.into(), pin: key.into() };
+                let links = vec![
+                    link("t", "next", "if"),
+                    pin("day", "and", "a"),
+                    pin("sky", "and", "b"),
+                    pin("and", "if", "cond"),
+                    link("if", "true", "gen"),
+                    pin("light", "mul", "a"),
+                    pin("mul", "gen", "amount"),
+                    link("gen", "next", "push"),
+                    link("push", "next", "on"),
+                    link("if", "false", "off"),
+                    link("u", "next", "if2"),
+                    pin("burn", "cmp", "a"),
+                    pin("cmp", "if2", "cond"),
+                    link("if2", "true", "take"),
+                    link("take", "ok", "var"),
+                    pin("burn", "var", "value"),
+                    link("if2", "false", "use"),
+                    link("use", "fail", "msg"),
+                    pin("fe", "join", "b"),
+                    pin("join", "msg", "text"),
+                    link("r", "next", "sig"),
+                    pin("rs", "sig", "power"),
+                    link("sig", "next", "put"),
+                    pin("rnd", "rd", "in"),
+                    pin("rd", "put", "count"),
+                    link("put", "next", "vs"),
+                    pin("bv", "vs", "value"),
+                    pin("not", "or", "a"),
+                    pin("g", "or", "b"),
+                ];
+                c.blueprints.push(Blueprint { name: "Block-Logik".into(), enabled: true, nodes, links, ..Default::default() });
+            }
             // Tags: eigene + Minecraft-Tags ergänzen (auch doppelt zu Anvils eigenen Einträgen)
             for (registry, id, values) in [
                 ("item", format!("{}:edelsteine", p.mod_id), vec!["ruby".to_string(), "minecraft:diamond".into(), "#minecraft:coals".into()]),

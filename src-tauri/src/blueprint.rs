@@ -13,6 +13,22 @@ pub struct Blueprint {
     pub enabled: bool,
     pub nodes: Vec<BpNode>,
     pub links: Vec<BpLink>,
+    /// Kommentar-Rahmen im Editor (ohne Wirkung auf den Code)
+    pub comments: Vec<BpComment>,
+    /// Gehört zu einem Block oder Item (nur zur Anzeige)
+    pub owner: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BpComment {
+    pub id: String,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub text: String,
+    pub color: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -32,6 +48,8 @@ pub struct BpLink {
     pub from: String,
     pub out: String,
     pub to: String,
+    /// Werte-Verbindung: Eingang (Eigenschaft) am Ziel – leer = Ablauf-Verbindung
+    pub pin: String,
 }
 
 /// Versionsunterschiede, die der Generator kennt
@@ -240,7 +258,8 @@ fn who(props: &BTreeMap<String, String>) -> &'static str {
     }
 }
 
-pub const EVENT_KINDS: [&str; 26] = [
+pub const EVENT_KINDS: [&str; 29] = [
+    "ev_block_tick", "ev_block_use", "ev_block_redstone",
     "ev_join", "ev_respawn", "ev_dimension", "ev_timer", "ev_click_block", "ev_click_item", "ev_break", "ev_place", "ev_use", "ev_hurt", "ev_kill",
     "ev_jump", "ev_chat", "ev_craft", "ev_start", "ev_click_entity", "ev_player_death", "ev_leave", "ev_pickup", "ev_level_up", "ev_left_click_block",
     "ev_function", "ev_command", "ev_toss", "ev_player_hurt", "ev_fish",
@@ -283,7 +302,7 @@ impl<'a> Gen<'a> {
 
     /// Code für alle Knoten, die an Ausgang `out` von `from` hängen
     fn follow(&self, from: &str, out: &str, depth: usize, in_lambda: bool, stack: &mut HashSet<String>) -> String {
-        let mut links: Vec<&BpLink> = self.bp.links.iter().filter(|l| l.from == from && l.out == out).collect();
+        let mut links: Vec<&BpLink> = self.bp.links.iter().filter(|l| l.from == from && l.out == out && l.pin.is_empty()).collect();
         // von oben nach unten ausführen
         links.sort_by(|a, b| {
             let ya = self.nodes.get(a.to.as_str()).map(|n| n.y).unwrap_or(0.0);
@@ -300,7 +319,7 @@ impl<'a> Gen<'a> {
     }
 
     fn node(&self, n: &BpNode, depth: usize, in_lambda: bool, stack: &mut HashSet<String>) -> String {
-        if depth > 48 || stack.contains(&n.id) || EVENT_KINDS.contains(&n.kind.as_str()) {
+        if depth > 48 || stack.contains(&n.id) || EVENT_KINDS.contains(&n.kind.as_str()) || n.kind.starts_with("val_") {
             return String::new(); // Schleife oder zu tief
         }
         stack.insert(n.id.clone());
@@ -311,7 +330,7 @@ impl<'a> Gen<'a> {
         let code = match n.kind.as_str() {
             // ---- Ablauf ----
             "if" => {
-                let cond = self.full_condition(p);
+                let cond = self.pin(n, "cond", "bool").unwrap_or_else(|| self.full_condition(p));
                 let t = self.follow(&n.id, "true", depth + 1, in_lambda, stack);
                 let f = self.follow(&n.id, "false", depth + 1, in_lambda, stack);
                 let mut c = format!("{ind}if ({cond}) {{\n{t}{ind}}}");
@@ -420,7 +439,7 @@ impl<'a> Gen<'a> {
             }
             // ---- Aktionen ----
             "message" => {
-                let text = text_expr(self.api, prop(p, "text"));
+                let text = self.text_in(n, "text");
                 let c = if prop(p, "to") == "all" {
                     format!("{ind}level.getServer().getPlayerList().broadcastSystemMessage(Component.literal({text}), false);\n")
                 } else {
@@ -429,7 +448,7 @@ impl<'a> Gen<'a> {
                 c + &next(stack)
             }
             "actionbar" => {
-                format!("{ind}if (player != null) player.displayClientMessage(Component.literal({}), true);\n", text_expr(self.api, prop(p, "text"))) + &next(stack)
+                format!("{ind}if (player != null) player.displayClientMessage(Component.literal({}), true);\n", self.text_in(n, "text")) + &next(stack)
             }
             "title" => {
                 let t = serde_json::to_string(prop(p, "text")).unwrap_or_else(|_| "\"\"".into());
@@ -447,8 +466,10 @@ impl<'a> Gen<'a> {
                 let name = prop(p, "var");
                 let (_, kind, _) = self.api.var_info(name, prop(p, "scope"));
                 let numeric = kind == "number";
-                // Quelle: fester Wert, andere Variable oder Spielwert
+                // Quelle: verbundener Wert, fester Wert, andere Variable oder Spielwert
+                let linked = self.pin(n, "value", if numeric { "num" } else { "text" });
                 let (src, src_num) = match prop(p, "src") {
+                    _ if linked.is_some() => (linked.clone().unwrap_or_default(), numeric),
                     "var" => {
                         if numeric { (var_num(self.api, prop(p, "var2"), "player"), true) } else { (var_get(self.api, prop(p, "var2"), "player"), false) }
                     }
@@ -778,8 +799,58 @@ impl<'a> Gen<'a> {
                 let v = num(p, "amount", 10.0, 1.0, 10000.0) as i64;
                 format!("{ind}level.addFreshEntity(new net.minecraft.world.entity.ExperienceOrb(level, x, y + 0.5, z, {v}));\n") + &next(stack)
             }
+            // ---- Block & Strom (dieser Block = Position des Ereignisses) ----
+            "blk_energy_gen" => {
+                let a = self.int_in(n, "amount", 20.0);
+                format!("{ind}anvilBlkAdd(level, BlockPos.containing(x, y, z), {a});\n") + &next(stack)
+            }
+            "blk_energy_use" => {
+                let a = self.int_in(n, "amount", 20.0);
+                let ok = self.follow(&n.id, "ok", depth + 1, in_lambda, stack);
+                let fail = self.follow(&n.id, "fail", depth + 1, in_lambda, stack);
+                format!("{ind}if (anvilBlkEnergy(level, BlockPos.containing(x, y, z)) >= {a}) {{\n{ind}    anvilBlkTake(level, BlockPos.containing(x, y, z), {a});\n{ok}{ind}}} else {{\n{fail}{ind}}}\n") + &next(stack)
+            }
+            "blk_energy_push" => {
+                let a = self.int_in(n, "amount", 100.0);
+                let front = prop(p, "side") == "front";
+                format!("{ind}anvilBlkPush(level, BlockPos.containing(x, y, z), {a}, {front});\n") + &next(stack)
+            }
+            "blk_lit" => {
+                let v = self.pin(n, "value", "bool").unwrap_or_else(|| if prop(p, "value") == "false" { "false".into() } else { "true".into() });
+                format!("{ind}anvilBlkLit(level, BlockPos.containing(x, y, z), {v});\n") + &next(stack)
+            }
+            "blk_signal" => {
+                let v = self.int_in(n, "power", 15.0);
+                format!("{ind}anvilBlkSignal(level, BlockPos.containing(x, y, z), {v});\n") + &next(stack)
+            }
+            "blk_var_set" => {
+                let name = js(&var_name(prop(p, "name")));
+                let v = self.num_in(n, "value", 0.0);
+                let e = match prop(p, "op") {
+                    "add" => format!("anvilBlkVar(level, BlockPos.containing(x, y, z), \"{name}\") + {v}"),
+                    "sub" => format!("anvilBlkVar(level, BlockPos.containing(x, y, z), \"{name}\") - {v}"),
+                    _ => v,
+                };
+                format!("{ind}anvilBlkSetVar(level, BlockPos.containing(x, y, z), \"{name}\", {e});\n") + &next(stack)
+            }
+            "blk_slot_take" => {
+                let slot = self.int_in(n, "slot", 1.0);
+                let count = self.int_in(n, "count", 1.0);
+                let ok = self.follow(&n.id, "ok", depth + 1, in_lambda, stack);
+                let fail = self.follow(&n.id, "fail", depth + 1, in_lambda, stack);
+                format!("{ind}if (anvilBlkTakeSlot(level, BlockPos.containing(x, y, z), {slot} - 1, {count})) {{\n{ok}{ind}}} else {{\n{fail}{ind}}}\n") + &next(stack)
+            }
+            "blk_slot_put" => {
+                let slot = self.int_in(n, "slot", 1.0);
+                let count = self.int_in(n, "count", 1.0);
+                let item = prop(p, "item");
+                if !id_ok(item) {
+                    return next(stack);
+                }
+                format!("{ind}anvilBlkPutSlot(level, BlockPos.containing(x, y, z), {slot} - 1, new ItemStack(anvilBpItem(\"{}\"), Math.max(1, {count})));\n", rid(self.api, item)) + &next(stack)
+            }
             "log" => {
-                let text = text_expr(self.api, prop(p, "text"));
+                let text = self.text_in(n, "text");
                 format!("{ind}com.mojang.logging.LogUtils.getLogger().info(\"[Blueprint] \" + {text});\n") + &next(stack)
             }
             "energy_add" | "energy_take" => {
@@ -828,6 +899,136 @@ impl<'a> Gen<'a> {
         };
         stack.remove(&n.id);
         code
+    }
+
+    /// Verbundener Wert an Eingang `key` als Java-Ausdruck vom Typ `ty` (num | bool | text)
+    fn pin(&self, n: &BpNode, key: &str, ty: &str) -> Option<String> {
+        self.pin_d(n, key, ty, 0)
+    }
+
+    fn pin_d(&self, n: &BpNode, key: &str, ty: &str, depth: usize) -> Option<String> {
+        let l = self.bp.links.iter().find(|l| l.to == n.id && l.pin == key)?;
+        let src = self.nodes.get(l.from.as_str())?;
+        if depth > 40 || !src.kind.starts_with("val_") {
+            return None;
+        }
+        let (code, t) = self.value(src, depth + 1);
+        Some(conv(&code, t, ty))
+    }
+
+    /// Eingang als Zahl: verbunden oder aus dem Feld
+    fn num_in(&self, n: &BpNode, key: &str, def: f64) -> String {
+        self.num_in_d(n, key, def, 0)
+    }
+
+    fn num_in_d(&self, n: &BpNode, key: &str, def: f64, depth: usize) -> String {
+        self.pin_d(n, key, "num", depth).unwrap_or_else(|| format!("{:?}", num(&n.props, key, def, -1.0e12, 1.0e12)))
+    }
+
+    fn int_in(&self, n: &BpNode, key: &str, def: f64) -> String {
+        format!("(int) Math.round({})", self.num_in(n, key, def))
+    }
+
+    fn text_in(&self, n: &BpNode, key: &str) -> String {
+        self.pin(n, key, "text").unwrap_or_else(|| text_expr(self.api, prop(&n.props, key)))
+    }
+
+    fn bool_in_d(&self, n: &BpNode, key: &str, depth: usize) -> String {
+        self.pin_d(n, key, "bool", depth).unwrap_or_else(|| if prop(&n.props, key) == "true" { "true".into() } else { "false".into() })
+    }
+
+    /// Werte-Knoten → (Java-Ausdruck, Typ)
+    fn value(&self, n: &BpNode, d: usize) -> (String, &'static str) {
+        let p = &n.props;
+        let pos = "BlockPos.containing(x, y, z)";
+        let a = || self.num_in_d(n, "a", 0.0, d);
+        let b = || self.num_in_d(n, "b", 0.0, d);
+        match n.kind.as_str() {
+            "val_number" => (format!("{:?}", num(p, "value", 0.0, -1.0e12, 1.0e12)), "num"),
+            "val_text" => (text_expr(self.api, prop(p, "value")), "text"),
+            "val_bool" => ((if prop(p, "value") == "false" { "false" } else { "true" }).into(), "bool"),
+            "val_math" => {
+                let (a, b) = (a(), b());
+                let e = match prop(p, "op") {
+                    "sub" => format!("({a} - {b})"),
+                    "mul" => format!("({a} * {b})"),
+                    "div" => format!("(({b}) == 0 ? 0 : ({a}) / ({b}))"),
+                    "min" => format!("Math.min({a}, {b})"),
+                    "max" => format!("Math.max({a}, {b})"),
+                    "mod" => format!("(({b}) == 0 ? 0 : ({a}) % ({b}))"),
+                    "pow" => format!("Math.pow({a}, {b})"),
+                    _ => format!("({a} + {b})"),
+                };
+                (e, "num")
+            }
+            "val_round" => {
+                let v = self.num_in_d(n, "in", 0.0, d);
+                let e = match prop(p, "mode") {
+                    "floor" => format!("Math.floor({v})"),
+                    "ceil" => format!("Math.ceil({v})"),
+                    "abs" => format!("Math.abs({v})"),
+                    _ => format!("Math.rint({v})"),
+                };
+                (e, "num")
+            }
+            "val_random" => {
+                let (lo, hi) = (self.num_in_d(n, "min", 0.0, d), self.num_in_d(n, "max", 10.0, d));
+                (format!("anvilRandom(level, {lo}, {hi})"), "num")
+            }
+            "val_compare" => {
+                let (a, b) = (a(), b());
+                let cmp = match prop(p, "cmp") {
+                    "lt" => "<",
+                    "le" => "<=",
+                    "ge" => ">=",
+                    "eq" => "==",
+                    "ne" => "!=",
+                    _ => ">",
+                };
+                (format!("({a} {cmp} {b})"), "bool")
+            }
+            "val_and" | "val_or" => {
+                let (a, b) = (self.bool_in_d(n, "a", d), self.bool_in_d(n, "b", d));
+                (format!("({a} {} {b})", if n.kind == "val_and" { "&&" } else { "||" }), "bool")
+            }
+            "val_not" => (format!("!({})", self.bool_in_d(n, "in", d)), "bool"),
+            "val_join" => {
+                let a = self.pin_d(n, "a", "text", d).unwrap_or_else(|| text_expr(self.api, prop(p, "a")));
+                let b = self.pin_d(n, "b", "text", d).unwrap_or_else(|| text_expr(self.api, prop(p, "b")));
+                (format!("({a} + {b})"), "text")
+            }
+            "val_var" => {
+                let name = prop(p, "var");
+                let (_, kind, _) = self.api.var_info(name, "player");
+                match kind.as_str() {
+                    "number" => (var_num(self.api, name, "player"), "num"),
+                    "logic" => (format!("\"true\".equals({})", var_get(self.api, name, "player")), "bool"),
+                    _ => (var_get(self.api, name, "player"), "text"),
+                }
+            }
+            "val_game" => {
+                let (e, is_num) = game_expr(self.api, prop(p, "game"));
+                (e, if is_num { "num" } else { "text" })
+            }
+            "val_blk_energy" => (format!("anvilBlkEnergy(level, {pos})"), "num"),
+            "val_blk_capacity" => (format!("anvilBlkCapacity(level, {pos})"), "num"),
+            "val_blk_var" => (format!("anvilBlkVar(level, {pos}, \"{}\")", js(&var_name(prop(p, "name")))), "num"),
+            "val_blk_slot_count" => (format!("anvilBlkSlot(level, {pos}, (int) Math.round({}) - 1).getCount()", self.num_in_d(n, "slot", 1.0, d)), "num"),
+            "val_blk_slot_item" => (format!("BuiltInRegistries.ITEM.getKey(anvilBlkSlot(level, {pos}, (int) Math.round({}) - 1).getItem()).toString()", self.num_in_d(n, "slot", 1.0, d)), "text"),
+            "val_blk_burn" => {
+                let st = format!("anvilBlkSlot(level, {pos}, (int) Math.round({}) - 1)", self.num_in_d(n, "slot", 1.0, d));
+                let e = if self.api.get_value { format!("anvilBurn(level, {st})") } else { format!("anvilBurn(level, {st})") };
+                (e, "num")
+            }
+            "val_blk_light" => (format!("level.getMaxLocalRawBrightness({pos}.above())"), "num"),
+            "val_blk_sky" => (format!("level.canSeeSky({pos}.above())"), "bool"),
+            "val_blk_day" => ("anvilBlkIsDay(level)".into(), "bool"),
+            "val_blk_rain" => ("level.isRaining()".into(), "bool"),
+            "val_blk_redstone" => (format!("level.getBestNeighborSignal({pos})"), "num"),
+            "val_blk_lit" => (format!("anvilBlkIsLit(level, {pos})"), "bool"),
+            "val_sneaking" => ("(player != null && player.isShiftKeyDown())".into(), "bool"),
+            _ => ("0".into(), "num"),
+        }
     }
 
     /// Bedingung mit NICHT und optional einer zweiten (UND / ODER)
@@ -930,6 +1131,20 @@ impl<'a> Gen<'a> {
             // Zufall in Prozent (Standard)
             _ => format!("level.getRandom().nextFloat() < {:.3}f", num(p, "value", 50.0, 0.0, 100.0) / 100.0),
         }
+    }
+}
+
+/// Wert umwandeln: num (double) | bool | text (String)
+fn conv(code: &str, from: &str, to: &str) -> String {
+    match (from, to) {
+        (a, b) if a == b => code.to_string(),
+        ("num", "text") => format!("anvilFmt({code})"),
+        ("bool", "text") => format!("String.valueOf({code})"),
+        ("num", "bool") => format!("(({code}) != 0)"),
+        ("bool", "num") => format!("(({code}) ? 1.0 : 0.0)"),
+        ("text", "num") => format!("anvilParse({code})"),
+        ("text", "bool") => format!("\"true\".equalsIgnoreCase({code})"),
+        _ => code.to_string(),
     }
 }
 
@@ -1099,6 +1314,8 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
     let mut timers = String::new();
     let mut starts = String::new();
     let get = if api.get_value { "getValue" } else { "get" };
+    let burn = if api.get_value { "level.fuelValues().burnDuration(stack)" } else { "stack.getBurnTime(net.minecraft.world.item.crafting.RecipeType.SMELTING)" };
+    let mut hooks: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
     // Hilfsfunktionen
     methods.push_str(&format!(
@@ -1261,6 +1478,15 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
     private static Item anvilBpItem(String id) {{
         return BuiltInRegistries.ITEM.{get}(ResourceLocation.parse(id));
     }}
+
+    private static double anvilRandom(ServerLevel level, double lo, double hi) {{
+        return lo + level.getRandom().nextDouble() * (hi - lo);
+    }}
+
+    /** Brennwert eines Items in Ticks (0 = brennt nicht) */
+    private static int anvilBurn(ServerLevel level, ItemStack stack) {{
+        return stack.isEmpty() ? 0 : {burn};
+    }}
 "##
     ));
 
@@ -1297,6 +1523,16 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
                     methods.push_str(&format!(
                         "\n    private static void {method}(net.neoforged.neoforge.event.RegisterCommandsEvent event) {{\n        event.getDispatcher().register(net.minecraft.commands.Commands.literal(\"{name}\").executes(ctx -> {{ {method}Run(ctx.getSource()); return 1; }}));\n    }}\n\n    private static void {method}Run(CommandSourceStack source) {{\n        final ServerLevel level = source.getLevel();\n        final Player player = source.getPlayer();\n        final LivingEntity target = player;\n        final double x = source.getPosition().x, y = source.getPosition().y, z = source.getPosition().z;\n        final BlockState state = null;\n        final ItemStack stack = player != null ? player.getMainHandItem() : ItemStack.EMPTY;\n        final String message = \"\";\n{body}    }}\n"
                     ));
+                }
+                "ev_block_tick" | "ev_block_use" | "ev_block_redstone" => {
+                    let body = gen.follow(&n.id, "next", 1, false, &mut stack);
+                    let t = prop(&n.props, "target");
+                    let key = if id_ok(t) { t.rsplit(':').next().unwrap_or(t).to_string() } else { "*".to_string() };
+                    let method = format!("anvilBh{counter}");
+                    methods.push_str(&format!(
+                        "\n    private static void {method}(ServerLevel level, BlockPos bpos, Player player) {{\n        final LivingEntity target = player;\n        final double x = bpos.getX() + 0.5, y = bpos.getY() + 0.5, z = bpos.getZ() + 0.5;\n        final BlockState state = level.getBlockState(bpos);\n        final ItemStack stack = player != null ? player.getMainHandItem() : ItemStack.EMPTY;\n        final String message = \"\";\n{body}    }}\n"
+                    ));
+                    hooks.entry(format!("{}|{key}", &n.kind[9..])).or_default().push(method);
                 }
                 "ev_start" => {
                     let body = gen.follow(&n.id, "next", 1, false, &mut stack);
@@ -1363,6 +1599,17 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
         methods.push_str(&format!("\n    private static void anvilFn_{name}({BODY_PARAMS}) {{\n{body}    }}\n"));
     }
     methods.push_str(&extra.into_inner());
+    // Block-Ereignisse (Tick, Rechtsklick, Redstone) – aufgerufen von Blöcken mit Fähigkeiten
+    {
+        let mut cases = String::new();
+        for (k, list) in &hooks {
+            let calls_: String = list.iter().map(|m| format!("{m}(level, pos, player); ")).collect();
+            cases.push_str(&format!("            case \"{}\" -> {{ {calls_}h = true; }}\n", js(k)));
+        }
+        methods.push_str(&format!(
+            "\n    static boolean anvilBlockHook(String kind, String block, ServerLevel level, BlockPos pos, Player player) {{\n        boolean h = false;\n        for (String k : new String[] {{ kind + \"|\" + block, kind + \"|*\" }}) {{\n            switch (k) {{\n{cases}                default -> {{}}\n            }}\n        }}\n        return h;\n    }}\n"
+        ));
+    }
     if !starts.is_empty() {
         calls.push_str("        NeoForge.EVENT_BUS.addListener(AnvilContent::anvilStarted);\n");
         methods.push_str(&format!("\n    private static void anvilStarted(ServerStartedEvent event) {{\n{starts}    }}\n"));
