@@ -48,6 +48,11 @@ fn clear() {
     }
 }
 
+/// Sitzung für andere Anfragen an den Server (z. B. Problem melden)
+pub fn session_token() -> Option<String> {
+    load().map(|s| s.token)
+}
+
 fn base(app: &AppHandle) -> String {
     crate::settings::load(app).workshop_url
 }

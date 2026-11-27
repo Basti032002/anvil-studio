@@ -14,6 +14,8 @@ const ALLOWED_TASKS: &[&str] = &["runClient", "runServer", "runData", "build", "
 #[derive(Default)]
 pub struct Runner {
     procs: Mutex<HashMap<String, RunInfo>>,
+    /// Vom Nutzer gestoppt (kein Absturz)
+    stopped: Mutex<std::collections::HashSet<String>>,
 }
 
 #[derive(Serialize, Clone)]
@@ -41,6 +43,10 @@ struct RunExit {
     task: String,
     success: bool,
     code: Option<i32>,
+    /// Vom Nutzer gestoppt
+    stopped: bool,
+    /// Unix-Sekunden, wann der Lauf begann (zum Finden neuer Absturzberichte)
+    started_at: u64,
 }
 
 fn pump<R: AsyncRead + Unpin + Send + 'static>(app: AppHandle, project_id: String, stream: &'static str, reader: R) {
@@ -145,11 +151,12 @@ pub async fn run_task(
         let status = child.wait().await;
         let code = status.as_ref().ok().and_then(|s| s.code());
         let success = status.map(|s| s.success()).unwrap_or(false);
-        app2.state::<Runner>().procs.lock().unwrap().remove(&project_id);
+        let started_at = app2.state::<Runner>().procs.lock().unwrap().remove(&project_id).map(|i| i.started_at).unwrap_or(0);
+        let stopped = app2.state::<Runner>().stopped.lock().unwrap().remove(&project_id);
         let _ = crate::projects::update(&app2, &project_id, |p| {
             p.last_run = Some(crate::projects::LastRun { task: task.clone(), success, finished_at: now() });
         });
-        let _ = app2.emit("run-exit", RunExit { project_id, task, success, code });
+        let _ = app2.emit("run-exit", RunExit { project_id, task, success, code, stopped, started_at });
     });
     Ok(())
 }
@@ -164,6 +171,7 @@ pub fn stop_task(state: State<'_, Runner>, project_id: String) -> Result<(), Str
         .get(&project_id)
         .and_then(|i| i.pid)
         .ok_or("Es läuft gerade nichts.")?;
+    state.stopped.lock().unwrap().insert(project_id.clone());
     let mut cmd = if cfg!(windows) {
         let mut c = std::process::Command::new("taskkill");
         c.args(["/PID", &pid.to_string(), "/T", "/F"]);

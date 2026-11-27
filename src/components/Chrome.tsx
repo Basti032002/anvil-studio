@@ -1,4 +1,5 @@
 import { t } from "../i18n";
+import { openReport } from "../report";
 // Fensterrahmen: eigene Titelleiste, Activity-Bar, Statusleiste und Toasts.
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useState } from "react";
@@ -190,6 +191,9 @@ export function StatusBar({
         )}
         {update.phase === "installing" && <span className="status-item accent">{t("Wird installiert – Neustart …")}</span>}
         {update.phase === "checking" && <span className="status-item">{t("Suche nach Updates …")}</span>}
+        <button className="status-item" onClick={() => openReport({ kind: "manual" })} data-tip={t("Fehler oder Wunsch an das Anvil-Studio-Team schicken")}>
+          <AlertIcon size={13} /> {t("Problem melden")}
+        </button>
         <span className="status-item">{t("NeoForge")}</span>
         <span className="status-item">v{version}</span>
       </div>

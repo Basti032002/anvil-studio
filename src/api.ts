@@ -323,7 +323,7 @@ export interface StructDef {
   depth: number;
   adapt: "" | "none" | "beard_thin" | "beard_box" | "bury" | "encapsulate";
 }
-export type LangEntry = { key: string; kind: "block" | "item" | "entity" | "egg" | "tab"; owner: string; shape: string; de: string; en: string; legacy: Record<string, string> };
+export type LangEntry = { key: string; kind: "block" | "item" | "entity" | "egg" | "tab"; owner: string; shape: string; de: string; en: string; /** Deutsch wirklich eingetragen (sonst nur englischer Ersatz) */ deSet: boolean; legacy: Record<string, string> };
 
 export const modsApi = {
   search: (projectId: string, query: string) => invoke<ModHit[]>("mods_search", { projectId, query }),

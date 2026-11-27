@@ -27,6 +27,10 @@ services:
       SMTP_USER: ""
       SMTP_PASS: ""
       SMTP_FROM: ""          # z. B. "Anvil Studio <noreply@forge-host.net>"
+      # „Problem melden“ aus Anvil Studio → Issue in einem (privaten) GitHub-Repo.
+      # Token: Fine-grained, nur dieses Repo, Berechtigung „Issues: Read and write“.
+      GITHUB_ISSUES_REPO: ""  # z. B. "Basti032002/anvil-studio-issues"
+      GITHUB_ISSUES_TOKEN: ""
     logging:                # Logs (mit IP-Adressen) nur kurz aufheben
       driver: json-file
       options:

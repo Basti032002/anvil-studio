@@ -18,6 +18,7 @@ mod modsettings;
 mod mods;
 mod play;
 mod projects;
+mod report;
 mod runner;
 mod settings;
 mod structures;
@@ -35,6 +36,7 @@ pub fn run() {
             if let Err(e) = migrate::run(app.handle()) {
                 eprintln!("Migration fehlgeschlagen: {e}");
             }
+            report::install_panic_hook(app.handle());
             workshop::start_remote_poll(app.handle().clone());
             Ok(())
         })
@@ -53,6 +55,11 @@ pub fn run() {
             admin::admin_set_workshop_config,
             admin::admin_set_beta,
             account::studio_account_status,
+            report::report_mc_crashed,
+            report::report_collect,
+            report::report_pending_crash,
+            report::report_dismiss_crash,
+            report::report_send,
             account::studio_account_register,
             account::studio_account_resend,
             account::studio_account_verify,

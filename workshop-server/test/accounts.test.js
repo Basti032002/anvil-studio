@@ -62,6 +62,13 @@ test("Konto: registrieren, bestätigen, anmelden, Passwort zurücksetzen, lösch
   assert.equal(me.status, 401);
   const t2 = r.body.token;
 
+  // Problem melden (ohne GitHub-Token nur gespeichert)
+  r = await post("/api/report", { kind: "mc_crash", title: "Absturz", description: "Beim Start", system: { Version: "0.5.0" }, logs: [{ name: "latest.log", text: "x".repeat(100000) }] }, t2);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.stored, true);
+  r = await post("/api/report", { title: "ohne Konto" });
+  assert.equal(r.status, 401);
+
   r = await post("/api/account/delete", { password: "falsch" }, t2);
   assert.equal(r.status, 401);
   r = await post("/api/account/delete", { password: "neuesPasswort1" }, t2);

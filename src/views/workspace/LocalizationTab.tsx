@@ -100,7 +100,7 @@ export default function LocalizationTab({ project }: { project: Project }) {
   if (!content) return <div className="content-loading muted">{t("Lade Texte …")}</div>;
 
   const tr = content.translations ?? {};
-  const value = (code: string, e: LangEntry) => (code === "de_de" ? (tr.de_de?.[e.key] ?? e.de) : code === "en_us" ? (tr.en_us?.[e.key] ?? e.en) : (tr[code]?.[e.key] ?? e.legacy[code] ?? ""));
+  const value = (code: string, e: LangEntry) => (code === "de_de" ? (tr.de_de?.[e.key] ?? (e.deSet ? e.de : "")) : code === "en_us" ? (tr.en_us?.[e.key] ?? e.en) : (tr[code]?.[e.key] ?? e.legacy[code] ?? ""));
   const done = (code: string) => entries.filter((e) => value(code, e).trim()).length;
   const pct = (code: string) => (entries.length ? Math.round((done(code) / entries.length) * 100) : 100);
 

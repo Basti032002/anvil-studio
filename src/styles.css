@@ -2105,3 +2105,18 @@ button.cx-stat { cursor: pointer; }
 .studio-avatar { display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-weight: 750; font-size: 18px; }
 .auth a, .auth-links a { color: var(--accent); }
 .mc-intro { display: flex; flex-direction: column; gap: 14px; }
+
+/* Problem melden */
+.report-dialog { width: 620px; max-height: 86vh; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
+.report-ask { width: 480px; display: flex; flex-direction: column; gap: 16px; }
+.report-icon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); flex: none; }
+.report-desc { min-height: 90px; resize: vertical; padding: 8px 10px; }
+.report-attach { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); }
+.report-system { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); }
+.report-system b { color: var(--text); font-weight: 600; }
+.report-log .row { gap: 8px; font-size: 12.5px; }
+.report-log input { accent-color: var(--accent); }
+.report-pre { max-height: 220px; overflow: auto; margin: 6px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--panel); font-family: var(--mono); font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+.report-actions { gap: 8px; }
+.crash-screen { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg); z-index: 50; }
+.crash-card { width: min(640px, 90vw); display: flex; flex-direction: column; gap: 12px; padding: 24px; border-radius: 14px; background: var(--elevated); border: 1px solid var(--border-strong); }

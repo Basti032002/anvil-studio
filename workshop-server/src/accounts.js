@@ -248,6 +248,70 @@ export function registerAccountRoutes(app, db, fail) {
     return { ok: true };
   });
 
+  // ---- Problem melden → GitHub-Issue (privates Repo) ----
+  db.exec(`CREATE TABLE IF NOT EXISTS reports_app (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    issue_number INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  )`);
+  const reportLimit = limiter(10, 60 * 60);
+  const KINDS = { manual: "Meldung", app_crash: "Absturz Anvil Studio", mc_crash: "Absturz Minecraft", build: "Bauen fehlgeschlagen", problem: "Problem" };
+  const FENCE = "````";
+  const fence = (s) => `${FENCE}\n${String(s).split(FENCE).join("'''")}\n${FENCE}`;
+  const clip = (s, n) => (s.length > n ? "… (gekürzt)\n" + s.slice(s.length - n) : s);
+
+  app.post("/api/report", { bodyLimit: 1024 * 1024 }, async (req) => {
+    const acc = accountOf(req);
+    if (!acc) throw fail(401, "Bitte melde dich an.");
+    if (!reportLimit(acc.id)) throw fail(429, "Du hast gerade schon viele Meldungen geschickt. Bitte warte etwas.");
+    const b = req.body || {};
+    const kind = KINDS[b.kind] ? b.kind : "manual";
+    const title = String(b.title || "").trim().slice(0, 120) || KINDS[kind];
+    const description = String(b.description || "").slice(0, 8000);
+    const system = b.system && typeof b.system === "object" ? b.system : {};
+    const logs = Array.isArray(b.logs) ? b.logs.slice(0, 4) : [];
+    let body = `**Art:** ${KINDS[kind]}\n**Von:** ${acc.name ? acc.name + " · " : ""}${acc.email}\n\n`;
+    if (description.trim()) body += `### Beschreibung\n${description}\n\n`;
+    const rows = Object.entries(system)
+      .slice(0, 20)
+      .map(([k, v]) => `| ${String(k).slice(0, 40)} | ${String(v).split("|").join("/").slice(0, 200)} |`);
+    if (rows.length) body += `### System\n| | |\n|---|---|\n${rows.join("\n")}\n\n`;
+    // Ein Issue darf höchstens 65 536 Zeichen haben
+    const room = Math.max(2000, Math.floor((60000 - body.length) / Math.max(1, logs.length)));
+    for (const l of logs) {
+      const name = String(l?.name || "Log").slice(0, 80);
+      body += `<details><summary>${name}</summary>\n\n${fence(clip(String(l?.text || ""), room - 200))}\n\n</details>\n\n`;
+    }
+    const info = db.prepare("INSERT INTO reports_app(account_id, kind, title, body, created_at) VALUES(?, ?, ?, ?, ?)").run(acc.id, kind, title, body, now());
+    const id = Number(info.lastInsertRowid);
+    const repo = process.env.GITHUB_ISSUES_REPO;
+    const token = process.env.GITHUB_ISSUES_TOKEN;
+    if (!repo || !token) {
+      app.log.warn("GITHUB_ISSUES_REPO/GITHUB_ISSUES_TOKEN fehlen – Meldung nur in der Datenbank gespeichert.");
+      return { ok: true, stored: true, id };
+    }
+    const r = await fetch(`https://api.github.com/repos/${repo}/issues`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "anvil-workshop" },
+      body: JSON.stringify({ title: `[${KINDS[kind]}] ${title}`, body }),
+      signal: AbortSignal.timeout(20000),
+    }).catch((e) => {
+      app.log.error(e, "GitHub nicht erreichbar");
+      return null;
+    });
+    if (!r || !r.ok) {
+      app.log.error({ status: r?.status, text: r ? await r.text().catch(() => "") : "" }, "Issue konnte nicht erstellt werden");
+      return { ok: true, stored: true, id };
+    }
+    const issue = await r.json();
+    db.prepare("UPDATE reports_app SET issue_number = ? WHERE id = ?").run(issue.number, id);
+    return { ok: true, stored: true, id, issue: issue.number };
+  });
+
   // Für Admin-Statistik
   return { count: () => db.prepare("SELECT COUNT(*) AS n FROM accounts WHERE verified = 1").get().n };
 }

@@ -3,6 +3,10 @@ import { installUndoKeys } from "./undo";
 import { Tour } from "./components/Tour";
 import AuthGate from "./components/AuthGate";
 import McStartup from "./components/McStartup";
+import ErrorBoundary from "./components/ErrorBoundary";
+import ReportDialog from "./components/ReportDialog";
+import { openReport, reportApi } from "./report";
+import { whenTourIdle } from "./components/Tour";
 import { studioAccount, useStudioAccount } from "./studioAccount";
 import { t, takeReturnNav } from "./i18n";
 import { ContextMenuHost, DialogHost } from "./components/Overlay";
@@ -13,7 +17,7 @@ import { restoreSession, useAccount } from "./admin";
 import { api, importProject, JavaStatus, pickFolder, Project } from "./api";
 import { ActivityBar, NavKey, StatusBar, TitleBar, Toasts } from "./components/Chrome";
 import CommandPalette, { Command } from "./components/CommandPalette";
-import { WorkshopIcon, CubeIcon, GearIcon, GridIcon, HammerIcon, PlayIcon, PlusIcon, RefreshIcon, RocketIcon, ShieldIcon, StopIcon } from "./icons";
+import { WorkshopIcon, CubeIcon, GearIcon, GridIcon, HammerIcon, PlayIcon, PlusIcon, RefreshIcon, RocketIcon, ShieldIcon, AlertIcon, StopIcon } from "./icons";
 import { checkForUpdate, toast, useSettings, useUpdate } from "./state";
 import Admin from "./views/Admin";
 import NewProject from "./views/NewProject";
@@ -51,7 +55,14 @@ export default function App() {
   }, [gate]);
   if (!known) return null;
   if (gate) return <AuthGate offlineError={error || undefined} />;
-  return <Studio />;
+  return (
+    <>
+      <ErrorBoundary>
+        <Studio />
+      </ErrorBoundary>
+      <ReportDialog />
+    </>
+  );
 }
 
 function Studio() {
@@ -82,6 +93,15 @@ function Studio() {
     return () => window.removeEventListener("anvil:nav", on);
   });
   useEffect(() => installUndoKeys(), []);
+  // Letztes Mal abgestürzt? Nach Tour und Start-Fenstern nachfragen
+  useEffect(() => {
+    whenTourIdle(() =>
+      reportApi
+        .pendingCrash()
+        .then((c) => c && openReport({ kind: "app_crash", ask: "app_crash", title: c.split("\n").find((l) => l.startsWith("panicked") || l.includes("panicked"))?.slice(0, 100) }))
+        .catch(() => {}),
+    );
+  }, []);
   useEffect(() => {
     if (!workshopVisible && nav === "workshop") setNavRaw("projects");
   }, [workshopVisible, nav]);
@@ -195,6 +215,7 @@ function Studio() {
       { id: "ws-run", label: t("Starten"), group: t("Arbeitsbereich"), icon: <PlayIcon size={13} />, shortcut: "F5", disabled: !inWs, run: () => workspaceCommand("run") },
       { id: "ws-stop", label: t("Stoppen"), group: t("Arbeitsbereich"), icon: <StopIcon size={13} />, shortcut: t("Umschalt F5"), disabled: !inWs, run: () => workspaceCommand("stop") },
       { id: "ws-build", label: t("Bauen"), group: t("Arbeitsbereich"), icon: <HammerIcon size={15} />, shortcut: t("Strg B"), disabled: !inWs, run: () => workspaceCommand("build") },
+      { id: "report", label: t("Problem melden"), group: t("Anvil Studio"), icon: <AlertIcon size={15} />, run: () => openReport({ kind: "manual", projectId: current?.id }) },
       { id: "tour", label: t("Einführung starten"), group: t("Anvil Studio"), icon: <RocketIcon size={15} />, run: () => window.dispatchEvent(new Event("anvil:tour-start")) },
       { id: "upd", label: t("Nach Updates suchen"), group: t("Anvil Studio"), icon: <RefreshIcon size={15} />, run: () => checkForUpdate(true) },
       ...(admin

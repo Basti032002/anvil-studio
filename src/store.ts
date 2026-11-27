@@ -1,3 +1,4 @@
+import { offerCrashReport } from "./report";
 import { t } from "./i18n";
 // Kleiner globaler Speicher für Logs und laufende Prozesse,
 // damit nichts verloren geht, wenn man zwischen Ansichten wechselt.
@@ -49,6 +50,14 @@ function scheduleNotify() {
   });
 }
 
+/** Konsole eines Projekts als Text (für „Problem melden“) */
+export function logText(projectId: string, max = 400): string {
+  return (logs[projectId] ?? [])
+    .slice(-max)
+    .map((l) => `[${new Date(l.at).toLocaleTimeString()}] ${l.line}`)
+    .join("\n");
+}
+
 export function clearLogs(projectId: string) {
   logs = { ...logs, [projectId]: [] };
   notify();
@@ -70,10 +79,11 @@ export async function initStore() {
   await listen<{ projectId: string; stream: string; line: string }>("log", (e) => {
     pushLog(e.payload.projectId, e.payload.line, e.payload.stream);
   });
-  await listen<{ projectId: string; task: string; success: boolean; code: number | null }>(
+  await listen<{ projectId: string; task: string; success: boolean; code: number | null; stopped?: boolean; startedAt?: number }>(
     "run-exit",
     (e) => {
       const { projectId, task, success } = e.payload;
+      if (!success && !e.payload.stopped) offerCrashReport(projectId, task, e.payload.startedAt ?? 0);
       const { [projectId]: _removed, ...rest } = running;
       running = rest;
       lastExit = { ...lastExit, [projectId]: { task, success, at: Date.now() / 1000 } };

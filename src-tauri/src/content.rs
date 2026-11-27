@@ -2641,6 +2641,8 @@ pub struct LangEntry {
     pub shape: String,
     pub de: String,
     pub en: String,
+    /// Deutsch wirklich eingetragen (sonst ist `de` nur der englische Ersatz)
+    pub de_set: bool,
     /// Namen aus dem alten Feld „Weitere Sprachen“ (Kurzcode → Name)
     #[serde(skip)]
     pub names: std::collections::BTreeMap<String, String>,
@@ -2657,7 +2659,7 @@ pub fn lang_entries(p: &Project, c: &Content) -> Vec<LangEntry> {
     };
     let mut out = vec![];
     let tab = if c.tab_name.trim().is_empty() { p.name.clone() } else { c.tab_name.trim().to_string() };
-    out.push(LangEntry { key: format!("itemGroup.{modid}.anvil"), kind: "tab".into(), owner: "tab".into(), shape: String::new(), de: tab.clone(), en: tab, names: Default::default(), legacy: Default::default() });
+    out.push(LangEntry { key: format!("itemGroup.{modid}.anvil"), kind: "tab".into(), owner: "tab".into(), shape: String::new(), de: tab.clone(), en: tab, de_set: false, names: Default::default(), legacy: Default::default() });
     for v in all_variants(c) {
         let b = v.base;
         let (de, en) = (name_of(&b.name_de, &b.name_en, true), name_of(&b.name_de, &b.name_en, false));
@@ -2671,20 +2673,20 @@ pub fn lang_entries(p: &Project, c: &Content) -> Vec<LangEntry> {
             "pressure_plate" => (format!("{de}-Druckplatte"), format!("{en} Pressure Plate")),
             _ => (de, en),
         };
-        out.push(LangEntry { key: format!("block.{modid}.{}", v.id), kind: "block".into(), owner: format!("block:{}", b.id), shape: if v.shape == "block" { String::new() } else { v.shape.to_string() }, de, en, names: b.names.clone(), legacy: Default::default() });
+        out.push(LangEntry { key: format!("block.{modid}.{}", v.id), kind: "block".into(), owner: format!("block:{}", b.id), shape: if v.shape == "block" { String::new() } else { v.shape.to_string() }, de, en, de_set: !b.name_de.trim().is_empty(), names: b.names.clone(), legacy: Default::default() });
     }
     for i in &c.items {
-        out.push(LangEntry { key: format!("item.{modid}.{}", i.id), kind: "item".into(), owner: format!("item:{}", i.id), shape: String::new(), de: name_of(&i.name_de, &i.name_en, true), en: name_of(&i.name_de, &i.name_en, false), names: i.names.clone(), legacy: Default::default() });
+        out.push(LangEntry { key: format!("item.{modid}.{}", i.id), kind: "item".into(), owner: format!("item:{}", i.id), shape: String::new(), de: name_of(&i.name_de, &i.name_en, true), en: name_of(&i.name_de, &i.name_en, false), de_set: !i.name_de.trim().is_empty(), names: i.names.clone(), legacy: Default::default() });
     }
     for m in &c.mobs {
         let (de, en) = (name_of(&m.name_de, &m.name_en, true), name_of(&m.name_de, &m.name_en, false));
-        out.push(LangEntry { key: format!("entity.{modid}.{}", m.id), kind: "entity".into(), owner: format!("mob:{}", m.id), shape: String::new(), de: de.clone(), en: en.clone(), names: m.names.clone(), legacy: Default::default() });
-        out.push(LangEntry { key: format!("item.{modid}.{}_spawn_egg", m.id), kind: "egg".into(), owner: format!("mob:{}", m.id), shape: "egg".into(), de: format!("{de}-Spawn-Ei"), en: format!("{en} Spawn Egg"), names: m.names.clone(), legacy: Default::default() });
+        out.push(LangEntry { key: format!("entity.{modid}.{}", m.id), kind: "entity".into(), owner: format!("mob:{}", m.id), shape: String::new(), de: de.clone(), en: en.clone(), de_set: !m.name_de.trim().is_empty(), names: m.names.clone(), legacy: Default::default() });
+        out.push(LangEntry { key: format!("item.{modid}.{}_spawn_egg", m.id), kind: "egg".into(), owner: format!("mob:{}", m.id), shape: "egg".into(), de: format!("{de}-Spawn-Ei"), en: format!("{en} Spawn Egg"), de_set: !m.name_de.trim().is_empty(), names: m.names.clone(), legacy: Default::default() });
     }
     for d in c.dimensions.iter().filter(|d| d.portal) {
         let (de, en) = (name_of(&d.name_de, &d.name_en, true), name_of(&d.name_de, &d.name_en, false));
         let (de, en) = (if de.is_empty() { d.id.clone() } else { de }, if en.is_empty() { d.id.clone() } else { en });
-        out.push(LangEntry { key: format!("block.{modid}.{}", crate::portal::block_id(d)), kind: "block".into(), owner: format!("dimension:{}", d.id), shape: "portal".into(), de: format!("{de}-Portal"), en: format!("{en} Portal"), names: Default::default(), legacy: Default::default() });
+        out.push(LangEntry { key: format!("block.{modid}.{}", crate::portal::block_id(d)), kind: "block".into(), owner: format!("dimension:{}", d.id), shape: "portal".into(), de: format!("{de}-Portal"), en: format!("{en} Portal"), de_set: !d.name_de.trim().is_empty(), names: Default::default(), legacy: Default::default() });
     }
     for e in out.iter_mut() {
         for (short, name) in &e.names {
