@@ -2313,10 +2313,10 @@ button.cx-stat { cursor: pointer; }
 .pl-chip.missing { background: color-mix(in srgb, var(--danger, #f26d6d) 14%, transparent); color: var(--danger, #f26d6d); }
 .pl-chip button { border: none; background: none; color: inherit; opacity: 0.7; cursor: pointer; display: grid; place-items: center; padding: 3px; }
 .pl-chip-add { width: auto; height: 28px; }
-.pl-side { display: flex; flex-direction: column; gap: 4px; padding: 14px; border-left: 1px solid var(--border); overflow-y: auto; }
+.pl-opts { display: flex; flex-direction: column; gap: 4px; padding: 14px; border-left: 1px solid var(--border); overflow-y: auto; }
 .pl-bool { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid var(--border); }
 .pl-bool .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 0; }
-.pl-side { min-width: 0; }
+.pl-opts { min-width: 0; }
 .pl-bool > :last-child { flex: none; }
 .pl-entries { padding: 2px; }
 .pl-entries { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }

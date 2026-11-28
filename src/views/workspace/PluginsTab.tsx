@@ -387,7 +387,7 @@ export default function PluginsTab({ project }: { project: Project }) {
               ))}
             </div>
             {sideFields.length > 0 && (
-              <aside className="pl-side">
+              <aside className="pl-opts">
                 <b>{t("Optionen")}</b>
                 {sideFields.map(labelled)}
               </aside>

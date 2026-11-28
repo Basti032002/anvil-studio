@@ -58,6 +58,27 @@ Im Code: `level`, `pos`, `state`, `be` (Tick) bzw. `player` (Rechtsklick).
   "files": [{ "path": "data/{{modid}}/quests/{{id}}.json", "template": "{ \"title\": {{json:title}}, \"xp\": {{raw:xp}} }" }] }
 ```
 
+### Neu in dev.40
+- Editor-Felder: `item`, `block`, `entity`, `dimension`, `bool`, `textarea`, `select`, `number`,
+  `entry` (ein Eintrag aus einem Editor), `entries` (mehrere, als Chips), `list` (Zeilen mit eigenen `fields`).
+  Mit `section` (Überschrift), `side` (rechte Spalte), `hint`, `when` (nur bei bestimmten Werten), `suggest`.
+  Editor-Optionen: `titleField`, `groupBy`.
+- Blueprint-Knoten: `"cat": "event"` für eigene Ereignisse (mit `"filter": "<prop>"`), Prop-Typ `entry`,
+  Platzhalter `{{plugin}}` = Java-Paket des Plugins.
+
+## Eigener Java-Code (`files`, `init`)
+```json
+"init":  [{ "class": "MeinPlugin", "method": "init", "side": "common" }],
+"files": [{ "path": "src/main/java/{{packagedir}}/MeinPlugin.java", "file": "java/MeinPlugin.java" },
+          { "path": "src/main/resources/data/{{modid}}/daten.json", "template": "{{entries:meineditor}}" },
+          { "path": "src/main/resources/assets/{{modid}}/items/x.json", "mc": ">=1.21.4", "template": "…" }]
+```
+- Dateien werden nur erzeugt, wenn das Plugin im Projekt benutzt wird (Editor-Einträge, Knoten oder Fähigkeiten); `"when": "always"` immer.
+- Platzhalter: `{{package}}`, `{{packagedir}}`, `{{root}}` (Paket der Mod), `{{modid}}`, `{{id}}` (Plugin-ID), `{{mc}}`, `{{entries:<editor>}}`.
+- Versionsweichen im Text: `{{if mc>=1.21.2}} … {{else}} … {{end}}`.
+- `init` wird in `AnvilContent.register(modEventBus)` aufgerufen (`side: "client"` → in `AnvilClient`).
+- Eigene Blueprint-Ereignisse auslösen: `{{root}}.anvil.AnvilContent.anvilPluginEvent("{{id}}:<kind>", level, player, message);`
+
 ## Skripte
 `export default async function (anvil) { … }` – laufen abgeschottet (kein Internet, keine Dateien).
 `anvil.project`, `anvil.content.get/set/data/setData`, `anvil.ui.toast/confirm/prompt/pickFile`,
