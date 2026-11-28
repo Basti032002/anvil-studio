@@ -25,6 +25,8 @@ import Admin from "./views/Admin";
 import NewProject from "./views/NewProject";
 import ProjectList from "./views/ProjectList";
 import Settings from "./views/Settings";
+import { MenuBar, type Menu } from "./components/MenuBar";
+import { undo, redo } from "./undo";
 import Workspace from "./views/Workspace";
 import Workshop from "./views/Workshop";
 import { refreshWorkshop, useWorkshop } from "./workshop";
@@ -200,6 +202,11 @@ function Studio() {
   }
 
   function openWorkspace(id: string, run = false) {
+    try {
+      localStorage.setItem(`anvil.opened.${id}`, String(Math.floor(Date.now() / 1000)));
+    } catch {
+      /* egal */
+    }
     setWorkspaceId(id);
     setAutoRun(run);
     setNav("workspace");
@@ -254,10 +261,103 @@ function Studio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nav, current, projects, admin, pluginList]);
 
+  const [density, setDensityState] = useState<string>(() => {
+    try {
+      return localStorage.getItem("anvil.density") || "compact";
+    } catch {
+      return "compact";
+    }
+  });
+  useEffect(() => {
+    document.documentElement.dataset.density = density;
+    try {
+      localStorage.setItem("anvil.density", density);
+    } catch {
+      /* egal */
+    }
+  }, [density]);
+  const inWs = nav === "workspace" && !!current;
+  const wsEvent = (name: string, detail?: string) => window.dispatchEvent(new CustomEvent(name, { detail }));
+  const recent = [...projects].sort((a, b) => Number(localStorage.getItem(`anvil.opened.${b.id}`) || 0) - Number(localStorage.getItem(`anvil.opened.${a.id}`) || 0)).slice(0, 5);
+  const menus: Menu[] = [
+    {
+      label: t("Datei"),
+      items: [
+        { label: t("Neues Projekt …"), shortcut: t("Strg N"), run: () => setNav("new") },
+        { label: t("Bestehendes Projekt importieren …"), run: () => importExisting() },
+        "separator",
+        { label: t("Zuletzt geöffnet"), heading: true },
+        ...recent.map((p) => ({ label: p.name, run: () => openWorkspace(p.id) })),
+        "separator",
+        { label: t("Speichern"), shortcut: t("Strg S"), disabled: !inWs, run: () => wsEvent("anvil:save") },
+        { label: t("Projektordner öffnen"), disabled: !current, run: () => current && api.openIn(current.id, "folder").catch((e) => toast(String(e), "error")) },
+        { label: t("In VS Code öffnen"), disabled: !current, run: () => current && api.openIn(current.id, "code").catch((e) => toast(String(e), "error")) },
+        "separator",
+        { label: t("Projekt schließen"), disabled: !inWs, run: () => setNav("projects") },
+        { label: t("Einstellungen"), shortcut: t("Strg ,"), run: () => setNav("settings") },
+      ],
+    },
+    {
+      label: t("Bearbeiten"),
+      items: [
+        { label: t("Rückgängig"), shortcut: t("Strg Z"), run: () => undo() },
+        { label: t("Wiederholen"), shortcut: t("Strg Y"), run: () => redo() },
+        "separator",
+        { label: t("Befehl oder Projekt suchen …"), shortcut: t("Strg K"), run: () => setPalette(true) },
+        { label: t("Zu Inhalt springen …"), shortcut: t("Strg P"), disabled: !inWs, run: () => wsEvent("anvil:quick-open") },
+        { label: t("Neuer Inhalt …"), shortcut: t("Strg N"), disabled: !inWs, run: () => wsEvent("anvil:create") },
+      ],
+    },
+    {
+      label: t("Ansicht"),
+      items: [
+        { label: t("Konsole"), shortcut: t("Strg J"), disabled: !inWs, run: () => wsEvent("anvil:toggle-console") },
+        { label: t("Projekt-Baum"), shortcut: t("Strg Umschalt E"), disabled: !inWs, run: () => wsEvent("anvil:toggle-tree") },
+        "separator",
+        { label: t("Kompakt"), checked: density === "compact", run: () => setDensityState("compact") },
+        { label: t("Bequem"), checked: density === "comfortable", run: () => setDensityState("comfortable") },
+        "separator",
+        { label: t("Projekte"), shortcut: t("Strg 1"), run: () => setNav("projects") },
+        ...(workshopVisible ? [{ label: t("Workshop"), run: () => setNav("workshop") }] : []),
+        ...(admin || ws.me?.admin ? [{ label: t("Entwicklerbereich"), run: () => setNav("admin") }] : []),
+      ],
+    },
+    {
+      label: t("Bauen"),
+      items: [
+        { label: t("Bauen"), shortcut: t("Strg B"), disabled: !inWs, run: () => workspaceCommand("build") },
+        { label: t("Export öffnen"), disabled: !inWs, run: () => wsEvent("anvil:open-tab", "export") },
+        { label: t("Mod-Einstellungen"), disabled: !inWs, run: () => wsEvent("anvil:open-tab", "settings") },
+        "separator",
+        { label: t("Plugins verwalten"), run: () => openPluginManager() },
+      ],
+    },
+    {
+      label: t("Testen"),
+      items: [
+        { label: t("Starten"), shortcut: "F5", disabled: !inWs, run: () => workspaceCommand("run") },
+        { label: t("Client · Hauptmenü"), disabled: !inWs, run: () => wsEvent("anvil:workspace", "task:runClient") },
+        { label: t("Dedizierter Server"), disabled: !inWs, run: () => wsEvent("anvil:workspace", "task:runServer") },
+        { label: t("Datagen"), disabled: !inWs, run: () => wsEvent("anvil:workspace", "task:runData") },
+        "separator",
+        { label: t("Neu starten"), shortcut: t("Strg R"), disabled: !inWs, run: () => wsEvent("anvil:workspace", "restart") },
+        { label: t("Stoppen"), shortcut: t("Umschalt F5"), disabled: !inWs, run: () => workspaceCommand("stop") },
+      ],
+    },
+    {
+      label: t("Hilfe"),
+      items: [
+        { label: t("Einführung starten"), run: () => window.dispatchEvent(new Event("anvil:tour-start")) },
+        { label: t("Problem melden"), run: () => openReport({ kind: "manual", projectId: current?.id }) },
+        { label: t("Nach Updates suchen"), run: () => checkForUpdate(true) },
+      ],
+    },
+  ];
+
   return (
     <div className="shell">
       <Tooltips />
-      <TitleBar subtitle={subtitle} onSearch={() => setPalette(true)} />
+      <TitleBar subtitle={subtitle} onSearch={() => setPalette(true)} menu={<MenuBar menus={menus} />} />
       <div className="shell-body">
         <ActivityBar
           active={nav}

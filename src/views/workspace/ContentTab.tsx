@@ -3,7 +3,7 @@ import { BetaBadge, featureOfBlock, featureOfItem } from "../../features";
 import { useUndoable } from "../../undo";
 import { t } from "../../i18n";
 import { confirmDialog, contextMenu, MenuItem } from "../../components/Overlay";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { ArmorSlot, BlockDef, Blueprint, Content, contentApi, ItemDef, MobDef, Project, Recipe, DEFAULT_ENERGY } from "../../api";
 import { useCatalog } from "../../catalog";
 import { Toggle } from "../../components/Chrome";
@@ -93,7 +93,35 @@ export default function ContentTab({ project, views = [] }: { project: Project; 
       return null;
     }
   });
-  const [docs, setDocs] = useState<Doc[]>(() => (view ? [{ t: "view", id: view }] : []));
+  const [docs, setDocs] = useState<Doc[]>(() => {
+    try {
+      const d = JSON.parse(localStorage.getItem(`anvil.docs.${project.id}`) || "null");
+      if (Array.isArray(d)) return d as Doc[];
+    } catch {
+      /* egal */
+    }
+    return view ? [{ t: "view", id: view }] : [];
+  });
+  const [treeOpen, setTreeOpen] = useState(() => localStorage.getItem("anvil.tree") !== "0");
+  const [quick, setQuick] = useState<string | null>(null);
+  const [quickAt, setQuickAt] = useState(0);
+  useEffect(() => {
+    try {
+      localStorage.setItem("anvil.tree", treeOpen ? "1" : "0");
+    } catch {
+      /* egal */
+    }
+  }, [treeOpen]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(`anvil.docs.${project.id}`, JSON.stringify(docs));
+      localStorage.setItem(`anvil.active.${project.id}`, view ? "" : sel ? `${sel.kind}:${sel.index}` : "");
+    } catch {
+      /* egal */
+    }
+  }, [docs, sel, view, project.id]);
+  // zuletzt offenen Inhalt nach dem Laden wieder auswählen
+  const restored = useRef(false);
   const setSel = useCallback((s: Sel) => {
     setView(null);
     setSelRaw(s);
@@ -180,6 +208,40 @@ export default function ContentTab({ project, views = [] }: { project: Project; 
     if (content && saved) setDraft(project.id, content, saved);
   }, [content, saved, project.id]);
   useEffect(() => {
+    if (!content || restored.current) return;
+    restored.current = true;
+    if (view) return;
+    const a = localStorage.getItem(`anvil.active.${project.id}`) || "";
+    const [kind, idx] = a.split(":");
+    if (kind && idx !== undefined && !Number.isNaN(Number(idx))) setSelRaw({ kind, index: Number(idx) } as Sel);
+  }, [content]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (ctrl && !e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        setQuick("");
+        setQuickAt(0);
+      } else if (ctrl && e.shiftKey && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        setTreeOpen((o) => !o);
+      }
+    };
+    const tree = () => setTreeOpen((o) => !o);
+    const qo = () => (setQuick(""), setQuickAt(0));
+    const cr = () => setCreateGroup("all");
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("anvil:toggle-tree", tree);
+    window.addEventListener("anvil:quick-open", qo);
+    window.addEventListener("anvil:create", cr);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("anvil:toggle-tree", tree);
+      window.removeEventListener("anvil:quick-open", qo);
+      window.removeEventListener("anvil:create", cr);
+    };
+  }, []);
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "n") {
         // im Inhalte-Tab heißt Strg+N „neuer Inhalt“ (statt neues Projekt)
@@ -252,8 +314,13 @@ export default function ContentTab({ project, views = [] }: { project: Project; 
         save();
       }
     };
+    const onSave = () => save();
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("anvil:save", onSave);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("anvil:save", onSave);
+    };
   });
 
   const allIds = useMemo(
@@ -637,7 +704,7 @@ export default function ContentTab({ project, views = [] }: { project: Project; 
 
   return (
     <div className="content">
-      <aside className="content-list">
+      <aside className="content-list" style={treeOpen ? undefined : { display: "none" }}>
         <div className="content-list-search">
           <div className="search">
             <SearchIcon size={13} />
@@ -659,6 +726,25 @@ export default function ContentTab({ project, views = [] }: { project: Project; 
               <span className="entry-name">{t("Übersicht")}</span>
             </span>
           </button>
+          {(["data", "mod"] as const).map((g) => {
+            const vs = views.filter((v) => v.group === g && (!q || v.label.toLowerCase().includes(q.trim().toLowerCase())));
+            if (!vs.length) return null;
+            return (
+              <div key={g} className="tree-section">
+                <div className="content-list-head">{g === "data" ? t("Daten") : t("Mod")}</div>
+                {vs.map((v) => (
+                  <button key={v.id} data-tour={`tab-${v.id}`} className={view === v.id ? "entry tree-view active" : "entry tree-view"} onClick={() => openView(v.id)}>
+                    <span className="logic-icon">{v.icon}</span>
+                    <span className="entry-text">
+                      <span className="entry-name">{v.label}</span>
+                    </span>
+                    {v.badge}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+          <div className="content-list-head tree-head">{t("Inhalte")}</div>
           <ListGroup id="blocks" label={t("Blöcke")} icon={<CubeIcon size={13} />} count={content.blocks.length} forceOpen={!!q}>
             {content.blocks.map((b, i) =>
               matches(b) ? (
@@ -865,24 +951,7 @@ export default function ContentTab({ project, views = [] }: { project: Project; 
               </button>
             ))}
           </ListGroup>
-          {(["data", "mod"] as const).map((g) => {
-            const vs = views.filter((v) => v.group === g);
-            if (!vs.length) return null;
-            return (
-              <div key={g} className="tree-section">
-                <div className="content-list-head">{g === "data" ? t("Daten") : t("Mod")}</div>
-                {vs.map((v) => (
-                  <button key={v.id} data-tour={`tab-${v.id}`} className={view === v.id ? "entry tree-view active" : "entry tree-view"} onClick={() => openView(v.id)}>
-                    <span className="logic-icon">{v.icon}</span>
-                    <span className="entry-text">
-                      <span className="entry-name">{v.label}</span>
-                    </span>
-                    {v.badge}
-                  </button>
-                ))}
-              </div>
-            );
-          })}
+
         </div>
         {saveBlock}
       </aside>
@@ -926,6 +995,96 @@ export default function ContentTab({ project, views = [] }: { project: Project; 
             );
           })}
         </div>
+        {(() => {
+          const kindLabel: Record<string, string> = { block: t("Blöcke"), item: t("Items"), mob: t("Kreaturen"), blueprint: t("Logik"), gui: t("Logik"), event: t("Logik"), brew: t("Brauen"), dimension: t("Welt"), structure: t("Welt") };
+          const cur: Doc | null = view ? { t: "view", id: view } : sel ? { t: "sel", kind: sel.kind, index: sel.index } : null;
+          const info = cur ? docInfo(cur) : null;
+          const group = cur ? (cur.t === "view" ? (views.find((v) => v.id === cur.id)?.group === "data" ? t("Daten") : t("Mod")) : kindLabel[cur.kind]) : null;
+          return (
+            <div className="doc-crumbs">
+              {!treeOpen && (
+                <button className="icon-btn tiny" onClick={() => setTreeOpen(true)} aria-label={t("Projekt-Baum einblenden")} data-tip={t("Projekt-Baum einblenden · Strg Umschalt E")}>
+                  <ChevronIcon size={12} />
+                </button>
+              )}
+              <button className="doc-crumb" onClick={() => (setView(null), setSelRaw(null))}>
+                {project.name}
+              </button>
+              {group && (
+                <>
+                  <span className="doc-crumb-sep">›</span>
+                  <span className="doc-crumb muted">{group}</span>
+                </>
+              )}
+              {info && (
+                <>
+                  <span className="doc-crumb-sep">›</span>
+                  <span className="doc-crumb current">{info.label}</span>
+                </>
+              )}
+              <span className="grow" />
+              <button className="doc-crumb muted" onClick={() => (setQuick(""), setQuickAt(0))} data-tip={t("Zu Inhalt springen")}>
+                <SearchIcon size={11} /> {t("Springen")} <kbd>{t("Strg P")}</kbd>
+              </button>
+            </div>
+          );
+        })()}
+        {quick !== null &&
+          (() => {
+            const all: Doc[] = [
+              ...views.map((v) => ({ t: "view", id: v.id }) as Doc),
+              ...content.blocks.map((_, i) => ({ t: "sel", kind: "block", index: i }) as Doc),
+              ...content.items.map((_, i) => ({ t: "sel", kind: "item", index: i }) as Doc),
+              ...content.mobs.map((_, i) => ({ t: "sel", kind: "mob", index: i }) as Doc),
+              ...content.blueprints.map((_, i) => ({ t: "sel", kind: "blueprint", index: i }) as Doc),
+              ...(content.guis ?? []).map((_, i) => ({ t: "sel", kind: "gui", index: i }) as Doc),
+              ...content.dimensions.map((_, i) => ({ t: "sel", kind: "dimension", index: i }) as Doc),
+              ...(content.structures ?? []).map((_, i) => ({ t: "sel", kind: "structure", index: i }) as Doc),
+              ...content.events.map((_, i) => ({ t: "sel", kind: "event", index: i }) as Doc),
+              ...content.brewing.map((_, i) => ({ t: "sel", kind: "brew", index: i }) as Doc),
+            ];
+            const qq = quick.trim().toLowerCase();
+            const hits = all
+              .map((d) => ({ d, info: docInfo(d) }))
+              .filter((x) => x.info && (!qq || x.info.label.toLowerCase().includes(qq)))
+              .slice(0, 40);
+            const pick = (d: Doc) => {
+              setQuick(null);
+              if (d.t === "view") openView(d.id);
+              else setSel({ kind: d.kind, index: d.index } as Sel);
+            };
+            const at = Math.min(quickAt, Math.max(0, hits.length - 1));
+            return (
+              <div className="quick-open-bg" onPointerDown={(e) => e.target === e.currentTarget && setQuick(null)}>
+                <div className="quick-open" role="dialog" aria-label={t("Zu Inhalt springen")}>
+                  <label className="quick-open-input">
+                    <SearchIcon size={14} />
+                    <input
+                      autoFocus
+                      placeholder={t("Block, Item, Blueprint, Bereich …")}
+                      value={quick}
+                      onChange={(e) => (setQuick(e.target.value), setQuickAt(0))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") setQuick(null);
+                        else if (e.key === "ArrowDown") (e.preventDefault(), setQuickAt(Math.min(hits.length - 1, at + 1)));
+                        else if (e.key === "ArrowUp") (e.preventDefault(), setQuickAt(Math.max(0, at - 1)));
+                        else if (e.key === "Enter" && hits[at]) pick(hits[at].d);
+                      }}
+                    />
+                  </label>
+                  <div className="quick-open-list">
+                    {hits.map((x, i) => (
+                      <button key={docKey(x.d)} className={i === at ? "quick-open-row hot" : "quick-open-row"} onPointerEnter={() => setQuickAt(i)} onClick={() => pick(x.d)}>
+                        {x.info!.icon}
+                        <span className="grow">{x.info!.label}</span>
+                      </button>
+                    ))}
+                    {!hits.length && <div className="muted small" style={{ padding: 12 }}>{t("Nichts gefunden.")}</div>}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         {view && views.find((v) => v.id === view) ? (
           <div className="content-pane" key={`view-${view}`}>
             {views.find((v) => v.id === view)!.render()}

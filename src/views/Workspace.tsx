@@ -156,8 +156,8 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
   // Tastenkürzel (F5 / Umschalt+F5 / Strg+B) und Befehle aus der Palette
   const runningRef = useRef(running);
   runningRef.current = running;
-  const actions = useRef({ run: runSelected, build: () => start("build") });
-  actions.current = { run: runSelected, build: () => start("build") };
+  const actions = useRef({ run: runSelected, build: () => start("build"), task: (k: Task) => start(k) });
+  actions.current = { run: runSelected, build: () => start("build"), task: (k: Task) => start(k) };
   useEffect(() => {
     const exec = (cmd: string) => {
       if (cmd === "stop") {
@@ -171,6 +171,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
           });
         } else actions.current.run();
       } else if (!runningRef.current) {
+        if (cmd.startsWith("task:")) actions.current.task(cmd.slice(5) as Task);
         if (cmd === "run") actions.current.run();
         if (cmd === "build") actions.current.build();
       }
@@ -226,7 +227,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
     {
       id: "code",
       group: "mod",
-      label: t("Quellcode"),
+      label: t("Code"),
       icon: <CodeIcon size={14} />,
       badge: <BetaBadge feature="code" />,
       render: () => (

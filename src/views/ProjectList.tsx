@@ -44,7 +44,10 @@ type Props = {
 export default function ProjectList({ projects, java, javaProgress, onInstallJava, onOpen, onTest, onNew, onRemove, onImport }: Props) {
   const [query, setQuery] = useState("");
   const running = useAllRunning();
-  const shown = projects.filter((p) => `${p.name} ${p.modId}`.toLowerCase().includes(query.toLowerCase()));
+  const opened = (id: string) => Number(localStorage.getItem(`anvil.opened.${id}`) || 0);
+  const shown = projects
+    .filter((p) => `${p.name} ${p.modId} ${p.path}`.toLowerCase().includes(query.toLowerCase()))
+    .sort((a, b) => Math.max(opened(b.id), b.createdAt) - Math.max(opened(a.id), a.createdAt));
 
   return (
     <div className="page">
@@ -117,11 +120,18 @@ export default function ProjectList({ projects, java, javaProgress, onInstallJav
           </div>
         </div>
       ) : (
-        <div className="project-grid">
+        <div className="project-table" role="table" aria-label={t("Projekte")}>
+          <div className="project-row head" role="row">
+            <span role="columnheader" className="grow">{t("Zuletzt geöffnet")}</span>
+            <span role="columnheader" className="pr-ver">{t("Version")}</span>
+            <span role="columnheader" className="pr-status">{t("Zustand")}</span>
+            <span role="columnheader" className="pr-when">{t("Geöffnet")}</span>
+            <span className="pr-actions" />
+          </div>
           {shown.map((p, i) => (
             <ProjectCard key={p.id} project={p} index={i} running={running[p.id]?.task as Task | undefined} onOpen={onOpen} onTest={onTest} onRemove={onRemove} />
           ))}
-          {shown.length === 0 && <p className="muted">{t("Keine Treffer für „{query}“.", { query })}</p>}
+          {shown.length === 0 && <p className="muted" style={{ padding: 12 }}>{t("Keine Treffer für „{query}“.", { query })}</p>}
         </div>
       )}
     </div>
@@ -185,40 +195,35 @@ function ProjectCard({
     "separator",
     { label: t("Entfernen …"), icon: <TrashIcon size={15} />, danger: true, onClick: askRemove, disabled: !!running },
   ]);
+  const openedAt = Number(localStorage.getItem(`anvil.opened.${p.id}`) || 0);
   return (
-    <article className="card" style={{ "--i": index } as React.CSSProperties} {...menu}>
-      {running && <span className="card-live">{t("läuft")}</span>}
-      <button className="card-top" onClick={() => onOpen(p.id)} aria-label={t("{name} öffnen", { name: p.name })}>
-        <span className="card-icon">{icon ? <img src={icon} alt="" /> : p.name.slice(0, 1).toUpperCase()}</span>
+    <div className="project-row" role="row" style={{ "--i": index } as React.CSSProperties} {...menu} onDoubleClick={() => onOpen(p.id)}>
+      <button className="pr-main grow" onClick={() => onOpen(p.id)} aria-label={t("{name} öffnen", { name: p.name })}>
+        <span className="pr-icon">{icon ? <img src={icon} alt="" /> : p.name.slice(0, 1).toUpperCase()}</span>
         <span className="min0">
-          <div className="card-title ellipsis">{p.name}</div>
-          <div className="card-sub mono ellipsis">{p.modId}</div>
+          <span className="pr-name ellipsis">
+            {p.name}
+            {running && <span className="card-live inline">{t("läuft")}</span>}
+          </span>
+          <span className="pr-path mono ellipsis">{p.path}</span>
         </span>
       </button>
-      <div className="card-meta">
-        <span className="tag">{t("NeoForge")}</span>
-        <span className="tag">{t("Minecraft")}{" "}{p.mcVersion}</span>
-      </div>
-      <Status project={p} runningTask={running} />
-      <div className="card-actions">
-        <button className="btn" onClick={() => onOpen(p.id)}>
-          <ArrowRightIcon size={14} />{" "}{t("Öffnen")}
+      <span className="pr-ver muted small">
+        {t("NeoForge")} {p.mcVersion}
+      </span>
+      <span className="pr-status small">
+        <Status project={p} runningTask={running} />
+      </span>
+      <span className="pr-when muted small">{openedAt ? timeAgo(openedAt) : "—"}</span>
+      <span className="pr-actions">
+        <button className="btn small primary" onClick={() => onTest(p.id)} disabled={!!running} data-tip={t("Testen")}>
+          <PlayIcon size={11} /> {t("Testen")}
         </button>
-        <button className="btn primary" onClick={() => onTest(p.id)} disabled={!!running}>
-          <PlayIcon size={12} />{" "}{t("Testen")}
+        <button className="icon-btn" aria-label={t("Entfernen")} data-tip={t("Entfernen")} disabled={!!running} onClick={askRemove}>
+          <TrashIcon size={14} />
         </button>
-        <button
-          className="icon-btn"
-          style={{ flex: "none" }}
-          aria-label={t("Entfernen")}
-          data-tip={t("Entfernen")}
-          disabled={!!running}
-          onClick={askRemove}
-        >
-          <TrashIcon size={15} />
-        </button>
-      </div>
-    </article>
+      </span>
+    </div>
   );
 }
 
