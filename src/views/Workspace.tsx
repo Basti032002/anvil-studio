@@ -1,5 +1,5 @@
 import LocalizationTab from "./workspace/LocalizationTab";
-import { BetaBadge, type FeatureId } from "../features";
+import { BetaBadge } from "../features";
 import { UndoButtons } from "../components/UndoButtons";
 import VariablesTab from "./workspace/VariablesTab";
 import TagsTab from "./workspace/TagsTab";
@@ -7,15 +7,14 @@ import TexturesTab from "./workspace/TexturesTab";
 import { t } from "../i18n";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { api, contentApi, CrashReport, Project, Task, TASK_LABELS } from "../api";
-import ContentTab from "./workspace/ContentTab";
+import ContentTab, { type WsView } from "./workspace/ContentTab";
 import ModsTab from "./workspace/ModsTab";
 import ModSettingsTab from "./workspace/ModSettingsTab";
 import ExportTab from "./workspace/ExportTab";
 import ConsoleView from "./workspace/ConsoleView";
 
 const CodeTab = lazy(() => import("./workspace/CodeTab"));
-type MainTab = "content" | "textures" | "code" | "vars" | "tags" | "loc" | "mods" | "plugins" | "settings" | "export" | "console";
-import { RefreshIcon, UndoIcon, ChevronIcon, CodeIcon, CubeIcon, GearIcon, DownloadIcon, FolderIcon, HammerIcon, PackageIcon, PlayIcon, StopIcon, TerminalIcon, TranslateIcon, VariableIcon, TagIcon, ImageIcon, PuzzleIcon } from "../icons";
+import { RefreshIcon, UndoIcon, ChevronIcon, CodeIcon, GearIcon, DownloadIcon, FolderIcon, HammerIcon, PackageIcon, PlayIcon, StopIcon, TerminalIcon, TranslateIcon, VariableIcon, TagIcon, ImageIcon, PuzzleIcon } from "../icons";
 import { toast, useSettings } from "../state";
 import { markNotRunning, markStarted, pushLog, useLastExit, useLogs, useRunning } from "../store";
 import { pluginEditors, runExportSteps, usePlugins } from "../plugins";
@@ -47,23 +46,31 @@ function save(key: string, value: string) {
   }
 }
 
-const TAB_FEATURE: Partial<Record<string, FeatureId>> = { textures: "textures", vars: "variables", tags: "tags", code: "code", loc: "loc", mods: "mods", settings: "modsettings", export: "export" };
 
 export default function Workspace({ project, javaReady, autoRun, onBack, onChanged }: Props) {
   const settings = useSettings();
   const logs = useLogs(project.id);
   const running = useRunning(project.id);
   const lastExit = useLastExit(project.id);
-  const [mainTab, setMainTab] = useState<MainTab>(() => (autoRun ? "console" : (load(`anvil.tab.${project.id}`, "content") as MainTab)));
+  const [consoleOpen, setConsoleOpen] = useState<boolean>(() => !!autoRun || load(`anvil.console.${project.id}`, "0") === "1");
+  const [consoleH, setConsoleH] = useState<number>(() => Math.max(140, Math.min(900, Number(load("anvil.consoleH", "260")) || 260)));
   const pluginList = usePlugins();
   const hasPluginEditors = pluginList.length >= 0 && pluginEditors.length > 0;
-  // andere Bereiche können einen Tab öffnen (z. B. „In Localization öffnen“)
+  // andere Bereiche können die Konsole öffnen
   useEffect(() => {
-    const on = (e: Event) => setMainTab((e as CustomEvent<MainTab>).detail);
+    const on = (e: Event) => {
+      if ((e as CustomEvent<string>).detail === "console") setConsoleOpen(true);
+    };
     window.addEventListener("anvil:open-tab", on);
     return () => window.removeEventListener("anvil:open-tab", on);
   }, []);
-  useEffect(() => save(`anvil.tab.${project.id}`, mainTab), [mainTab, project.id]);
+  useEffect(() => save(`anvil.console.${project.id}`, consoleOpen ? "1" : "0"), [consoleOpen, project.id]);
+  useEffect(() => {
+    const on = () => setConsoleOpen((o) => !o);
+    window.addEventListener("anvil:toggle-console", on);
+    return () => window.removeEventListener("anvil:toggle-console", on);
+  }, []);
+  useEffect(() => save("anvil.consoleH", String(consoleH)), [consoleH]);
 
   // Beim Öffnen: Projektdaten migrieren, ggf. neu erzeugen
   useEffect(() => {
@@ -129,7 +136,7 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
       toast(t("Java 21 fehlt noch – installiere es über die Statusleiste unten."), "error");
       return;
     }
-    if (!opts.stay) setMainTab("console");
+    if (!opts.stay) setConsoleOpen(true);
     try {
       markStarted(project.id, task);
       await api.runTask(project.id, task, opts.world);
@@ -175,6 +182,9 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "r" && runningRef.current) {
         e.preventDefault();
         exec("restart");
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("anvil:toggle-console"));
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
         e.preventDefault();
         exec("build");
@@ -204,6 +214,46 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
   const busy = !!running;
 
   const openIde = (target: "code" | "idea" | "folder") => api.openIn(project.id, target).catch((e) => toast(String(e), "error"));
+
+  const views: WsView[] = [
+    { id: "textures", group: "data", label: t("Texturen"), icon: <ImageIcon size={14} />, badge: <BetaBadge feature="textures" />, render: () => <TexturesTab project={project} /> },
+    { id: "vars", group: "data", label: t("Variablen"), icon: <VariableIcon size={14} />, badge: <BetaBadge feature="variables" />, render: () => <VariablesTab project={project} /> },
+    { id: "tags", group: "data", label: t("Tags"), icon: <TagIcon size={14} />, badge: <BetaBadge feature="tags" />, render: () => <TagsTab project={project} /> },
+    { id: "loc", group: "mod", label: t("Sprachen"), icon: <TranslateIcon size={14} />, badge: <BetaBadge feature="loc" />, render: () => <LocalizationTab project={project} /> },
+    ...(hasPluginEditors ? [{ id: "plugins", group: "mod" as const, label: t("Plugins"), icon: <PuzzleIcon size={14} />, render: () => <PluginsTab project={project} /> }] : []),
+    { id: "mods", group: "mod", label: t("Mods & Bibliotheken"), icon: <PackageIcon size={14} />, badge: <BetaBadge feature="mods" />, render: () => <ModsTab project={project} /> },
+    { id: "settings", group: "mod", label: t("Mod-Einstellungen"), icon: <GearIcon size={14} />, badge: <BetaBadge feature="modsettings" />, render: () => <ModSettingsTab project={project} onSaved={onChanged} /> },
+    {
+      id: "code",
+      group: "mod",
+      label: t("Quellcode"),
+      icon: <CodeIcon size={14} />,
+      badge: <BetaBadge feature="code" />,
+      render: () => (
+        <Suspense fallback={<div className="content-loading muted">{t("Editor wird geladen …")}</div>}>
+          <CodeTab project={project} />
+        </Suspense>
+      ),
+    },
+    {
+      id: "export",
+      group: "mod",
+      label: t("Export"),
+      icon: <DownloadIcon size={14} />,
+      badge: <BetaBadge feature="export" />,
+      render: () => (
+        <ExportTab
+          project={project}
+          busy={busy}
+          building={!!running && running.task === "build"}
+          elapsed={elapsed}
+          lastBuild={lastExit && lastExit.task === "build" ? { at: lastExit.at, success: lastExit.success } : null}
+          onBuild={() => start("build", { stay: true })}
+          onOpenSettings={() => window.dispatchEvent(new CustomEvent("anvil:open-tab", { detail: "settings" }))}
+        />
+      ),
+    },
+  ];
 
   return (
     <div className="workspace">
@@ -268,6 +318,17 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
         </div>
 
         <div className="row gap-6">
+          <button
+            data-tour="tab-console"
+            className={["btn small console-toggle", consoleOpen ? "active" : "", busy ? "running" : problems.length > 0 ? "problems" : ""].join(" ")}
+            onClick={() => setConsoleOpen((o) => !o)}
+            aria-pressed={consoleOpen}
+            data-tip={t("Konsole ein-/ausblenden · Strg J")}
+          >
+            <TerminalIcon size={14} /> {t("Konsole")}
+            {busy && <span className="pulse-dot" />}
+            {!busy && problems.length > 0 && <span className="count">{problems.length}</span>}
+          </button>
           <button className="btn small" onClick={() => openIde(ide)}>
             <CodeIcon size={14} />{" "}{t("In {ide} öffnen", { ide: ideLabel })}
           </button>
@@ -281,109 +342,30 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
         <div className={busy ? "run-progress active" : "run-progress"} />
       </div>
 
-      <nav className="view-tabs" aria-label={t("Bereiche")}>
-        {(
-          [
-            ["content", t("Inhalte"), <CubeIcon size={14} />],
-            ["textures", t("Texturen"), <ImageIcon size={14} />],
-            "|",
-            ["vars", t("Variablen"), <VariableIcon size={14} />],
-            ["tags", t("Tags"), <TagIcon size={14} />],
-            ["code", t("Code"), <CodeIcon size={14} />],
-            "|",
-            ["loc", t("Sprachen"), <TranslateIcon size={14} />],
-            ["mods", t("Mods"), <PackageIcon size={14} />],
-            ...(hasPluginEditors ? [["plugins", t("Plugins"), <PuzzleIcon size={14} />] as [MainTab, string, React.ReactNode]] : []),
-            ["settings", t("Mod-Einstellungen"), <GearIcon size={14} />],
-            ["export", t("Export"), <DownloadIcon size={14} />],
-          ] as ([MainTab, string, React.ReactNode] | "|")[]
-        ).map((x, i) =>
-          x === "|" ? (
-            <span key={`sep${i}`} className="view-tab-sep" aria-hidden="true" />
-          ) : (
-            <button key={x[0]} className={mainTab === x[0] ? "view-tab active" : "view-tab"} onClick={() => setMainTab(x[0])} data-tour={`tab-${x[0]}`}>
-              {x[2]}
-              {x[1]}
-              <BetaBadge feature={TAB_FEATURE[x[0]]} />
-            </button>
-          ),
-        )}
-        <span className="grow" />
-        <button
-          data-tour="tab-console"
-          className={["view-tab", "console-tab", mainTab === "console" ? "active" : "", busy ? "running" : problems.length > 0 ? "problems" : ""].join(" ")}
-          onClick={() => setMainTab("console")}
-        >
-          <TerminalIcon size={14} />
-          {t("Konsole")}
-          <BetaBadge feature="console" />
-          {busy && <span className="console-tab-state"><span className="pulse-dot" />{t("läuft")}</span>}
-          {!busy && problems.length > 0 && <span className="count">{problems.length}</span>}
-        </button>
-      </nav>
+      <div className="ws-view">
+        <ContentTab project={project} views={views} />
+      </div>
 
-      {mainTab === "content" && (
-        <div className="ws-view">
-          <ContentTab project={project} />
-        </div>
+      {consoleOpen && (
+        <div
+          className="ws-split"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label={t("Höhe der Konsole")}
+          onPointerDown={(e) => {
+            const y0 = e.clientY;
+            const h0 = consoleH;
+            const move = (ev: PointerEvent) => setConsoleH(Math.max(120, Math.min(window.innerHeight - 220, h0 + (y0 - ev.clientY))));
+            const up = () => {
+              window.removeEventListener("pointermove", move);
+              window.removeEventListener("pointerup", up);
+            };
+            window.addEventListener("pointermove", move);
+            window.addEventListener("pointerup", up);
+          }}
+        />
       )}
-      {mainTab === "textures" && (
-        <div className="ws-view">
-          <TexturesTab project={project} />
-        </div>
-      )}
-      {mainTab === "tags" && (
-        <div className="ws-view">
-          <TagsTab project={project} />
-        </div>
-      )}
-      {mainTab === "vars" && (
-        <div className="ws-view">
-          <VariablesTab project={project} />
-        </div>
-      )}
-      {mainTab === "loc" && (
-        <div className="ws-view">
-          <LocalizationTab project={project} />
-        </div>
-      )}
-      {mainTab === "mods" && (
-        <div className="ws-view">
-          <ModsTab project={project} />
-        </div>
-      )}
-      {mainTab === "plugins" && (
-        <div className="ws-view">
-          <PluginsTab project={project} />
-        </div>
-      )}
-      {mainTab === "settings" && (
-        <div className="ws-view">
-          <ModSettingsTab project={project} onSaved={onChanged} />
-        </div>
-      )}
-      {mainTab === "export" && (
-        <div className="ws-view">
-          <ExportTab
-            project={project}
-            busy={busy}
-            building={!!running && running.task === "build"}
-            elapsed={elapsed}
-            lastBuild={lastExit && lastExit.task === "build" ? { at: lastExit.at, success: lastExit.success } : null}
-            onBuild={() => start("build", { stay: true })}
-            onOpenSettings={() => setMainTab("settings")}
-          />
-        </div>
-      )}
-      {mainTab === "code" && (
-        <div className="ws-view">
-          <Suspense fallback={<div className="content-loading muted">{t("Editor wird geladen …")}</div>}>
-            <CodeTab project={project} />
-          </Suspense>
-        </div>
-      )}
-
-      <div className="ws-body" style={{ display: mainTab === "console" ? undefined : "none" }}>
+      <div className="ws-bottom" style={consoleOpen ? { height: consoleH } : { display: "none" }}>
         <ConsoleView
           project={project}
           logs={logs}

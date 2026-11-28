@@ -77,10 +77,51 @@ type ItemTab = "general" | "function" | "recipe";
 
 type Sel = { kind: "block" | "item" | "mob" | "event" | "brew" | "blueprint" | "dimension" | "structure" | "gui"; index: number } | null;
 
-export default function ContentTab({ project }: { project: Project }) {
+/** Weitere Bereiche im Projekt-Baum (Texturen, Sprachen, …) – öffnen als Tab */
+export type WsView = { id: string; label: string; icon: React.ReactNode; group: "data" | "mod"; badge?: React.ReactNode; render: () => React.ReactNode };
+type Doc = { t: "sel"; kind: NonNullable<Sel>["kind"]; index: number } | { t: "view"; id: string };
+const docKey = (d: Doc) => (d.t === "view" ? `v:${d.id}` : `${d.kind}:${d.index}`);
+
+export default function ContentTab({ project, views = [] }: { project: Project; views?: WsView[] }) {
   const [content, setContent, contentHist] = useUndoable<Content | null>(`content:${project.id}`, null);
   const [saved, setSaved] = useState<string>("");
-  const [sel, setSel] = useState<Sel>(null);
+  const [sel, setSelRaw] = useState<Sel>(null);
+  const [view, setView] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(`anvil.view.${project.id}`) || null;
+    } catch {
+      return null;
+    }
+  });
+  const [docs, setDocs] = useState<Doc[]>(() => (view ? [{ t: "view", id: view }] : []));
+  const setSel = useCallback((s: Sel) => {
+    setView(null);
+    setSelRaw(s);
+  }, []);
+  const openView = useCallback((id: string) => {
+    setView(id);
+    setDocs((d) => (d.some((x) => x.t === "view" && x.id === id) ? d : [...d, { t: "view", id }]));
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem(`anvil.view.${project.id}`, view ?? "");
+    } catch {
+      /* egal */
+    }
+  }, [view, project.id]);
+  useEffect(() => {
+    if (sel) setDocs((d) => (d.some((x) => x.t === "sel" && x.kind === sel.kind && x.index === sel.index) ? d : [...d, { t: "sel", kind: sel.kind, index: sel.index }]));
+  }, [sel?.kind, sel?.index]);
+  // andere Stellen öffnen Bereiche („Texturen-Bibliothek öffnen“, Tour …)
+  useEffect(() => {
+    const on = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      if (id === "content") setView(null);
+      else if (views.some((v) => v.id === id)) openView(id);
+    };
+    window.addEventListener("anvil:open-tab", on);
+    return () => window.removeEventListener("anvil:open-tab", on);
+  }, [views, openView]);
   const [busy, setBusy] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
@@ -125,9 +166,15 @@ export default function ContentTab({ project }: { project: Project }) {
   const dirty = content ? JSON.stringify(content) !== saved : false;
   // Nach Rückgängig kann die Auswahl auf etwas zeigen, das es nicht mehr gibt
   useEffect(() => {
-    if (!content || !sel) return;
+    if (!content) return;
+    const lists0: Record<string, unknown[] | undefined> = { block: content.blocks, item: content.items, mob: content.mobs, event: content.events, brew: content.brewing, blueprint: content.blueprints, dimension: content.dimensions, structure: content.structures, gui: content.guis };
+    setDocs((d) => {
+      const n = d.filter((x) => x.t === "view" || !!lists0[x.kind]?.[x.index]);
+      return n.length === d.length ? d : n;
+    });
+    if (!sel) return;
     const lists: Record<string, unknown[] | undefined> = { block: content.blocks, item: content.items, mob: content.mobs, event: content.events, brew: content.brewing, blueprint: content.blueprints, dimension: content.dimensions, structure: content.structures, gui: content.guis };
-    if (!lists[sel.kind]?.[sel.index]) setSel(null);
+    if (!lists[sel.kind]?.[sel.index]) setSelRaw(null);
   }, [content, sel]);
   useEffect(() => {
     if (content && saved) setDraft(project.id, content, saved);
@@ -488,6 +535,53 @@ export default function ContentTab({ project }: { project: Project }) {
     );
   };
 
+  const docInfo = (d: Doc): { label: string; icon: React.ReactNode } | null => {
+    if (d.t === "view") {
+      const v = views.find((x) => x.id === d.id);
+      return v ? { label: v.label, icon: v.icon } : null;
+    }
+    const i = d.index;
+    switch (d.kind) {
+      case "block": {
+        const b = content.blocks[i];
+        return b ? { label: b.nameEn || b.nameDe || b.id, icon: <CubeIcon size={13} /> } : null;
+      }
+      case "item": {
+        const x = content.items[i];
+        return x ? { label: x.nameEn || x.nameDe || x.id, icon: <GemIcon size={13} /> } : null;
+      }
+      case "mob": {
+        const x = content.mobs[i];
+        return x ? { label: x.nameEn || x.nameDe || x.id, icon: <PawIcon size={13} /> } : null;
+      }
+      case "blueprint": {
+        const x = content.blueprints[i];
+        return x ? { label: x.name || t("Blueprint"), icon: <BlueprintIcon size={13} /> } : null;
+      }
+      case "gui": {
+        const x = (content.guis ?? [])[i];
+        return x ? { label: x.nameEn || x.id, icon: <GuiIcon size={13} /> } : null;
+      }
+      case "dimension": {
+        const x = content.dimensions[i];
+        return x ? { label: x.nameEn || x.nameDe || x.id, icon: <GlobeIcon size={13} /> } : null;
+      }
+      case "structure": {
+        const x = (content.structures ?? [])[i];
+        return x ? { label: x.nameEn || x.nameDe || x.id, icon: <BoxIcon size={13} /> } : null;
+      }
+      case "event": {
+        const x = content.events[i];
+        return x ? { label: eventLabel(x), icon: <LightningIcon size={13} /> } : null;
+      }
+      case "brew": {
+        const x = content.brewing[i];
+        return x ? { label: brewLabel(x), icon: <FlaskIcon size={13} /> } : null;
+      }
+    }
+    return null;
+  };
+
   const saveBlock = !dirty && content.generatorVersion > 0 && !busy ? (
     <div className="content-save clean">
       <span className="content-save-ok"><CheckIcon size={13} /> {t("Alles gespeichert")}</span>
@@ -502,9 +596,9 @@ export default function ContentTab({ project }: { project: Project }) {
     </div>
   );
 
-  if (sel?.kind === "dimension" && content.dimensions[sel.index])
-    return (
-      <div className="content dimx-host">
+  const dimEditor =
+    sel?.kind === "dimension" && content.dimensions[sel.index] ? (
+      <div className="content-pane dimx-host">
           <DimensionEditor
             key={`dim-${sel.index}`}
             project={project}
@@ -539,7 +633,7 @@ export default function ContentTab({ project }: { project: Project }) {
             }}
           />
       </div>
-    );
+    ) : null;
 
   return (
     <div className="content">
@@ -557,7 +651,7 @@ export default function ContentTab({ project }: { project: Project }) {
           </button>
         </div>
         <div className="content-list-scroll">
-          <button className={sel ? "entry overview-entry" : "entry overview-entry active"} onClick={() => setSel(null)}>
+          <button className={sel || view ? "entry overview-entry" : "entry overview-entry active"} onClick={() => (setView(null), setSelRaw(null))} data-tour="tab-content">
             <span className="logic-icon">
               <GridIcon size={14} />
             </span>
@@ -570,7 +664,7 @@ export default function ContentTab({ project }: { project: Project }) {
               matches(b) ? (
                 <button
                   key={`b${i}`}
-                  className={sel?.kind === "block" && sel.index === i ? "entry active" : "entry"}
+                  className={!view && sel?.kind === "block" && sel.index === i ? "entry active" : "entry"}
                   onClick={() => setSel({ kind: "block", index: i })}
                   {...contextMenu(() => entryMenu("block", i))}
                 >
@@ -594,7 +688,7 @@ export default function ContentTab({ project }: { project: Project }) {
               matches(it) ? (
                 <button
                   key={`i${i}`}
-                  className={sel?.kind === "item" && sel.index === i ? "entry active" : "entry"}
+                  className={!view && sel?.kind === "item" && sel.index === i ? "entry active" : "entry"}
                   onClick={() => setSel({ kind: "item", index: i })}
                   {...contextMenu(() => entryMenu("item", i))}
                 >
@@ -613,7 +707,7 @@ export default function ContentTab({ project }: { project: Project }) {
               matches(m) ? (
                 <button
                   key={`m${i}`}
-                  className={sel?.kind === "mob" && sel.index === i ? "entry active" : "entry"}
+                  className={!view && sel?.kind === "mob" && sel.index === i ? "entry active" : "entry"}
                   onClick={() => setSel({ kind: "mob", index: i })}
                   {...contextMenu(() => entryMenu("mob", i))}
                 >
@@ -631,7 +725,7 @@ export default function ContentTab({ project }: { project: Project }) {
               !q || `${d.id} ${d.nameDe} ${d.nameEn}`.toLowerCase().includes(q) ? (
                 <button
                   key={`dim${i}`}
-                  className={sel?.kind === "dimension" && sel.index === i ? "entry active" : "entry"}
+                  className={!view && sel?.kind === "dimension" && sel.index === i ? "entry active" : "entry"}
                   onClick={() => setSel({ kind: "dimension", index: i })}
                   {...contextMenu(() => [
                     { label: t("Bearbeiten"), icon: <PencilIcon size={15} />, onClick: () => setSel({ kind: "dimension", index: i }) },
@@ -659,7 +753,7 @@ export default function ContentTab({ project }: { project: Project }) {
               !q || `${st.id} ${st.nameEn} ${st.nameDe}`.toLowerCase().includes(q) ? (
                 <button
                   key={`st${i}`}
-                  className={sel?.kind === "structure" && sel.index === i ? "entry active" : "entry"}
+                  className={!view && sel?.kind === "structure" && sel.index === i ? "entry active" : "entry"}
                   onClick={() => setSel({ kind: "structure", index: i })}
                   {...contextMenu(() => [
                     { label: t("Bearbeiten"), icon: <PencilIcon size={15} />, onClick: () => setSel({ kind: "structure", index: i }) },
@@ -686,7 +780,7 @@ export default function ContentTab({ project }: { project: Project }) {
               !q || b.name.toLowerCase().includes(q) ? (
                 <button
                   key={`bp${i}`}
-                  className={sel?.kind === "blueprint" && sel.index === i ? "entry active" : "entry"}
+                  className={!view && sel?.kind === "blueprint" && sel.index === i ? "entry active" : "entry"}
                   onClick={() => setSel({ kind: "blueprint", index: i })}
                   {...contextMenu(() => [
                     { label: t("Bearbeiten"), icon: <PencilIcon size={15} />, onClick: () => setSel({ kind: "blueprint", index: i }) },
@@ -710,7 +804,7 @@ export default function ContentTab({ project }: { project: Project }) {
               !q || `${g.id} ${g.nameEn}`.toLowerCase().includes(q) ? (
                 <button
                   key={`gui${i}`}
-                  className={sel?.kind === "gui" && sel.index === i ? "entry active" : "entry"}
+                  className={!view && sel?.kind === "gui" && sel.index === i ? "entry active" : "entry"}
                   onClick={() => setSel({ kind: "gui", index: i })}
                   {...contextMenu(() => [
                     { label: t("Bearbeiten"), icon: <PencilIcon size={15} />, onClick: () => setSel({ kind: "gui", index: i }) },
@@ -734,7 +828,7 @@ export default function ContentTab({ project }: { project: Project }) {
             {content.events.map((e, i) => (
               <button
                 key={`e${i}`}
-                className={sel?.kind === "event" && sel.index === i ? "entry active" : "entry"}
+                className={!view && sel?.kind === "event" && sel.index === i ? "entry active" : "entry"}
                 onClick={() => setSel({ kind: "event", index: i })}
                 {...contextMenu(() => [
                   { label: t("Bearbeiten"), icon: <PencilIcon size={15} />, onClick: () => setSel({ kind: "event", index: i }) },
@@ -757,7 +851,7 @@ export default function ContentTab({ project }: { project: Project }) {
             {content.brewing.map((b, i) => (
               <button
                 key={`b${i}`}
-                className={sel?.kind === "brew" && sel.index === i ? "entry active" : "entry"}
+                className={!view && sel?.kind === "brew" && sel.index === i ? "entry active" : "entry"}
                 onClick={() => setSel({ kind: "brew", index: i })}
                 {...contextMenu(() => [{ label: t("Entfernen"), icon: <TrashIcon size={15} />, danger: true, onClick: () => remove({ kind: "brew", index: i }) }])}
               >
@@ -771,10 +865,74 @@ export default function ContentTab({ project }: { project: Project }) {
               </button>
             ))}
           </ListGroup>
+          {(["data", "mod"] as const).map((g) => {
+            const vs = views.filter((v) => v.group === g);
+            if (!vs.length) return null;
+            return (
+              <div key={g} className="tree-section">
+                <div className="content-list-head">{g === "data" ? t("Daten") : t("Mod")}</div>
+                {vs.map((v) => (
+                  <button key={v.id} data-tour={`tab-${v.id}`} className={view === v.id ? "entry tree-view active" : "entry tree-view"} onClick={() => openView(v.id)}>
+                    <span className="logic-icon">{v.icon}</span>
+                    <span className="entry-text">
+                      <span className="entry-name">{v.label}</span>
+                    </span>
+                    {v.badge}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
         </div>
         {saveBlock}
       </aside>
 
+      <div className="content-main">
+        <div className="doc-tabs" role="tablist" aria-label={t("Geöffnet")}>
+          <button className={!view && !sel ? "doc-tab home active" : "doc-tab home"} onClick={() => (setView(null), setSelRaw(null))} aria-label={t("Übersicht")} data-tip={t("Übersicht")}>
+            <GridIcon size={13} />
+          </button>
+          {docs.map((d) => {
+            const k = docKey(d);
+            const active = d.t === "view" ? view === d.id : !view && sel?.kind === d.kind && sel.index === d.index;
+            const info = docInfo(d);
+            if (!info) return null;
+            const activate = () => (d.t === "view" ? setView(d.id) : (setView(null), setSelRaw({ kind: d.kind, index: d.index })));
+            const close = () => {
+              const i = docs.findIndex((x) => docKey(x) === k);
+              const next = docs.filter((x) => docKey(x) !== k);
+              setDocs(next);
+              if (!active) return;
+              const n = next[Math.min(i, next.length - 1)];
+              if (!n) {
+                setView(null);
+                setSelRaw(null);
+              } else if (n.t === "view") setView(n.id);
+              else {
+                setView(null);
+                setSelRaw({ kind: n.kind, index: n.index });
+              }
+            };
+            return (
+              <div key={k} className={active ? "doc-tab active" : "doc-tab"} role="tab" aria-selected={active} onAuxClick={(e) => e.button === 1 && close()}>
+                <button className="doc-tab-main" onClick={activate} title={info.label}>
+                  {info.icon}
+                  <span className="doc-tab-label">{info.label}</span>
+                </button>
+                <button className="doc-tab-close" onClick={close} aria-label={t("Schließen")}>
+                  <CloseIcon size={11} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        {view && views.find((v) => v.id === view) ? (
+          <div className="content-pane" key={`view-${view}`}>
+            {views.find((v) => v.id === view)!.render()}
+          </div>
+        ) : dimEditor ? (
+          dimEditor
+        ) : (
       <section className="content-editor">
         {hint && (
           <div className="callout warn">
@@ -1158,6 +1316,8 @@ export default function ContentTab({ project }: { project: Project }) {
           </div>
         )}
       </section>
+        )}
+      </div>
       {createGroup && <CreateMenu group={createGroup} onPick={create} onClose={() => setCreateGroup(null)} />}
     </div>
   );

@@ -2324,3 +2324,81 @@ button.cx-stat { cursor: pointer; }
 .pl-entry.active { border-color: var(--accent-line); background: var(--hover); }
 .pl-form { display: flex; flex-direction: column; gap: 12px; padding: 16px; overflow-y: auto; }
 .pl-form .btn.danger { align-self: flex-start; }
+
+/* =============================================================================
+   0.6 – Profi-Design: dunkler, dichter, Projekt-Baum + Tabs + Konsole unten
+   ============================================================================= */
+:root,
+[data-theme="dark"] {
+  --bg: #141517;
+  --surface: #1b1c1f;
+  --panel: #1e1f22;
+  --elevated: #25262a;
+  --hover: #2a2c30;
+  --active: #313338;
+  --border: #292b2f;
+  --border-strong: #37393e;
+  --text: #dfe1e5;
+  --text-2: #b4b8bf;
+  --muted: #868a91;
+  --faint: #45484e;
+  --console: #111214;
+  --checker-a: #1d1f22;
+  --checker-b: #16171a;
+}
+body { font-size: 13px; }
+.activitybar { width: 46px; }
+.titlebar { min-height: 36px; }
+
+/* Werkzeugleiste kompakter */
+.toolbar { padding: 4px 10px; gap: 10px; border-bottom: 1px solid var(--border); }
+.toolbar .btn.small { height: 28px; }
+.console-toggle.active { background: var(--hover); border-color: var(--border-strong); }
+.console-toggle.running { color: var(--accent); border-color: var(--accent-line); }
+.console-toggle.problems { color: var(--warn); }
+.console-toggle .count { margin-left: 2px; }
+
+/* Projekt-Baum (links) */
+.content-list { width: 258px; background: var(--surface); }
+.content-list-search { padding: 8px 8px 4px; }
+.content-list-search .search { height: 28px; }
+.content-list-search .content-add { width: 28px; height: 28px; padding: 0; }
+.content-list .entry { margin: 0 4px; width: calc(100% - 8px); padding: 2px 8px; min-height: 26px; gap: 8px; border-radius: 5px; }
+.content-list .entry .entry-id { display: none; }
+.content-list .entry-name { font-size: 12.5px; }
+.content-list .entry .mc-icon, .content-list .entry .egg-icon { width: 18px; height: 18px; }
+.content-list .logic-icon { width: 18px; height: 18px; }
+.content-list .entry.active { background: color-mix(in srgb, var(--accent) 13%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
+.content-list-head { padding: 10px 8px 3px 12px; font-size: 10.5px; letter-spacing: 0.07em; }
+.tree-section { margin-top: 4px; }
+.tree-view .logic-icon { color: var(--text-2); }
+
+/* Editor-Bereich mit Tabs */
+.content-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+.doc-tabs { height: 34px; flex: none; display: flex; align-items: stretch; background: var(--surface); border-bottom: 1px solid var(--border); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.doc-tabs::-webkit-scrollbar { display: none; }
+.doc-tab { position: relative; display: flex; align-items: center; flex: none; max-width: 220px; border-right: 1px solid var(--border); color: var(--muted); }
+.doc-tab.home { width: 38px; justify-content: center; border: 0; border-right: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; }
+.doc-tab:hover { color: var(--text); background: var(--panel); }
+.doc-tab.active { color: var(--text); background: var(--bg); }
+.doc-tab.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent); }
+.doc-tab-main { display: flex; align-items: center; gap: 7px; min-width: 0; height: 100%; padding: 0 4px 0 12px; border: 0; background: transparent; color: inherit; font: inherit; font-size: 12.5px; cursor: pointer; }
+.doc-tab-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-tab-close { width: 20px; height: 20px; margin-right: 6px; display: grid; place-items: center; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; }
+.doc-tab:hover .doc-tab-close, .doc-tab.active .doc-tab-close { opacity: 1; }
+.doc-tab-close:hover { background: var(--hover); color: var(--text); }
+.content-main > .content-editor { background: var(--bg); padding: 16px 18px; }
+.content-pane { flex: 1; min-height: 0; min-width: 0; display: flex; overflow: hidden; }
+.content-pane > * { flex: 1 1 0%; min-width: 0; }
+
+/* Konsole unten */
+.ws-split { height: 5px; flex: none; margin-top: -2px; margin-bottom: -3px; position: relative; z-index: 3; cursor: row-resize; }
+.ws-split:hover, .ws-split:active { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+.ws-bottom { flex: none; display: flex; min-height: 0; border-top: 1px solid var(--border); background: var(--surface); }
+.ws-bottom .cx-head { padding: 6px 12px; gap: 12px; }
+.ws-bottom .cx-state { min-width: 180px; gap: 9px; }
+.ws-bottom .cx-state-icon { width: 26px; height: 26px; border-radius: 7px; }
+.ws-bottom .cx-state-title { font-size: 13px; }
+.ws-bottom .cx-side { width: 240px; padding: 8px; gap: 8px; }
+.ws-bottom .cx-tabs { min-height: 30px; }
+.ws-bottom .cx-state-sub { display: none; }
