@@ -1,0 +1,21 @@
+{
+  "id": "quest-book",
+  "name": "Quest-Buch",
+  "version": "1.0.0",
+  "author": "Anvil Studio",
+  "description": "Quests mit Aufgaben, Belohnungen und Ketten – mit eigenem Quest-Buch im Spiel, Fortschritt pro Spieler und Blueprint-Knoten.",
+  "anvilStudio": ">=0.5.0-dev.40",
+  "permissions": [],
+  "contributes": {
+    "editors": ["editors.json"],
+    "nodes": ["nodes.json"],
+    "init": [{ "class": "AnvilQuests", "method": "init", "side": "common" }],
+    "files": [
+      { "path": "src/main/java/{{packagedir}}/AnvilQuests.java", "file": "java/AnvilQuests.java" },
+      { "path": "src/main/java/{{packagedir}}/QuestScreen.java", "file": "java/QuestScreen.java" },
+      { "path": "src/main/resources/data/{{modid}}/anvil_quests.json", "template": "{{entries:quests}}" },
+      { "path": "src/main/resources/assets/{{modid}}/models/item/quest_book.json", "template": "{ \"parent\": \"minecraft:item/generated\", \"textures\": { \"layer0\": \"minecraft:item/writable_book\" } }" },
+      { "path": "src/main/resources/assets/{{modid}}/items/quest_book.json", "mc": ">=1.21.4", "template": "{ \"model\": { \"type\": \"minecraft:model\", \"model\": \"{{modid}}:item/quest_book\" } }" }
+    ]
+  }
+}

@@ -58,6 +58,8 @@ pub struct BpApi {
     /// ab 1.21.2: Registry#getValue statt #get
     pub get_value: bool,
     pub modid: String,
+    /// Java-Paket der Mod
+    pub package: String,
     /// eigene Block-/Item-/Kreatur-IDs (ohne Namensraum)
     pub own: HashSet<String>,
     /// Variablen aus dem Variablen-Tab (Schlüssel: var_name)
@@ -912,6 +914,7 @@ impl<'a> Gen<'a> {
                     "bool" => Some(self.bool_in_d(n, key, 0)),
                     "ident" | "id" => crate::plugins::literal(ty, prop(p, key)),
                     "modid" => Some(modid.clone()),
+                    "plugin" => Some(crate::plugins::java_pkg(&self.api.package, k.split(':').next().unwrap_or(""))),
                     "out" => {
                         if key == "next" {
                             used_next = true;
@@ -1078,6 +1081,7 @@ impl<'a> Gen<'a> {
                     "bool" => Some(self.bool_in_d(n, key, d)),
                     "ident" | "id" => crate::plugins::literal(t, prop(p, key)),
                     "modid" => Some(modid.clone()),
+                    "plugin" => Some(crate::plugins::java_pkg(&self.api.package, k.split(':').next().unwrap_or(""))),
                     _ => None,
                 });
                 match e {
@@ -1392,6 +1396,7 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
     let get = if api.get_value { "getValue" } else { "get" };
     let burn = if api.get_value { "level.fuelValues().burnDuration(stack)" } else { "stack.getBurnTime(net.minecraft.world.item.crafting.RecipeType.SMELTING)" };
     let mut hooks: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut plugin_events: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
     // Hilfsfunktionen
     methods.push_str(&format!(
@@ -1573,7 +1578,7 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
     let mut counter = 0;
     for bp in &active {
         let gen = Gen { api, bp, nodes: bp.nodes.iter().map(|n| (n.id.as_str(), n)).collect(), cancellable: false, extra: &extra, seq: &seq };
-        for n in bp.nodes.iter().filter(|n| EVENT_KINDS.contains(&n.kind.as_str())) {
+        for n in bp.nodes.iter().filter(|n| EVENT_KINDS.contains(&n.kind.as_str()) || crate::plugins::is_event_node(&n.kind)) {
             counter += 1;
             let mut stack = HashSet::new();
             match n.kind.as_str() {
@@ -1615,6 +1620,21 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
                     starts.push_str(&format!(
                         "        {{\n            final ServerLevel level = event.getServer().overworld();\n            final Player player = null;\n            final LivingEntity target = null;\n            final double x = 0, y = level.getSeaLevel(), z = 0;\n            final BlockState state = null;\n            final ItemStack stack = ItemStack.EMPTY;\n            final String message = \"\";\n{body}        }}\n"
                     ));
+                }
+                kind if kind.contains(':') => {
+                    // Ereignis aus einem Plugin: der Plugin-Code ruft anvilPluginEvent(kind, level, player, message) auf
+                    let def = crate::plugins::node_def(kind).unwrap_or_default();
+                    let filled = plugin_defaults(n, &def);
+                    let body = gen.follow(&n.id, "next", 1, false, &mut stack);
+                    let filter = match def["filter"].as_str() {
+                        Some(key) if !prop(&filled.props, key).trim().is_empty() => format!("        if (!\"{}\".equals(message)) return;\n", js(prop(&filled.props, key).trim())),
+                        _ => String::new(),
+                    };
+                    let method = format!("anvilPe{counter}");
+                    methods.push_str(&format!(
+                        "\n    private static void {method}(ServerLevel level, Player player, String message) {{\n{filter}        final LivingEntity target = player;\n        final double x = player != null ? player.getX() : 0, y = player != null ? player.getY() : 0, z = player != null ? player.getZ() : 0;\n        final BlockState state = null;\n        final ItemStack stack = player != null ? player.getMainHandItem() : ItemStack.EMPTY;\n{body}    }}\n"
+                    ));
+                    plugin_events.entry(kind.to_string()).or_default().push(method);
                 }
                 kind => {
                     let Some((class, head, cancellable)) = event_head(kind) else { continue };
@@ -1695,6 +1715,17 @@ pub fn generate(blueprints: &[Blueprint], api: &BpApi) -> (Vec<&'static str>, St
         }
         methods.push_str(&format!(
             "\n    static boolean anvilBlockHook(String kind, String block, ServerLevel level, BlockPos pos, Player player) {{\n        boolean h = false;\n        for (String k : new String[] {{ kind + \"|\" + block, kind + \"|*\" }}) {{\n            switch (k) {{\n{cases}                default -> {{}}\n            }}\n        }}\n        return h;\n    }}\n"
+        ));
+    }
+    // Plugin-Ereignisse
+    {
+        let mut cases = String::new();
+        for (k, list) in &plugin_events {
+            let c: String = list.iter().map(|m| format!("{m}(level, player, message); ")).collect();
+            cases.push_str(&format!("            case \"{}\" -> {{ {c}}}\n", js(k)));
+        }
+        methods.push_str(&format!(
+            "\n    public static void anvilPluginEvent(String kind, ServerLevel level, Player player, String message) {{\n        if (level == null) return;\n        switch (kind) {{\n{cases}            default -> {{}}\n        }}\n    }}\n"
         ));
     }
     if !starts.is_empty() {

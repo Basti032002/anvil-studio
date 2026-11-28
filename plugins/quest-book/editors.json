@@ -1,0 +1,42 @@
+[
+  {
+    "id": "quests",
+    "label": "Quests",
+    "item": "Quest",
+    "titleField": "title",
+    "groupBy": "chapter",
+    "desc": "Spieler sehen die Quests im Quest-Buch. Neue Spieler bekommen es beim ersten Betreten der Welt, sonst über /quests.",
+    "fields": [
+      { "key": "title", "label": "Titel", "def": "New Quest" },
+      { "key": "chapter", "label": "Kapitel", "def": "Start", "suggest": true },
+      { "key": "icon", "label": "Symbol", "type": "item", "def": "minecraft:book" },
+      { "key": "description", "label": "Beschreibung", "type": "textarea", "def": "" },
+      { "key": "requires", "label": "Erst freigeschaltet, wenn diese Quests geschafft sind", "type": "entries", "section": "Voraussetzungen", "addLabel": "Quest wählen" },
+      {
+        "key": "tasks", "label": "Alle müssen erfüllt sein", "type": "list", "section": "Aufgaben", "addLabel": "Aufgabe hinzufügen",
+        "fields": [
+          { "key": "type", "label": "Art", "type": "select", "def": "give", "width": 190, "options": [["give", "Items abgeben"], ["have", "Items im Inventar haben"], ["break", "Block abbauen"], ["place", "Block setzen"], ["kill", "Kreatur besiegen"], ["dimension", "Dimension betreten"], ["biome", "Biom besuchen"]] },
+          { "key": "item", "label": "Item", "type": "item", "def": "minecraft:iron_ingot", "when": { "key": "type", "values": ["give", "have"] } },
+          { "key": "block", "label": "Block", "type": "block", "def": "minecraft:stone", "when": { "key": "type", "values": ["break", "place"] } },
+          { "key": "entity", "label": "Kreatur", "type": "entity", "def": "minecraft:zombie", "when": { "key": "type", "values": ["kill"] } },
+          { "key": "dimension", "label": "Dimension", "type": "dimension", "def": "minecraft:the_nether", "when": { "key": "type", "values": ["dimension"] } },
+          { "key": "biome", "label": "Biom (z. B. minecraft:desert)", "def": "minecraft:desert", "when": { "key": "type", "values": ["biome"] } },
+          { "key": "count", "label": "Anzahl", "type": "number", "def": "1", "width": 90, "when": { "key": "type", "values": ["give", "have", "break", "place", "kill"] } }
+        ]
+      },
+      {
+        "key": "rewards", "label": "Bekommt der Spieler beim Abschließen", "type": "list", "section": "Belohnungen", "addLabel": "Belohnung hinzufügen",
+        "fields": [
+          { "key": "type", "label": "Art", "type": "select", "def": "item", "width": 190, "options": [["item", "Item"], ["xp", "Erfahrung"], ["command", "Befehl"]] },
+          { "key": "item", "label": "Item", "type": "item", "def": "minecraft:diamond", "when": { "key": "type", "values": ["item"] } },
+          { "key": "count", "label": "Anzahl / Punkte", "type": "number", "def": "1", "width": 110, "when": { "key": "type", "values": ["item", "xp"] } },
+          { "key": "command", "label": "Befehl, z. B. effect give @p minecraft:speed 60", "def": "", "when": { "key": "type", "values": ["command"] } }
+        ]
+      },
+      { "key": "claim", "label": "Belohnung abholen", "hint": "Spieler klickt im Buch auf „Abholen“ – sonst gibt es sie sofort", "type": "bool", "def": "true", "side": true },
+      { "key": "notify", "label": "Hinweis beim Schaffen", "hint": "Einblendung oben rechts", "type": "bool", "def": "true", "side": true },
+      { "key": "repeatable", "label": "Wiederholbar", "hint": "Kann nach der Belohnung erneut gemacht werden", "type": "bool", "def": "false", "side": true },
+      { "key": "hidden", "label": "Versteckt bis frei", "hint": "Erscheint erst im Buch, wenn freigeschaltet", "type": "bool", "def": "false", "side": true }
+    ]
+  }
+]

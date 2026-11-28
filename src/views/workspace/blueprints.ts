@@ -6,7 +6,7 @@ import { Blueprint, BpNode } from "../../api";
 export type BpCat = "event" | "flow" | "values" | "vars" | "block" | "world" | "player" | "other";
 /** Werte-Typen für Werte-Verbindungen */
 export type ValType = "num" | "bool" | "text" | "any";
-export type PropType = "pinonly" | "text" | "number" | "select" | "item" | "block" | "entity" | "effect" | "sound" | "particle" | "who" | "var" | "dim" | "fn" | "varvalue" | "varop" | "varcmp" | "game" | "scope" | "tag" | "gui";
+export type PropType = "pinonly" | "text" | "number" | "select" | "item" | "block" | "entity" | "effect" | "sound" | "particle" | "who" | "var" | "dim" | "fn" | "varvalue" | "varop" | "varcmp" | "game" | "scope" | "tag" | "gui" | "entry";
 export interface PropSpec {
   key: string;
   label: string;
@@ -19,6 +19,8 @@ export interface PropSpec {
   when2?: { key: string; values: string[] };
   /** kann mit einem Wert verbunden werden */
   pin?: ValType;
+  /** type "entry": Auswahl aus den Einträgen eines Plugin-Editors */
+  entries?: { plugin: string; editor: string; any?: string };
 }
 export interface NodeSpec {
   kind: string;
@@ -604,7 +606,7 @@ export const NODES: NodeSpec[] = [
 ];
 
 export const nodeSpec = (kind: string) => NODES.find((n) => n.kind === kind);
-export const isEvent = (kind: string) => kind.startsWith("ev_");
+export const isEvent = (kind: string) => kind.startsWith("ev_") || (kind.includes(":") && NODES.some((n) => n.kind === kind && n.cat === "event"));
 export const isValue = (kind: string) => kind.startsWith("val_");
 
 /** Farben der Werte-Typen (Punkte und Linien) */

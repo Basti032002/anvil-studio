@@ -1,0 +1,30 @@
+[
+  { "kind": "quest_done", "cat": "event", "label": "Quest geschafft", "desc": "Wenn ein Spieler eine Quest schafft. „Nachricht“ enthält die ID der Quest.",
+    "props": [{ "key": "quest", "label": "Quest", "type": "entry", "editor": "quests", "any": "Jede Quest", "def": "" }], "filter": "quest" },
+  { "kind": "is_done", "cat": "player", "label": "Quest abgeschlossen?", "desc": "Ja, wenn der Spieler die Quest geschafft hat", "value": "bool",
+    "props": [{ "key": "quest", "label": "Quest", "type": "entry", "editor": "quests", "def": "" }],
+    "expr": "{{plugin}}.AnvilQuests.isDone(player, {{text:quest}})" },
+  { "kind": "is_active", "cat": "player", "label": "Quest läuft?", "desc": "Ja, wenn die Quest freigeschaltet, aber noch nicht geschafft ist", "value": "bool",
+    "props": [{ "key": "quest", "label": "Quest", "type": "entry", "editor": "quests", "def": "" }],
+    "expr": "{{plugin}}.AnvilQuests.isActive(player, {{text:quest}})" },
+  { "kind": "done_count", "cat": "player", "label": "Geschaffte Quests", "desc": "Wie viele Quests der Spieler geschafft hat", "value": "num", "props": [],
+    "expr": "{{plugin}}.AnvilQuests.doneCount(player)" },
+  { "kind": "unlock", "cat": "player", "label": "Quest freischalten", "desc": "Schaltet die Quest frei, auch wenn die Voraussetzungen fehlen",
+    "props": [{ "key": "quest", "label": "Quest", "type": "entry", "editor": "quests", "def": "" }],
+    "java": "{{plugin}}.AnvilQuests.unlock(player, {{text:quest}});" },
+  { "kind": "complete", "cat": "player", "label": "Quest abschließen", "desc": "Erledigt alle Aufgaben der Quest sofort",
+    "props": [{ "key": "quest", "label": "Quest", "type": "entry", "editor": "quests", "def": "" }],
+    "java": "{{plugin}}.AnvilQuests.complete(player, {{text:quest}});" },
+  { "kind": "progress", "cat": "player", "label": "Aufgaben-Fortschritt erhöhen", "desc": "Zählt bei einer Aufgabe der Quest weiter (1 = erste Aufgabe)",
+    "props": [
+      { "key": "quest", "label": "Quest", "type": "entry", "editor": "quests", "def": "" },
+      { "key": "task", "label": "Aufgabe Nr.", "type": "number", "def": "1", "pin": "num" },
+      { "key": "amount", "label": "Um", "type": "number", "def": "1", "pin": "num" }
+    ],
+    "java": "{{plugin}}.AnvilQuests.progress(player, {{text:quest}}, {{int:task}}, {{int:amount}});" },
+  { "kind": "reset", "cat": "player", "label": "Quest zurücksetzen", "desc": "Löscht den Fortschritt der Quest für den Spieler",
+    "props": [{ "key": "quest", "label": "Quest", "type": "entry", "editor": "quests", "def": "" }],
+    "java": "{{plugin}}.AnvilQuests.reset(player, {{text:quest}});" },
+  { "kind": "open_book", "cat": "player", "label": "Quest-Buch öffnen", "desc": "Öffnet dem Spieler das Quest-Buch",
+    "props": [], "java": "if (player instanceof net.minecraft.server.level.ServerPlayer sp) {{plugin}}.AnvilQuests.sync(sp, \"open\");" }
+]

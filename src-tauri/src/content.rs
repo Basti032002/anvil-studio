@@ -554,6 +554,27 @@ fn valid_ref(r: &str) -> bool {
         && path.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | '-' | '.' | '/'))
 }
 
+/// Plugins, die im Projekt benutzt werden (Editor-Einträge, Blueprint-Knoten, Fähigkeiten)
+pub fn used_plugins(c: &Content) -> std::collections::HashSet<String> {
+    let mut out = std::collections::HashSet::new();
+    for (pid, d) in &c.plugin_data {
+        if d.as_object().map(|o| o.values().any(|v| v.as_array().map(|a| !a.is_empty()).unwrap_or(false))).unwrap_or(false) {
+            out.insert(pid.clone());
+        }
+    }
+    for n in c.blueprints.iter().filter(|b| b.enabled).flat_map(|b| b.nodes.iter()) {
+        if let Some((pid, _)) = n.kind.split_once(':') {
+            out.insert(pid.to_string());
+        }
+    }
+    for a in c.blocks.iter().flat_map(|b| b.abilities.iter()) {
+        if let Some((pid, _)) = a.kind.split_once(':') {
+            out.insert(pid.to_string());
+        }
+    }
+    out
+}
+
 /// Minecraft-Version >= a.b.c ?
 pub fn mc_at_least(version: &str, min: (u32, u32, u32)) -> bool {
     let mut parts = version.split(['.', '-']).map(|p| p.parse::<u32>().unwrap_or(0));
@@ -948,6 +969,7 @@ fn generate_client_java(p: &Project, c: &Content) -> String {
     let (gui_regs, gui_classes) = crate::gui::client_java(&c.guis, api.materials_v2);
     classes.push_str(&gui_classes);
     let regs_call = if c.mobs.is_empty() { String::new() } else { "        modEventBus.addListener(AnvilClient::registerRenderers);\n".to_string() };
+    let plugin_calls: String = crate::plugins::plugin_inits(&used_plugins(c), &p.package, "client").iter().map(|f| format!("        {f}(modEventBus);\n")).collect();
     format!(
         r#"// =============================================================================
 // AUTOMATISCH ERZEUGT von Anvil Studio – nur auf dem Client geladen.
@@ -967,7 +989,7 @@ import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 @Mod(value = AnvilContent.MODID, dist = Dist.CLIENT)
 public final class AnvilClient {{
     public AnvilClient(IEventBus modEventBus) {{
-{regs_call}{gui_regs}    }}
+{regs_call}{gui_regs}{plugin_calls}    }}
 
     private static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {{
 {regs}    }}
@@ -1989,11 +2011,15 @@ fn generate_extras(p: &Project, c: &Content, api: &Api) -> (String, Vec<&'static
         own.extend(c.mobs.iter().map(|m| m.id.clone()));
         own.extend(c.dimensions.iter().map(|d| d.id.clone()));
         let vars = c.variables.iter().filter(|v| !v.name.trim().is_empty()).map(|v| (crate::blueprint::var_name(&v.name), v.clone())).collect();
-        let bp_api = crate::blueprint::BpApi { get_value: api.materials_v2, modid: p.mod_id.clone(), own, vars, guis: c.guis.clone() };
+        let bp_api = crate::blueprint::BpApi { get_value: api.materials_v2, modid: p.mod_id.clone(), package: p.package.clone(), own, vars, guis: c.guis.clone() };
         let (bi, bc, bm) = crate::blueprint::generate(&c.blueprints, &bp_api);
         imports.extend(bi);
         calls.push_str(&bc);
         methods.push_str(&bm);
+    }
+    // Plugin-Ereignisse (z. B. „Quest geschafft“): Verteiler, den der Code der Plugins aufruft
+    if !methods.contains("static void anvilPluginEvent(") && used_plugins(c).iter().any(|pid| crate::plugins::has_code(pid)) {
+        methods.push_str("\n    public static void anvilPluginEvent(String kind, net.minecraft.server.level.ServerLevel level, net.minecraft.world.entity.player.Player player, String message) {\n    }\n");
     }
     if !ability.is_empty() && !methods.contains("static boolean anvilBlockHook(") {
         methods.push_str("\n    static boolean anvilBlockHook(String kind, String block, ServerLevel level, BlockPos pos, Player player) {\n        return false;\n    }\n");
@@ -2497,6 +2523,7 @@ fn generate_java(p: &Project, c: &Content) -> String {
         }
     }
     let (extra_fields, extra_imports, extra_calls, extra_methods) = generate_extras(p, c, &api);
+    let plugin_calls: String = crate::plugins::plugin_inits(&used_plugins(c), &p.package, "common").iter().map(|f| format!("        {f}(modEventBus);\n")).collect();
     for i in extra_imports {
         if !imports.contains(&i) {
             imports.push(i);
@@ -2548,7 +2575,7 @@ public final class AnvilContent {{
         ITEMS.register(modEventBus);
         TABS.register(modEventBus);
         AnvilDevReload.init();
-{mob_reg_call}{extra_calls}    }}
+{mob_reg_call}{extra_calls}{plugin_calls}    }}
 {mob_methods}{extra_methods}}}
 "#,
         pkg = p.package
@@ -3204,7 +3231,7 @@ fn generate_inner(p: &Project, c: &mut Content) -> Result<String, String> {
     std::fs::write(&java, java_code).map_err(err)?;
     write_dev_reload(p, &java)?;
     let client_java = java.with_file_name("AnvilClient.java");
-    if c.mobs.is_empty() && !c.guis.iter().any(crate::gui::valid) {
+    if c.mobs.is_empty() && !c.guis.iter().any(crate::gui::valid) && crate::plugins::plugin_inits(&used_plugins(c), &p.package, "client").is_empty() {
         remove_if_exists(client_java);
     } else {
         std::fs::write(&client_java, generate_client_java(p, c)).map_err(err)?;
@@ -3663,6 +3690,28 @@ fn generate_inner(p: &Project, c: &mut Content) -> Result<String, String> {
         }
         if !now.is_empty() || !before.is_empty() {
             write_json(&track, &json!(now))?;
+        }
+        // Code und Dateien aus Plugins (contributes.files) – Pfade relativ zum Projekt
+        let proj = PathBuf::from(&p.path);
+        let track2 = proj.join(".anvil/plugin-code.json");
+        let before2: Vec<String> = read_json(&track2).and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default();
+        let ctx = crate::plugins::FileCtx { modid, root_pkg: &p.package, mc: &p.mc_version, data: &c.plugin_data };
+        let files2 = crate::plugins::plugin_files(&used_plugins(c), &ctx);
+        let now2: Vec<String> = files2.iter().map(|(f, _)| f.clone()).collect();
+        for old in before2.iter().filter(|f| !now2.contains(f)) {
+            if old.starts_with("src/main/") && !old.contains("..") {
+                remove_if_exists(proj.join(old));
+            }
+        }
+        for (rel, text) in &files2 {
+            let f = proj.join(rel);
+            if let Some(parent) = f.parent() {
+                std::fs::create_dir_all(parent).map_err(err)?;
+            }
+            std::fs::write(&f, text).map_err(err)?;
+        }
+        if !now2.is_empty() || !before2.is_empty() {
+            write_json(&track2, &json!(now2))?;
         }
         plugin_mod_deps(p, modid);
     }
@@ -4893,7 +4942,8 @@ mod tests {
             }
             // Plugin „Mehr Blueprint-Knoten“ aus dem Repo (plugins/bp-extras)
             {
-                crate::plugins::set_for_test(&[std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/bp-extras")]);
+                let pl = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins");
+                crate::plugins::set_for_test(&[pl.join("bp-extras"), pl.join("quest-book")]);
                 use crate::abilities::Ability;
                 c.blocks.push(BlockDef { id: "ab_aura".into(), abilities: vec![Ability { kind: "bp-extras:particle_aura".into(), props: [("particle".to_string(), "HEART".to_string())].into() }], ..Default::default() });
                 let nodes = vec![
@@ -4933,6 +4983,44 @@ mod tests {
                     pin("dc", "rt", "radius"),
                 ];
                 c.blueprints.push(Blueprint { name: "Plugin-Knoten".into(), enabled: true, nodes, links, ..Default::default() });
+                // Plugin „Quest-Buch“: Quests im Editor + Blueprint mit Ereignis und Knoten
+                c.plugin_data.insert(
+                    "quest-book".into(),
+                    json!({ "quests": [
+                        { "id": "first", "title": "First Steps", "chapter": "Start", "icon": "minecraft:book", "description": "Bring dirt and beat zombies.", "requires": [],
+                          "tasks": [{ "type": "give", "item": "minecraft:dirt", "count": "4" }, { "type": "kill", "entity": "minecraft:zombie", "count": "2" },
+                                    { "type": "break", "block": "minecraft:stone", "count": "3" }, { "type": "have", "item": format!("{}:ruby", p.mod_id), "count": "1" }],
+                          "rewards": [{ "type": "item", "item": "minecraft:diamond", "count": "2" }, { "type": "xp", "count": "10" }, { "type": "command", "command": "/say done" }],
+                          "claim": "true", "notify": "true" },
+                        { "id": "second", "title": "Travel", "chapter": "World", "icon": "", "requires": ["first"],
+                          "tasks": [{ "type": "dimension", "dimension": "minecraft:the_nether" }, { "type": "biome", "biome": "minecraft:desert" }, { "type": "place", "block": "minecraft:torch", "count": "5" }],
+                          "rewards": [], "claim": "false", "repeatable": "true", "hidden": "true" }
+                    ] }),
+                );
+                let nodes = vec![
+                    node("qe", "quest-book:quest_done", &[("quest", "first")]),
+                    node("qa", "quest-book:quest_done", &[]),
+                    node("un", "quest-book:unlock", &[("quest", "second")]),
+                    node("pr", "quest-book:progress", &[("quest", "second"), ("task", "3"), ("amount", "2")]),
+                    node("if", "if", &[]),
+                    node("isd", "quest-book:is_done", &[("quest", "first")]),
+                    node("cp", "quest-book:complete", &[("quest", "second")]),
+                    node("rs", "quest-book:reset", &[("quest", "second")]),
+                    node("ob", "quest-book:open_book", &[]),
+                    node("act", "quest-book:is_active", &[("quest", "second")]),
+                    node("cnt", "quest-book:done_count", &[]),
+                ];
+                let links = vec![
+                    link("qe", "next", "un"),
+                    link("un", "next", "pr"),
+                    link("pr", "next", "if"),
+                    pin("isd", "if", "ifcond"),
+                    link("if", "true", "cp"),
+                    link("cp", "next", "rs"),
+                    link("qa", "next", "ob"),
+                    pin("cnt", "pr", "amount"),
+                ];
+                c.blueprints.push(Blueprint { name: "Quests".into(), enabled: true, nodes, links, ..Default::default() });
             }
             // Tags: eigene + Minecraft-Tags ergänzen (auch doppelt zu Anvils eigenen Einträgen)
             for (registry, id, values) in [

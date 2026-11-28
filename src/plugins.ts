@@ -9,7 +9,34 @@ import { CATS, NODES, NodeSpec, PropSpec } from "./views/workspace/blueprints";
 import { ABILITIES } from "./views/workspace/Abilities";
 
 /** Plugin-System: Manifest (plugin.json) und was ein Plugin beiträgt */
-export type PluginField = { key: string; label: string; type?: string; def?: string; options?: [string, string][] | { id: string; label: string }[]; pin?: "num" | "bool" | "text" | "any" };
+export type PluginField = {
+  key: string;
+  label: string;
+  type?: string;
+  def?: string;
+  options?: [string, string][] | { id: string; label: string }[];
+  pin?: "num" | "bool" | "text" | "any";
+  /** type "entry"/"entries": Editor, aus dem gewählt wird (leer = derselbe) */
+  editor?: string;
+  /** type "entry": Text für „egal welcher“ (leer lassen = Pflichtauswahl) */
+  any?: string;
+  /** type "list": Spalten einer Zeile */
+  fields?: PluginField[];
+  /** Abschnitt im Formular (Überschrift) */
+  section?: string;
+  /** rechts in der Seitenleiste zeigen */
+  side?: boolean;
+  /** kurzer Hinweis unter dem Feld */
+  hint?: string;
+  /** Breite in der Zeile (list) */
+  width?: number;
+  /** nur zeigen, wenn ein anderes Feld (in derselben Zeile) einen dieser Werte hat */
+  when?: { key: string; values: string[] };
+  /** Text-Feld: bisherige Werte vorschlagen */
+  suggest?: boolean;
+  /** Text für den Hinzufügen-Knopf (list, entries) */
+  addLabel?: string;
+};
 export type PluginManifest = {
   id: string;
   name: string;
@@ -28,7 +55,7 @@ export type PluginManifest = {
   };
 };
 export type PluginInfo = { id: string; manifest: PluginManifest; enabled: boolean; dir: string; size: number };
-export type PluginEditor = { plugin: string; pluginName: string; id: string; label: string; item?: string; desc?: string; fields: PluginField[] };
+export type PluginEditor = { plugin: string; pluginName: string; id: string; label: string; item?: string; desc?: string; fields: PluginField[]; titleField?: string; groupBy?: string };
 
 export const pluginApi = {
   list: () => invoke<PluginInfo[]>("plugins_list"),
@@ -87,7 +114,8 @@ async function contrib(p: PluginInfo, key: "nodes" | "abilities" | "editors"): P
   return out;
 }
 
-const fieldToProp = (f: PluginField): PropSpec => {
+const fieldToProp = (f: PluginField, plugin = ""): PropSpec => {
+  if (f.type === "entry") return { key: f.key, label: f.label, type: "entry", def: f.def ?? "", entries: { plugin, editor: f.editor ?? "", any: f.any } };
   const type = f.type === "bool" ? "select" : f.type === "number" ? "number" : ["text", "select", "item", "block", "entity", "effect", "sound"].includes(f.type ?? "") ? (f.type as PropSpec["type"]) : "text";
   const opts = f.type === "bool" ? [{ id: "true", label: t("Ja") }, { id: "false", label: t("Nein") }] : (f.options ?? []).map((o) => (Array.isArray(o) ? { id: String(o[0]), label: String(o[1]) } : o));
   return { key: f.key, label: f.label, type, def: f.def ?? (f.type === "bool" ? "false" : ""), options: opts.length ? opts : undefined, pin: f.pin };
@@ -106,13 +134,14 @@ async function applyContributions() {
       const kind = str(n.kind);
       if (!/^[a-z0-9_]+$/.test(kind)) continue;
       const value = ["num", "bool", "text"].includes(str(n.value)) ? (str(n.value) as NodeSpec["value"]) : undefined;
+      const event = str(n.cat) === "event";
       NODES.push({
         kind: `${p.id}:${kind}`,
-        cat: (cats.has(str(n.cat) as never) ? str(n.cat) : value ? "values" : "other") as NodeSpec["cat"],
+        cat: (event ? "event" : cats.has(str(n.cat) as never) ? str(n.cat) : value ? "values" : "other") as NodeSpec["cat"],
         label: str(n.label, kind),
         desc: str(n.desc),
         outs: value ? [] : arr<{ id: string; label: string }>(n.outs).length ? arr<{ id: string; label: string }>(n.outs) : [{ id: "next", label: "" }],
-        props: arr<PluginField>(n.props).map(fieldToProp),
+        props: arr<PluginField>(n.props).map((f) => fieldToProp(f, p.id)),
         value,
         plugin: p.manifest.name,
       });
@@ -125,7 +154,7 @@ async function applyContributions() {
     for (const e of await contrib(p, "editors")) {
       const id = str(e.id);
       if (!/^[a-z0-9_]+$/.test(id)) continue;
-      pluginEditors.push({ plugin: p.id, pluginName: p.manifest.name, id, label: str(e.label, id), item: str(e.item), desc: str(e.desc), fields: arr<PluginField>(e.fields) });
+      pluginEditors.push({ plugin: p.id, pluginName: p.manifest.name, id, label: str(e.label, id), item: str(e.item), desc: str(e.desc), fields: arr<PluginField>(e.fields), titleField: str(e.titleField) || undefined, groupBy: str(e.groupBy) || undefined });
     }
   }
 }

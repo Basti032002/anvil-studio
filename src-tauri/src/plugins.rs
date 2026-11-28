@@ -556,6 +556,178 @@ pub fn editor_files(data: &BTreeMap<String, Value>, modid: &str) -> Vec<(String,
     out
 }
 
+/// Java-Paket eines Plugins in der Mod: `<paket>.anvil.plugin.<id>`
+pub fn java_pkg(root: &str, pid: &str) -> String {
+    let mut seg: String = pid.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+    if seg.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(true) {
+        seg.insert(0, 'p');
+    }
+    format!("{root}.anvil.plugin.{seg}")
+}
+
+/// Ereignis-Knoten aus einem Plugin (`"cat": "event"`)
+pub fn is_event_node(kind: &str) -> bool {
+    kind.contains(':') && node_def(kind).map(|d| d["cat"].as_str() == Some("event")).unwrap_or(false)
+}
+
+fn ver(v: &str) -> Option<(u32, u32, u32)> {
+    let mut it = v.trim().split('.').map(|x| x.parse::<u32>().ok());
+    Some((it.next()??, it.next().flatten().unwrap_or(0), it.next().flatten().unwrap_or(0)))
+}
+
+/// Bedingung wie `mc>=1.21.2`, `mc<1.21.4`
+fn cond_ok(cond: &str, mc: &str) -> bool {
+    let c = cond.trim();
+    let Some(rest) = c.strip_prefix("mc") else { return false };
+    let (op, v) = if let Some(v) = rest.strip_prefix(">=") {
+        (">=", v)
+    } else if let Some(v) = rest.strip_prefix("<=") {
+        ("<=", v)
+    } else if let Some(v) = rest.strip_prefix('>') {
+        (">", v)
+    } else if let Some(v) = rest.strip_prefix('<') {
+        ("<", v)
+    } else if let Some(v) = rest.strip_prefix("==") {
+        ("==", v)
+    } else {
+        return false;
+    };
+    let (Some(a), Some(b)) = (ver(mc), ver(v)) else { return false };
+    match op {
+        ">=" => a >= b,
+        "<=" => a <= b,
+        ">" => a > b,
+        "<" => a < b,
+        _ => a == b,
+    }
+}
+
+/// `{{if mc>=1.21.2}} … {{else}} … {{end}}` auflösen (auch verschachtelt)
+pub fn resolve_ifs(tpl: &str, mc: &str) -> String {
+    let mut out = String::new();
+    // Stapel: (Zweig aktiv, schon ein Zweig genommen, Eltern aktiv)
+    let mut stack: Vec<(bool, bool, bool)> = vec![];
+    let active = |st: &Vec<(bool, bool, bool)>| st.last().map(|s| s.0 && s.2).unwrap_or(true);
+    let mut rest = tpl;
+    loop {
+        let next = ["{{if ", "{{else}}", "{{end}}"].iter().filter_map(|m| rest.find(m).map(|i| (i, *m))).min_by_key(|x| x.0);
+        let Some((i, m)) = next else {
+            if active(&stack) {
+                out.push_str(rest);
+            }
+            break;
+        };
+        if active(&stack) {
+            out.push_str(&rest[..i]);
+        }
+        let after = &rest[i..];
+        match m {
+            "{{if " => {
+                let Some(j) = after.find("}}") else { break };
+                let ok = cond_ok(&after[5..j], mc);
+                let parent = active(&stack);
+                stack.push((ok, ok, parent));
+                rest = &after[j + 2..];
+            }
+            "{{else}}" => {
+                if let Some(top) = stack.last_mut() {
+                    top.0 = !top.1;
+                    top.1 = true;
+                }
+                rest = &after[8..];
+            }
+            _ => {
+                stack.pop();
+                rest = &after[7..];
+            }
+        }
+    }
+    out
+}
+
+/// Werte für Datei-Vorlagen eines Plugins
+pub struct FileCtx<'a> {
+    pub modid: &'a str,
+    pub root_pkg: &'a str,
+    pub mc: &'a str,
+    pub data: &'a BTreeMap<String, Value>,
+}
+
+fn file_fill(p: &Plugin, ctx: &FileCtx, ty: &str, key: &str) -> Option<String> {
+    let pkg = java_pkg(ctx.root_pkg, &p.id);
+    Some(match ty {
+        "modid" => ctx.modid.to_string(),
+        "id" => p.id.clone(),
+        "package" => pkg,
+        "packagedir" => pkg.replace('.', "/"),
+        "root" => ctx.root_pkg.to_string(),
+        "mc" => ctx.mc.to_string(),
+        "entries" => {
+            let list = ctx.data.get(&p.id).map(|d| d[key].clone()).filter(|v| v.is_array()).unwrap_or(json!([]));
+            serde_json::to_string(&list).ok()?
+        }
+        _ => return None,
+    })
+}
+
+/// Zusätzliche Dateien aller benutzten Plugins (`contributes.files`): (Pfad im Projekt, Inhalt)
+/// Nur unter src/main/resources und src/main/java.
+pub fn plugin_files(used: &std::collections::HashSet<String>, ctx: &FileCtx) -> Vec<(String, String)> {
+    let mut out = vec![];
+    for p in enabled() {
+        let is_used = used.contains(&p.id);
+        for f in p.contrib("files") {
+            let when = f["when"].as_str().unwrap_or("used");
+            if when != "always" && !is_used {
+                continue;
+            }
+            if let Some(c) = f["mc"].as_str() {
+                if !c.split(',').all(|c| cond_ok(&format!("mc{}", c.trim()), ctx.mc)) {
+                    continue;
+                }
+            }
+            let tpl = match (f["template"].as_str(), f["file"].as_str()) {
+                (Some(t), _) => t.to_string(),
+                (None, Some(rel)) => match safe_join(&p.dir, rel).and_then(|x| std::fs::read_to_string(x).ok()) {
+                    Some(t) => t,
+                    None => continue,
+                },
+                _ => continue,
+            };
+            let Some(path) = f["path"].as_str().and_then(|x| expand(x, |t, k| file_fill(&p, ctx, t, k))) else { continue };
+            if !(path.starts_with("src/main/resources/") || path.starts_with("src/main/java/")) || path.split('/').any(|s| s == ".." || s.is_empty()) || path.contains('\\') || path.contains(':') {
+                continue;
+            }
+            let Some(text) = expand(&resolve_ifs(&tpl, ctx.mc), |t, k| file_fill(&p, ctx, t, k)) else { continue };
+            out.push((path, text));
+        }
+    }
+    out
+}
+
+/// Aufrufe beim Start der Mod (`contributes.init`): side = "common" | "client"
+pub fn plugin_inits(used: &std::collections::HashSet<String>, root_pkg: &str, side: &str) -> Vec<String> {
+    let mut out = vec![];
+    for p in enabled().into_iter().filter(|p| used.contains(&p.id)) {
+        for i in p.contrib("init") {
+            if i["side"].as_str().unwrap_or("common") != side {
+                continue;
+            }
+            let (Some(class), m) = (i["class"].as_str(), i["method"].as_str().unwrap_or("init")) else { continue };
+            let ok = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            if ok(class) && ok(m) {
+                out.push(format!("{}.{class}.{m}", java_pkg(root_pkg, &p.id)));
+            }
+        }
+    }
+    out
+}
+
+/// Plugins mit eigenen Dateien oder Start-Aufrufen
+pub fn has_code(pid: &str) -> bool {
+    enabled().iter().any(|p| p.id == pid && (!p.contrib("files").is_empty() || !p.contrib("init").is_empty()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -566,6 +738,15 @@ mod tests {
         assert_eq!(s, "a 2.5 b FLAME");
         assert!(expand("{{ident:x}}", |t, _| literal(t, "a;b")).is_none());
         assert_eq!(literal("text", "Hi \"du\""), Some("\"Hi \\\"du\\\"\"".into()));
+    }
+
+    #[test]
+    fn ifs() {
+        let t = "a{{if mc>=1.21.2}}N{{if mc>=1.21.4}}4{{else}}2{{end}}{{else}}O{{end}}b";
+        assert_eq!(resolve_ifs(t, "1.21.1"), "aOb");
+        assert_eq!(resolve_ifs(t, "1.21.2"), "aN2b");
+        assert_eq!(resolve_ifs(t, "1.21.10"), "aN4b");
+        assert_eq!(java_pkg("com.x", "quest-book"), "com.x.anvil.plugin.quest_book");
     }
 
     #[test]

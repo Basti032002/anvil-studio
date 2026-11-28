@@ -1446,6 +1446,22 @@ function PropInput({ project, content, own, spec, props = {}, value, onChange }:
       );
     }
     case "scope":
+    case "entry": {
+      const src = spec.entries;
+      const list = src ? ((content.pluginData?.[src.plugin] as Record<string, unknown[]> | undefined)?.[src.editor] ?? []) : [];
+      const items = (Array.isArray(list) ? list : []) as Record<string, string>[];
+      return (
+        <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+          {src?.any !== undefined && <option value="">{src.any || t("Alle")}</option>}
+          {src?.any === undefined && !items.some((x) => x.id === value) && <option value={value}>{value || t("– auswählen –")}</option>}
+          {items.map((x) => (
+            <option key={x.id} value={x.id}>
+              {x.title || x.name || x.id}
+            </option>
+          ))}
+        </select>
+      );
+    }
     case "select":
     case "who":
       return (
