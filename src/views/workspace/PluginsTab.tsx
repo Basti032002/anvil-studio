@@ -55,8 +55,8 @@ export default function PluginsTab({ project }: { project: Project }) {
     () =>
       content
         ? [
-            ...content.blocks.flatMap((b) => variantIds(b).map((v) => ({ id: v.id, name: v.name, kind: "block" as const, shape: v.shape }))),
-            ...content.items.map((i) => ({ id: i.id, name: i.nameEn || i.id, kind: "item" as const })),
+            ...(content.blocks ?? []).flatMap((b) => variantIds(b).map((v) => ({ id: v.id, name: v.name, kind: "block" as const, shape: v.shape }))),
+            ...(content.items ?? []).map((i) => ({ id: i.id, name: i.nameEn || i.id, kind: "item" as const })),
           ]
         : [],
     [content],
@@ -140,7 +140,7 @@ export default function PluginsTab({ project }: { project: Project }) {
         return (
           <select className="input" value={v} onChange={(e) => set(e.target.value)}>
             {!v && <option value="">{t("– auswählen –")}</option>}
-            {content.mobs.map((m) => (
+            {(content.mobs ?? []).map((m) => (
               <option key={m.id} value={`${project.modId}:${m.id}`}>
                 {m.nameEn || m.id} ({t("eigene")})
               </option>
@@ -156,7 +156,7 @@ export default function PluginsTab({ project }: { project: Project }) {
         return (
           <select className="input" value={v} onChange={(e) => set(e.target.value)}>
             {!v && <option value="">{t("– auswählen –")}</option>}
-            {content.dimensions.map((d) => (
+            {(content.dimensions ?? []).map((d) => (
               <option key={d.id} value={`${project.modId}:${d.id}`}>
                 {d.nameEn || d.id} ({t("eigene")})
               </option>
@@ -267,6 +267,12 @@ export default function PluginsTab({ project }: { project: Project }) {
           {f.hint && <span className="muted small">{f.hint}</span>}
         </span>
         {field({ ...f, label: "" })}
+      </div>
+    ) : f.type === "list" || f.type === "entries" || f.type === "item" || f.type === "block" ? (
+      <div key={f.key} className="field">
+        <span className="field-label">{f.label}</span>
+        {field(f)}
+        {f.hint && <span className="muted small">{f.hint}</span>}
       </div>
     ) : (
       <label key={f.key} className="field">

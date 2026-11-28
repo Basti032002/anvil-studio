@@ -60,7 +60,7 @@ public final class AnvilQuests {
     public record Task(String type, String target, int count) {}
     public record Reward(String type, String target, int count, String command) {}
     public record Quest(String id, String title, String chapter, String icon, String desc, List<String> requires, List<Task> tasks, List<Reward> rewards,
-                        boolean claim, boolean notify, boolean repeatable, boolean hidden) {}
+                        boolean claim, boolean announce, boolean repeatable, boolean hidden) {}
 
     public static final List<Quest> QUESTS = new ArrayList<>();
     public static final Map<String, Quest> BY_ID = new HashMap<>();
@@ -374,7 +374,7 @@ public final class AnvilQuests {
         st.done.add(q.id());
         if (!q.claim()) reward(sp, q);
         changed(sp);
-        if (q.notify()) sync(sp, "done:" + q.id());
+        if (q.announce()) sync(sp, "done:" + q.id());
         {{root}}.anvil.AnvilContent.anvilPluginEvent(EVENT_DONE, (ServerLevel) sp.level(), sp, q.id());
         // nachfolgende Quests könnten jetzt schon erfüllt sein (z. B. „Ort erreichen“)
         for (Quest other : QUESTS) if (other != q && other.requires().contains(q.id())) check(sp, other);

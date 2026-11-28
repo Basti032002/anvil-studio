@@ -2287,8 +2287,8 @@ button.cx-stat { cursor: pointer; }
 .pl-install { width: 540px; max-height: 86vh; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
 .callout.warn { display: flex; gap: 8px; align-items: flex-start; border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 8%, transparent); }
 .pl-textarea { min-height: 110px; resize: vertical; padding: 8px 10px; }
-.pl-editor { flex: 1; min-height: 0; display: grid; grid-template-columns: 280px 1fr; gap: 14px; padding: 0 0 14px; }
-.pl-editor.with-side { grid-template-columns: 280px 1fr 270px; }
+.pl-editor { flex: 1; min-height: 0; display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 14px; padding: 0 0 14px; }
+.pl-editor.with-side { grid-template-columns: 280px minmax(0, 1fr) 270px; }
 .pl-entries-head { display: flex; flex-direction: column; gap: 2px; padding: 2px 2px 4px; }
 .pl-search { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
 .pl-search .search { height: 32px; }
@@ -2315,7 +2315,10 @@ button.cx-stat { cursor: pointer; }
 .pl-chip-add { width: auto; height: 28px; }
 .pl-side { display: flex; flex-direction: column; gap: 4px; padding: 14px; border-left: 1px solid var(--border); overflow-y: auto; }
 .pl-bool { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid var(--border); }
-.pl-bool .grow { display: flex; flex-direction: column; gap: 2px; }
+.pl-bool .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 0; }
+.pl-side { min-width: 0; }
+.pl-bool > :last-child { flex: none; }
+.pl-entries { padding: 2px; }
 .pl-entries { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
 .pl-entry { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
 .pl-entry.active { border-color: var(--accent-line); background: var(--hover); }
