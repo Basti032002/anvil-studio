@@ -42,8 +42,8 @@ import { ItemField } from "./ContentForms";
 import { EFFECTS, SOUNDS } from "./LogicEditors";
 import { BpCat, CATS, ENTITIES, isEvent, isValue, makeNode, NODES, nodeId, nodeSpec, NodeSpec, PARTICLES, PropSpec, visibleProps, varKeyFor, GAME_VALUES, VAL_COLOR, ValType } from "./blueprints";
 import { varKindLabel, varScopeLabel } from "./variables";
-import { PluginChip } from "./Abilities";
 import { KNOWN_TAGS } from "./TagsTab";
+import { usePlugins } from "../../plugins";
 
 type View = { x: number; y: number; zoom: number };
 type Pt = { x: number; y: number };
@@ -1025,6 +1025,7 @@ export default function BlueprintEditor({
 
 /** Bibliothek: alle Knoten nach Kategorien, zum Hineinziehen oder Anklicken */
 function BpLibrary({ onAdd, onClose }: { onAdd: (kind: string) => void; onClose: () => void }) {
+  usePlugins();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<Record<string, boolean>>(() => {
     try {
@@ -1033,8 +1034,8 @@ function BpLibrary({ onAdd, onClose }: { onAdd: (kind: string) => void; onClose:
       return { event: true };
     }
   });
-  const toggle = (c: string) => {
-    const next = { ...open, [c]: !open[c] };
+  const toggle = (c: string, cur: boolean) => {
+    const next = { ...open, [c]: !cur };
     setOpen(next);
     try {
       localStorage.setItem("anvil.bp.libopen", JSON.stringify(next));
@@ -1056,15 +1057,18 @@ function BpLibrary({ onAdd, onClose }: { onAdd: (kind: string) => void; onClose:
       </div>
       <div className="bp-lib-hint">{t("In die Fläche ziehen oder anklicken")}</div>
       <div className="bp-lib-list">
-        {CATS.map((c) => {
-          const items = NODES.filter((n) => n.cat === c.id && (!query || `${n.label} ${n.desc}`.toLowerCase().includes(query)));
+        {[
+          ...[...new Set(NODES.filter((n) => n.plugin).map((n) => n.plugin as string))].map((name) => ({ key: `plugin:${name}`, label: name, icon: <PuzzleIcon size={12} />, cls: "plugin", match: (n: NodeSpec) => n.plugin === name, def: true })),
+          ...CATS.map((c) => ({ key: c.id as string, label: c.label, icon: CAT_ICON[c.id], cls: c.id as string, match: (n: NodeSpec) => !n.plugin && n.cat === c.id, def: false })),
+        ].map((c) => {
+          const items = NODES.filter((n) => c.match(n) && (!query || `${n.label} ${n.desc}`.toLowerCase().includes(query)));
           if (!items.length) return null;
-          const isOpen = !!query || !!open[c.id];
+          const isOpen = !!query || (open[c.key] ?? c.def);
           return (
-            <div key={c.id} className={`bp-lib-cat cat-${c.id}`}>
-              <button className={`bp-lib-cat-head ${isOpen ? "open" : ""}`} onClick={() => toggle(c.id)}>
+            <div key={c.key} className={`bp-lib-cat cat-${c.cls}`}>
+              <button className={`bp-lib-cat-head ${isOpen ? "open" : ""}`} onClick={() => toggle(c.key, isOpen)}>
                 <ChevronIcon size={11} />
-                <span className="bp-lib-cat-icon">{CAT_ICON[c.id]}</span>
+                <span className="bp-lib-cat-icon">{c.icon}</span>
                 <span className="grow">{c.label}</span>
                 <span className="muted small">{items.length}</span>
               </button>
@@ -1083,7 +1087,6 @@ function BpLibrary({ onAdd, onClose }: { onAdd: (kind: string) => void; onClose:
                   >
                     {n.value ? <span className="bp-lib-val" style={{ borderColor: VAL_COLOR[n.value] }} /> : <span className={`bp-dot cat-${n.cat}`} />}
                     <span className="grow">{n.label}</span>
-                    {n.plugin && <PluginChip name={n.plugin} />}
                   </button>
                 ))}
             </div>

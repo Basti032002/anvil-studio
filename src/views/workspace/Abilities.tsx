@@ -26,6 +26,7 @@ import {
   TrashIcon,
 } from "../../icons";
 import { MachineEditor } from "./StationEditors";
+import { usePlugins } from "../../plugins";
 
 /** Katalog der Block-Fähigkeiten. Muss zu src-tauri/src/abilities.rs passen. */
 export type AbilityInfo = { kind: AbilityKind; group: string; label: string; desc: string; icon: React.ReactNode; color: string; plugin?: string; fields?: import("../../plugins").PluginField[] };
@@ -82,6 +83,7 @@ export function AbilitiesEditor({
   /** zu einem Reiter des Blocks springen */
   onTab: (tab: "mining" | "shapes" | "model") => void;
 }) {
+  usePlugins();
   const [adding, setAdding] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const list = blockAbilities(block);
