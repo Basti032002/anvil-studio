@@ -1,7 +1,7 @@
 {
   "name": "anvil-studio",
   "private": true,
-  "version": "0.5.0-dev.42",
+  "version": "0.5.0-dev.43",
   "type": "module",
   "scripts": {
     "dev": "vite",

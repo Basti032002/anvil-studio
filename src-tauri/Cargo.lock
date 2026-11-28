@@ -43,7 +43,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-studio"
-version = "0.5.0-dev.42"
+version = "0.5.0-dev.43"
 dependencies = [
  "base64 0.22.1",
  "flate2",
