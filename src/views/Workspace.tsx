@@ -55,6 +55,12 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
   const [consoleOpen, setConsoleOpen] = useState<boolean>(() => !!autoRun || load(`anvil.console.${project.id}`, "0") === "1");
   const [consoleH, setConsoleH] = useState<number>(() => Math.max(140, Math.min(900, Number(load("anvil.consoleH", "260")) || 260)));
   const pluginList = usePlugins();
+  const [activeView, setActiveView] = useState("");
+  useEffect(() => {
+    const on = (e: Event) => setActiveView((e as CustomEvent<string>).detail);
+    window.addEventListener("anvil:view-changed", on);
+    return () => window.removeEventListener("anvil:view-changed", on);
+  }, []);
   const hasPluginEditors = pluginList.length >= 0 && pluginEditors.length > 0;
   // andere Bereiche können die Konsole öffnen
   useEffect(() => {
@@ -343,6 +349,21 @@ export default function Workspace({ project, javaReady, autoRun, onBack, onChang
         <div className={busy ? "run-progress active" : "run-progress"} />
       </div>
 
+      <nav className="ws-areas" aria-label={t("Bereiche")}>
+        {views.map((v) => (
+          <button
+            key={v.id}
+            data-tour={`tab-${v.id}`}
+            className={activeView === v.id ? "ws-area active" : "ws-area"}
+            onClick={() => window.dispatchEvent(new CustomEvent("anvil:open-tab", { detail: activeView === v.id ? "content" : v.id }))}
+            aria-pressed={activeView === v.id}
+          >
+            {v.icon}
+            <span>{v.label}</span>
+            {v.badge}
+          </button>
+        ))}
+      </nav>
       <div className="ws-view">
         <ContentTab project={project} views={views} />
       </div>

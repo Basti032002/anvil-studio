@@ -2465,3 +2465,37 @@ button.doc-crumb:hover { background: var(--hover); color: var(--text); }
 [data-density="comfortable"] .doc-tabs { height: 38px; }
 [data-density="comfortable"] .toolbar { padding: 8px 14px; }
 [data-density="comfortable"] .content-main > .content-editor { padding: 22px 26px; }
+
+/* Bereiche: schmale Leiste über dem Editor */
+.ws-areas { height: 32px; flex: none; display: flex; align-items: center; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--border); background: var(--surface); overflow-x: auto; scrollbar-width: none; }
+.ws-areas::-webkit-scrollbar { display: none; }
+.ws-area { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer; }
+.ws-area:hover { background: var(--hover); color: var(--text); }
+.ws-area.active { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--text); }
+.ws-area.active svg { color: var(--accent); }
+[data-density="comfortable"] .ws-areas { height: 38px; }
+
+/* Teil 3 – Editoren kompakter */
+.content-main > .content-editor { background: var(--bg); padding: 14px 16px; gap: 12px; }
+.content-main > .content-editor:has(.bp-panel) { padding: 0; }
+.content-editor:has(.bp-panel) .bp-panel { border: 0; border-radius: 0; box-shadow: none; min-height: 0; }
+.content-editor .panel { padding: 14px 16px; border-radius: 8px; background: var(--surface); box-shadow: none; }
+.editor-grid { grid-template-columns: minmax(0, 1fr) 440px; gap: 12px; }
+.form-panel { gap: 14px; }
+.content-editor .field { gap: 4px; }
+.content-editor .field-label { font-size: 11.5px; color: var(--muted); }
+.content-editor .input { height: 30px; padding: 0 9px; border-radius: 6px; background: var(--bg); border-color: var(--border-strong); }
+.content-editor select.input { padding-right: 26px; }
+.content-editor .textarea { height: auto; padding: 7px 9px; }
+.content-editor .btn { height: 30px; }
+.content-editor .btn.small { height: 26px; }
+.content-editor .panel-title-lg { font-size: 13.5px; }
+[data-density="comfortable"] .content-editor .input { height: 34px; }
+[data-density="comfortable"] .content-editor .panel { padding: 18px 20px; }
+
+/* Verwendet in */
+.used-in { display: flex; flex-direction: column; gap: 2px; padding-top: 10px; border-top: 1px solid var(--border); }
+.used-in-title { font-weight: 620; font-size: 12.5px; margin-bottom: 4px; }
+.used-in-row { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border: 0; border-radius: 5px; background: transparent; color: var(--text-2); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.used-in-row:hover { background: var(--hover); color: var(--text); }
+.used-in-row svg:last-child { color: var(--muted); }

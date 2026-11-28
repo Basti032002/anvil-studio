@@ -9,7 +9,7 @@ import { useCatalog } from "../../catalog";
 import { Toggle } from "../../components/Chrome";
 import ItemPicker, { OwnEntry, resolveItem } from "../../components/ItemPicker";
 import McIcon from "../../components/McIcon";
-import { BoxIcon, CheckIcon, ChevronIcon, GridIcon, PawIcon, GlobeIcon, BlueprintIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, FlaskIcon, GemIcon, LampIcon, LightningIcon, PencilIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TagIcon, TrashIcon, GuiIcon } from "../../icons";
+import { BoxIcon, CheckIcon, ChevronIcon, GridIcon, PawIcon, GlobeIcon, BlueprintIcon, ChestplateIcon, CloseIcon, CopyIcon, CubeIcon, FlaskIcon, GemIcon, LampIcon, LightningIcon, PencilIcon, PlusIcon, SaveIcon, SearchIcon, SparkIcon, SwordIcon, TagIcon, TrashIcon, GuiIcon, PuzzleIcon } from "../../icons";
 import { toast } from "../../state";
 import { useRunning } from "../../store";
 import PixelEditor from "./PixelEditor";
@@ -131,6 +131,7 @@ export default function ContentTab({ project, views = [] }: { project: Project; 
     setDocs((d) => (d.some((x) => x.t === "view" && x.id === id) ? d : [...d, { t: "view", id }]));
   }, []);
   useEffect(() => {
+    window.dispatchEvent(new CustomEvent("anvil:view-changed", { detail: view ?? "" }));
     try {
       localStorage.setItem(`anvil.view.${project.id}`, view ?? "");
     } catch {
@@ -649,6 +650,65 @@ export default function ContentTab({ project, views = [] }: { project: Project; 
     return null;
   };
 
+  /** Wo ein Block/Item sonst noch vorkommt (Rezepte, Blueprints, Drops, Quests …) */
+  const usedIn = (id: string, selfKind: string, selfIndex: number) => {
+    const needles = [`"${project.modId}:${id}"`, `"${id}"`];
+    const has = (x: unknown) => {
+      const j = JSON.stringify(x);
+      return needles.some((n) => j.includes(n));
+    };
+    const hits: { d: Doc; extra?: string }[] = [];
+    const scan = (kind: NonNullable<Sel>["kind"], list: unknown[], strip?: (x: Record<string, unknown>) => unknown) =>
+      list.forEach((x, i) => {
+        if (kind === selfKind && i === selfIndex) {
+          const own = strip ? strip(x as Record<string, unknown>) : null;
+          if (own && has(own)) hits.push({ d: { t: "sel", kind, index: i }, extra: t("Rezept") });
+          return;
+        }
+        if (has(x)) hits.push({ d: { t: "sel", kind, index: i } });
+      });
+    scan("block", content.blocks, (b) => b.recipe);
+    scan("item", content.items, (b) => b.recipe);
+    scan("mob", content.mobs);
+    scan("blueprint", content.blueprints);
+    scan("gui", content.guis ?? []);
+    scan("dimension", content.dimensions);
+    scan("structure", content.structures ?? []);
+    scan("event", content.events);
+    scan("brew", content.brewing);
+    const pluginHits = Object.entries(content.pluginData ?? {}).flatMap(([pid, d]) =>
+      Object.entries((d ?? {}) as Record<string, unknown>).flatMap(([ed, list]) =>
+        (Array.isArray(list) ? list : []).filter((e) => has(e)).map((e) => ({ pid, ed, e: e as Record<string, string> })),
+      ),
+    );
+    if (!hits.length && !pluginHits.length) return null;
+    return (
+      <div className="used-in">
+        <div className="used-in-title">{t("Verwendet in")}</div>
+        {hits.map(({ d, extra }) => {
+          const info = docInfo(d);
+          if (!info || d.t !== "sel") return null;
+          return (
+            <button key={docKey(d)} className="used-in-row" onClick={() => setSel({ kind: d.kind, index: d.index } as Sel)}>
+              {info.icon}
+              <span className="grow ellipsis">{info.label}</span>
+              {extra && <span className="muted small">{extra}</span>}
+              <ChevronIcon size={11} />
+            </button>
+          );
+        })}
+        {pluginHits.map((h, i) => (
+          <button key={`p${i}`} className="used-in-row" onClick={() => openView("plugins")}>
+            <PuzzleIcon size={13} />
+            <span className="grow ellipsis">{h.e.title || h.e.name || h.e.id}</span>
+            <span className="muted small">{h.ed}</span>
+            <ChevronIcon size={11} />
+          </button>
+        ))}
+      </div>
+    );
+  };
+
   const saveBlock = !dirty && content.generatorVersion > 0 && !busy ? (
     <div className="content-save clean">
       <span className="content-save-ok"><CheckIcon size={13} /> {t("Alles gespeichert")}</span>
@@ -726,25 +786,7 @@ export default function ContentTab({ project, views = [] }: { project: Project; 
               <span className="entry-name">{t("Übersicht")}</span>
             </span>
           </button>
-          {(["data", "mod"] as const).map((g) => {
-            const vs = views.filter((v) => v.group === g && (!q || v.label.toLowerCase().includes(q.trim().toLowerCase())));
-            if (!vs.length) return null;
-            return (
-              <div key={g} className="tree-section">
-                <div className="content-list-head">{g === "data" ? t("Daten") : t("Mod")}</div>
-                {vs.map((v) => (
-                  <button key={v.id} data-tour={`tab-${v.id}`} className={view === v.id ? "entry tree-view active" : "entry tree-view"} onClick={() => openView(v.id)}>
-                    <span className="logic-icon">{v.icon}</span>
-                    <span className="entry-text">
-                      <span className="entry-name">{v.label}</span>
-                    </span>
-                    {v.badge}
-                  </button>
-                ))}
-              </div>
-            );
-          })}
-          <div className="content-list-head tree-head">{t("Inhalte")}</div>
+
           <ListGroup id="blocks" label={t("Blöcke")} icon={<CubeIcon size={13} />} count={content.blocks.length} forceOpen={!!q}>
             {content.blocks.map((b, i) =>
               matches(b) ? (
@@ -1460,6 +1502,7 @@ export default function ContentTab({ project, views = [] }: { project: Project; 
                   <PixelEditor key={`${item.armorMaterial}-${item.armorSlot === "leggings"}`} projectId={project.id} kind={item.armorSlot === "leggings" ? "armor_legs" : "armor"} id={item.armorMaterial} />
                 </div>
               )}
+              {usedIn(current.id, block ? "block" : "item", sel!.index)}
               {savedIds.includes(current.id) ? (
                 null
               ) : (
